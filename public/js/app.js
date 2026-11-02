@@ -81,6 +81,7 @@ const PAGES = [
   { id: 'picture', name: 'State picture', roles: ['sysadmin', 'setupadmin', 'state', 'viewer'] },
   { id: 'export', name: 'Export', roles: ['sysadmin', 'setupadmin', 'state', 'viewer'] },
   { id: 'setup', name: 'Indicators', roles: ['sysadmin', 'setupadmin'] },
+  { id: 'units', name: 'Org units', roles: ['sysadmin', 'setupadmin', 'state'] },
   { id: 'accounts', name: 'Accounts', roles: ['sysadmin', 'state'] },
   { id: 'audit', name: 'Audit log', roles: ['sysadmin'] },
 ];
@@ -122,7 +123,7 @@ async function route() {
   renderChrome(target);
   mount(h('p', { class: 'muted' }, 'Loading…'));
   try {
-    await ({ entry: renderEntry, review: renderReview, picture: renderPicture, export: renderExport, setup: renderSetup, accounts: renderAccounts, audit: renderAudit, me: renderMe })[target]();
+    await ({ entry: renderEntry, review: renderReview, picture: renderPicture, export: renderExport, setup: renderSetup, units: renderUnits, accounts: renderAccounts, audit: renderAudit, me: renderMe })[target]();
   } catch (e) {
     if (e.status !== 401) mount(h('div', { class: 'note bad' }, e.message));
   }
@@ -664,6 +665,235 @@ function datasetDialog(ds, m, makeShared = false) {
       else { if (id.value.trim()) body.id = id.value.trim(); const { data } = await api('POST', '/api/datasets', body); pref('setupDs', data.id); }
     } catch (e) { err.textContent = e.message; return; }
     dlg.close(); state.meta = null; await loadMe(); renderSetup();
+  }));
+  document.body.append(dlg); dlg.showModal();
+}
+
+// ---------- sector org units (schools, facilities ...) ----------
+const UNIT_HEADERS = ['State', 'LGA', 'LGA ID', 'Name', 'Type', 'Ward (optional)', 'Code', 'DHIS2 ID (optional)'];
+
+async function renderUnits() {
+  const sectorPref = pref('unitSector');
+  const first = await get('/api/units' + qs({ sector: sectorPref, state: state.me.ou.level === 1 ? pref('unitState') : undefined }));
+  if (!first.sectors.length) return mount(h('div', { class: 'panel empty' }, 'Create a sector data set on the Indicators page first; org units are added per sector.'));
+  const o = await orgs();
+  const sector = first.sector;
+  const sectorName = (first.sectors.find((x) => x.id === sector) || {}).name;
+  const states = state.me.ou.level === 1 ? o.states : null;
+  const stateId = states ? (states.some((x) => x.id === pref('unitState')) ? pref('unitState') : '') : state.me.ou.level === 2 ? state.me.ou.id : null;
+  const lgaFilter = pref('unitLga') || '';
+  const units = first.units.filter((u) => !lgaFilter || u.lgaId === lgaFilter);
+
+  // add one
+  const addState = states ? select(states, stateId || states[0].id) : null;
+  const addLga = h('select');
+  const fillLgas = async () => {
+    const sid = addState ? addState.value : state.me.ou.level === 2 ? state.me.ou.id : null;
+    const l = sid ? await lgasOf(sid) : [state.me.ou];
+    addLga.replaceChildren(...l.map((x) => h('option', { value: x.id, selected: x.id === lgaFilter }, x.name)));
+  };
+  if (addState) addState.addEventListener('change', fillLgas);
+  await fillLgas();
+  const typeList = h('datalist', { id: 'unit-types' }, first.types.map((t) => h('option', { value: t })));
+  const nName = h('input', { placeholder: sectorName === 'Education' ? 'e.g. Central Primary School' : 'Name' });
+  const nType = h('input', { list: 'unit-types', placeholder: sectorName === 'Education' ? 'e.g. Primary school' : 'e.g. Health facility', size: 16 });
+  const nCode = h('input', { placeholder: 'optional', size: 10 });
+  const nId = h('input', { class: 'mono', placeholder: 'auto-generated', maxlength: 11, size: 13 });
+  const addBtn = h('button', { class: 'primary' }, 'Add');
+  addBtn.addEventListener('click', busy(addBtn, async () => {
+    const body = { sectorId: sector, lgaId: addLga.value, name: nName.value.trim(), type: nType.value.trim(), code: nCode.value.trim() };
+    if (nId.value.trim()) body.id = nId.value.trim();
+    await api('POST', '/api/units', body); toast('Added'); pref('unitLga', addLga.value); renderUnits();
+  }));
+
+  // excel
+  const fileIn = h('input', { type: 'file', accept: '.xlsx,.csv,.json', hidden: true });
+  fileIn.addEventListener('change', async () => {
+    const f = fileIn.files[0]; fileIn.value = '';
+    if (f) try { await importDialog(f, sector, sectorName); } catch (e) { toast(e.message, true); }
+  });
+  const tplBtn = h('button', {}, 'Download Excel template');
+  tplBtn.addEventListener('click', busy(tplBtn, async () => {
+    const { lgas } = await get('/api/orgunits?lgas=all');
+    const { writeWorkbook } = await import('./xlsx.js');
+    const blob = writeWorkbook([
+      { name: `${sectorName} units`, rows: [UNIT_HEADERS], widths: [18, 24, 14, 36, 20, 20, 12, 20] },
+      { name: 'LGAs', rows: [['State', 'LGA', 'LGA ID'], ...lgas.map((l) => [l.state, l.name, l.id])], widths: [22, 30, 14] },
+      { name: 'How to fill', rows: [['How to fill the template'], ...[
+        `One row per ${sectorName.toLowerCase()} unit (e.g. ${sectorName === 'Education' ? 'a school' : 'a facility or site'}).`,
+        'State and LGA: copy the names from the “LGAs” sheet, or put the LGA ID instead (safest).',
+        'Name is required. Type and Code are optional (Type e.g. “Primary school”).',
+        'DHIS2 ID: only if the unit already exists in DHIS2 — paste its 11-character ID to keep it. Leave empty to create a new ID.',
+        'Rows that match an existing unit (same name in the same LGA) update it instead of creating a duplicate.',
+        'Save as .xlsx (or .csv) and use “Import Excel” on the Org units page. You will see a check before anything is saved.',
+      ].map((t) => [t])], widths: [110] },
+    ]);
+    saveBlob(blob, `${sectorName.replace(/[^A-Za-z0-9]+/g, '_')}_org_units_template.xlsx`);
+  }));
+  const listBtn = h('button', {}, 'Download list');
+  listBtn.addEventListener('click', busy(listBtn, async () => {
+    const { writeWorkbook } = await import('./xlsx.js');
+    saveBlob(writeWorkbook([{ name: `${sectorName} units`, rows: [UNIT_HEADERS, ...units.map((u) => [u.stateName, u.lgaName, u.lgaId, u.name, u.type, u.ward, u.code, u.id])], widths: [18, 24, 14, 36, 20, 20, 12, 20] }]),
+      `${sectorName.replace(/[^A-Za-z0-9]+/g, '_')}_org_units.xlsx`);
+  }));
+
+  const lgaOpts = [...new Map(first.units.map((u) => [u.lgaId, u.lgaName])).entries()].map(([id, name]) => ({ id, name }));
+  mount(h('div', {},
+    h('div', { class: 'head' }, h('div', {}, h('h1', {}, 'Org units'), h('div', { class: 'muted' }, 'Units below each LGA that a sector reports on — schools, health facilities, water points… Each gets a DHIS2-style ID.')),
+      h('div', { class: 'actions' }, tplBtn, h('button', { class: 'primary', onclick: () => fileIn.click() }, 'Import Excel'), fileIn,
+        h('button', { onclick: () => scorecardDialog(sector, sectorName, states, stateId) }, 'Load health facilities'))),
+    h('div', { class: 'bar' },
+      field('Sector', select(first.sectors, sector, { onchange: (e) => { pref('unitSector', e.target.value); renderUnits(); } })),
+      states ? field('State', select([{ id: '', name: 'All states' }, ...states], stateId, { onchange: (e) => { pref('unitState', e.target.value); pref('unitLga', ''); renderUnits(); } })) : null,
+      field('LGA', select([{ id: '', name: 'All LGAs' }, ...lgaOpts], lgaFilter, { onchange: (e) => { pref('unitLga', e.target.value); renderUnits(); } })),
+      h('div', { class: 'muted small' }, `${units.length} unit${units.length === 1 ? '' : 's'}`), listBtn),
+    h('div', { class: 'panel' }, h('h2', {}, 'Add one'), typeList,
+      h('div', { class: 'bar' }, addState ? field('State', addState) : null, field('LGA', addLga), field('Name', nName), field('Type', nType), field('Code', nCode), field('DHIS2 ID', nId), addBtn)),
+    units.length > 2000 ? h('p', { class: 'muted small' }, `Showing the first 2,000 of ${units.length}. Choose an LGA, or use “Download list” for all.`) : null,
+    units.length ? h('div', { class: 'scroll' }, h('table', {},
+      h('thead', {}, h('tr', {}, h('th', {}, 'State'), h('th', {}, 'LGA'), h('th', {}, 'Ward'), h('th', {}, 'Name'), h('th', {}, 'Type'), h('th', {}, 'Code'), h('th', {}, 'ID'), h('th', {}, 'Status'))),
+      h('tbody', {}, units.slice(0, 2000).map((u) => h('tr', { class: 'click', onclick: () => unitDialog(u) },
+        h('td', {}, u.stateName), h('td', {}, u.lgaName), h('td', { class: 'small' }, u.ward), h('td', {}, u.name), h('td', {}, u.type), h('td', {}, u.code),
+        h('td', {}, h('span', { class: 'id' }, u.id)), h('td', {}, u.closed ? pill('none', 'Closed') : pill('accepted', 'Open')))))))
+      : h('div', { class: 'panel empty' }, `No ${sectorName} units yet. Add one above, or download the Excel template, fill it in and import it.`),
+  ));
+}
+
+function saveBlob(blob, name) {
+  const a = h('a', { href: URL.createObjectURL(blob), download: name });
+  document.body.append(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+}
+
+function unitDialog(u) {
+  const name = h('input', { value: u.name }); const type = h('input', { value: u.type, list: 'unit-types' }); const code = h('input', { value: u.code });
+  const err = h('div', { class: 'err' });
+  const save = h('button', { class: 'primary' }, 'Save');
+  const close = h('button', { class: 'danger' }, u.closed ? 'Reopen' : 'Close unit');
+  const dlg = h('dialog', {}, h('h2', {}, u.name), h('p', { class: 'muted small' }, `${u.lgaName}, ${u.stateName} · ID `, idTag(u.id)),
+    h('div', { class: 'grid2' }, field('Name', name), field('Type', type), field('Code', code)), err, h('p'),
+    h('div', { class: 'actions' }, save, close, h('button', { onclick: () => dlg.close() }, 'Cancel')),
+    h('p', { class: 'muted small' }, 'Closing keeps the unit and its ID but hides it from new work. Units are never deleted, so past data stays traceable.'));
+  dlg.addEventListener('close', () => dlg.remove());
+  const send = (b, body) => busy(b, async () => {
+    try { await api('PATCH', '/api/units/' + u.id, body()); dlg.close(); toast('Saved'); renderUnits(); } catch (e) { err.textContent = e.message; }
+  });
+  save.addEventListener('click', send(save, () => ({ name: name.value.trim(), type: type.value.trim(), code: code.value.trim() })));
+  close.addEventListener('click', send(close, () => ({ closed: !u.closed })));
+  document.body.append(dlg); dlg.showModal();
+}
+
+// Reads the file, maps its columns, asks the server to check every row, then imports on confirmation.
+async function importDialog(file, sectorId, sectorName) {
+  if (/\.json$/i.test(file.name)) return checkAndImport(await rowsFromDhis2Json(await file.text()), sectorId, sectorName, file.name);
+  const { readSheet } = await import('./xlsx.js');
+  const rows = await readSheet(file);
+  const hi = rows.findIndex((r) => r.some((c) => /^name$/i.test(String(c).trim())));
+  if (hi < 0) throw new Error('No “Name” column found. Use the Excel template (Download Excel template).');
+  const head = rows[hi].map((c) => String(c).trim().toLowerCase());
+  const col = (test) => head.findIndex(test);
+  const ci = {
+    state: col((c) => c === 'state'), lga: col((c) => c === 'lga' || c === 'lga name'), lgaId: col((c) => c === 'lga id' || c === 'lga uid'), ward: col((c) => c.startsWith('ward')),
+    name: col((c) => c === 'name'), type: col((c) => c === 'type'), code: col((c) => c === 'code'), id: col((c) => c.startsWith('dhis2 id') || c === 'id' || c === 'uid'),
+  };
+  if (ci.lga < 0 && ci.lgaId < 0) throw new Error('No “LGA” or “LGA ID” column found. Use the Excel template.');
+  const data = rows.slice(hi + 1).map((r, i) => {
+    const g = (k) => (ci[k] >= 0 ? String(r[ci[k]] ?? '').trim() : '');
+    return { row: hi + i + 2, state: g('state'), lga: g('lga'), lgaId: g('lgaId'), name: g('name'), type: g('type'), ward: g('ward'), code: g('code'), id: g('id') };
+  }).filter((r) => r.name || r.lga || r.lgaId);
+  if (!data.length) throw new Error('The file has no rows under the header.');
+  return checkAndImport(data, sectorId, sectorName, file.name);
+}
+
+// DHIS2 / ALMA Export organisation units file: units below LGAs (direct, or under a ward) keep their DHIS2 IDs.
+async function rowsFromDhis2Json(text) {
+  let body; try { body = JSON.parse(text); } catch { throw new Error('This JSON file could not be read.'); }
+  let list = body && !Array.isArray(body) ? body.organisationUnits : body;
+  if (list && !Array.isArray(list)) list = list.organisationUnits;
+  if (!Array.isArray(list)) throw new Error('No organisationUnits found in this file.');
+  const { lgas } = await get('/api/orgunits?lgas=all');
+  const lgaIds = new Set(lgas.map((l) => l.id));
+  const byId = new Map(list.map((o) => [o.id, o]));
+  const rows = [];
+  for (const o of list) {
+    const p = o.parent && o.parent.id;
+    if (!p || lgaIds.has(o.id)) continue;
+    if (lgaIds.has(p)) rows.push({ row: rows.length + 1, lgaId: p, name: o.name, id: o.id });
+    else { const w = byId.get(p); const gp = w && w.parent && w.parent.id; if (gp && lgaIds.has(gp)) rows.push({ row: rows.length + 1, lgaId: gp, ward: w.name, name: o.name, id: o.id }); }
+  }
+  if (!rows.length) throw new Error('No units below LGAs in your area were found in this file.');
+  return rows;
+}
+
+// Health facilities live from the scorecard platform (DHIS2 IDs), one state at a time.
+const SCORECARD = 'https://www.malariascorecard.org';
+async function scorecardDialog(sectorId, sectorName, states, stateId) {
+  const o = await orgs();
+  const stList = states || o.states;
+  const stSel = select(stList, stateId || stList[0].id);
+  const status = h('p', { class: 'muted small' });
+  const start = h('button', { class: 'primary' }, 'Load');
+  const dlg = h('dialog', {}, h('h2', {}, 'Load health facilities'),
+    h('p', { class: 'muted small' }, `Reads the health facility list (with DHIS2 IDs and wards) from the scorecard platform for one state, then shows the usual import check before anything is saved into “${sectorName}”.`),
+    field('State', stSel), status, h('div', { class: 'actions' }, start, h('button', { onclick: () => dlg.close() }, 'Cancel')));
+  dlg.addEventListener('close', () => dlg.remove());
+  start.addEventListener('click', busy(start, async () => {
+    const j = async (path) => { const r = await fetch(SCORECARD + path); if (!r.ok) throw new Error(`Scorecard platform answered ${r.status}.`); return r.json(); };
+    status.textContent = 'Finding the state…';
+    try { await j('/api/regions?parentId=35469'); } catch (e) { status.textContent = ''; throw new Error('Could not reach the scorecard platform: ' + e.message); }
+    const stateRegion = (await j('/api/regions?parentId=35469&depth=1')).find((x) => x.dhisRegionId === stSel.value);
+    if (!stateRegion) throw new Error('This state was not found on the scorecard platform.');
+    const lgaRegions = (await j(`/api/regions?parentId=${stateRegion.id}&depth=1`)).filter((x) => x.parentId === stateRegion.id && !/cold store/i.test(x.name));
+    const rows = []; let done = 0; let next = 0;
+    async function worker() {
+      while (next < lgaRegions.length) {
+        const l = lgaRegions[next++];
+        const items = await j(`/api/regions?parentId=${l.id}&depth=3`);
+        const byId = new Map(items.map((x) => [x.id, x]));
+        for (const x of items) {
+          const w = byId.get(x.parentId);
+          if (w && w.parentId === l.id && !/cold store/i.test(x.name) && /^[A-Za-z][A-Za-z0-9]{10}$/.test(x.dhisRegionId || '')) {
+            rows.push({ row: rows.length + 1, lgaId: l.dhisRegionId, ward: w.name, name: x.name.replace(/\s+/g, ' ').trim(), type: 'Health facility', id: x.dhisRegionId });
+          }
+        }
+        status.textContent = `Reading LGAs… ${++done} of ${lgaRegions.length} (${rows.length} facilities so far)`;
+      }
+    }
+    await Promise.all([1, 2, 3, 4].map(worker));
+    dlg.close();
+    await checkAndImport(rows, sectorId, sectorName, `scorecard platform — ${stSel.options[stSel.selectedIndex].text}`);
+  }));
+  document.body.append(dlg); dlg.showModal();
+}
+
+async function checkAndImport(data, sectorId, sectorName, sourceName) {
+  const { data: check } = await api('POST', '/api/units/import', { sectorId, rows: data });
+  const c = check.counts;
+  const errors = check.results.filter((r) => r.status === 'error');
+  const go = h('button', { class: 'primary', disabled: !!c.error || !(c.add + c.update) }, `Import ${c.add + c.update} unit${c.add + c.update === 1 ? '' : 's'}`);
+  const dlg = h('dialog', {}, h('h2', {}, `Import ${sectorName} units — check`),
+    h('p', { class: 'muted small' }, sourceName, ` · ${data.length} rows`),
+    h('div', { class: 'counts' }, h('span', { class: 'pill s-accepted' }, `New: ${c.add}`), h('span', { class: 'pill s-draft' }, `Updated: ${c.update}`),
+      h('span', { class: 'pill s-none' }, `Unchanged: ${c.same}`), h('span', { class: 'pill s-returned' }, `Problems: ${c.error}`)),
+    errors.length ? h('div', {}, h('div', { class: 'note bad' }, 'Fix these rows in the file and import it again. Nothing has been saved.'),
+      h('div', { class: 'scroll' }, h('table', {}, h('thead', {}, h('tr', {}, h('th', {}, 'Row'), h('th', {}, 'Name'), h('th', {}, 'Problem'))),
+        h('tbody', {}, errors.slice(0, 200).map((e) => h('tr', {}, h('td', {}, e.row), h('td', {}, e.name), h('td', {}, e.message)))))))
+      : h('div', { class: 'note ok' }, 'All rows look good.'),
+    h('p'), h('div', { class: 'actions' }, go, h('button', { onclick: () => dlg.close() }, 'Cancel')));
+  dlg.addEventListener('close', () => dlg.remove());
+  const progress = h('span', { class: 'muted small' });
+  go.after(progress);
+  go.addEventListener('click', busy(go, async () => {
+    const status = new Map(check.results.map((x) => [x.row, x.status]));
+    const todo = data.filter((r) => ['add', 'update'].includes(status.get(r.row)));
+    const parts = []; for (let i = 0; i < todo.length; i += 300) parts.push(todo.slice(i, i + 300));
+    let added = 0; let updated = 0;
+    for (let i = 0; i < parts.length; i++) {
+      progress.textContent = `Saving part ${i + 1} of ${parts.length}…`;
+      const { data: done } = await api('POST', '/api/units/import', { sectorId, rows: parts[i], commit: true });
+      added += done.counts.add; updated += done.counts.update;
+    }
+    dlg.close(); toast(`Imported: ${added} new, ${updated} updated`); renderUnits();
   }));
   document.body.append(dlg); dlg.showModal();
 }

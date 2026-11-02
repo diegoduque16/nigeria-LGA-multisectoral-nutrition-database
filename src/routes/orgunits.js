@@ -46,7 +46,7 @@ export function prepareUnits(list) {
 // units missing from the file are marked closed so their history stays exportable.
 export async function upsertUnits(db, sorted, { closeMissing = false } = {}) {
   const t = now();
-  const existing = new Map((await all(db, 'SELECT id, name, parent_id, path, closed_at FROM org_units')).map((r) => [r.id, r]));
+  const existing = new Map((await all(db, 'SELECT id, name, level, parent_id, path, closed_at FROM org_units')).map((r) => [r.id, r]));
   let added = 0; let updated = 0; let closed = 0;
   const stmts = [];
   for (const u of sorted) {
@@ -62,7 +62,7 @@ export async function upsertUnits(db, sorted, { closeMissing = false } = {}) {
   if (closeMissing) {
     const ids = new Set(sorted.map((u) => u.id));
     for (const e of existing.values()) {
-      if (!ids.has(e.id) && !e.closed_at) {
+      if (!ids.has(e.id) && !e.closed_at && e.level <= 3) {
         closed++;
         stmts.push(db.prepare('UPDATE org_units SET closed_at = ?, updated_at = ? WHERE id = ?').bind(t, t, e.id));
       }
@@ -85,11 +85,17 @@ const ouOut = (o) => ({ id: o.id, name: o.name, level: o.level, parentId: o.pare
 export async function listOrgUnits(request, env, ctx) {
   const url = new URL(request.url);
   const parent = url.searchParams.get('parent');
+  if (url.searchParams.get('lgas') === 'all') {
+    // Every LGA in the caller's area with its state (for Excel templates).
+    const rows = await all(env.DB, `SELECT l.id, l.name, l.path, s.name AS state FROM org_units l JOIN org_units s ON s.id = l.parent_id
+      WHERE l.level = 3 AND l.closed_at IS NULL ORDER BY s.name, l.name`);
+    return json({ lgas: rows.filter((r) => inScope(ctx, r)).map((r) => ({ id: r.id, name: r.name, state: r.state })) });
+  }
   if (parent) {
     const p = await one(env.DB, 'SELECT * FROM org_units WHERE id = ?', parent);
     if (!p) throw new HttpError(404, 'not_found', 'Organisation unit not found.');
     if (!inScope(ctx, p) && !inScope({ ou: p }, ctx.ou)) throw new HttpError(403, 'out_of_scope', 'That organisation unit is outside your area.');
-    const rows = await all(env.DB, 'SELECT * FROM org_units WHERE parent_id = ? ORDER BY name', parent);
+    const rows = await all(env.DB, 'SELECT * FROM org_units WHERE parent_id = ? AND level <= 3 ORDER BY name', parent);
     return json({ parent: ouOut(p), children: rows.filter((r) => inScope(ctx, r) || inScope({ ou: r }, ctx.ou)).map(ouOut) });
   }
   const rows = await all(env.DB,

@@ -343,3 +343,56 @@ test('per-sector data sets and a shared yearly population data set used as denom
   const wp = (await st.c.get(`/api/picture?dataset=${wash.id}&period=${prev}`)).data;
   assert.equal(wp.total.indicators[latr.id].value, 40);
 });
+
+test('sector units (schools...) below LGAs: add, Excel-style import with checks, scoped, optional in metadata export', async () => {
+  const env = makeEnv();
+  const admin = await setupAdmin(env);
+  const edu = (await admin.post('/api/datasets', { name: 'Education – yearly', sector: 'Education', frequency: 'YEARLY' })).data;
+  await admin.post('/api/datasets', { name: 'Health – monthly', sector: 'Health', frequency: 'MONTHLY' });
+  const sectors = (await admin.get('/api/units')).data.sectors;
+  const eduSector = sectors.find((s) => s.name === 'Education').id;
+  const one = await admin.post('/api/units', { sectorId: eduSector, lgaId: ABA_NORTH, name: 'Central Primary School', type: 'Primary school', code: 'AB-001' });
+  assert.equal(one.status, 201);
+  assert.match(one.data.id, /^[A-Za-z][A-Za-z0-9]{10}$/);
+  assert.equal((await admin.post('/api/units', { sectorId: eduSector, lgaId: ABA_NORTH, name: 'central primary school' })).status, 409);
+  const rows = [
+    { row: 2, state: 'Abia', lga: 'Aba North', name: 'Central Primary School', type: 'Primary school', code: 'AB-001' }, // same
+    { row: 3, state: 'ab Abia State', lga: 'ab Aba South LGA', name: 'Girls Secondary School', type: 'Secondary school' }, // add (DHIS2 names)
+    { row: 4, lgaId: AROCHUKWU, name: 'Arochukwu Model School', id: 'Sch0000001a' }, // add with existing DHIS2 id
+    { row: 5, state: 'Abia', lga: 'Nowhere', name: 'Lost School' }, // error
+    { row: 6, state: 'Abia', lga: 'Aba South', name: 'girls secondary school' }, // duplicate row
+    { row: 7, lga: 'Aba North', name: 'Central Primary School', code: 'AB-002' }, // update code (LGA name unique)
+    { row: 8 }, // blank
+  ];
+  const check = (await admin.post('/api/units/import', { sectorId: eduSector, rows })).data;
+  assert.equal(check.committed, false);
+  assert.deepEqual(check.counts, { add: 2, update: 0, same: 1, error: 3 }); // rows 5, 6 and 7 (7 repeats row 2)
+  const blocked = await admin.post('/api/units/import', { sectorId: eduSector, rows, commit: true });
+  assert.equal(blocked.status, 422);
+  const good = rows.filter((r) => ![5, 6, 2].includes(r.row));
+  const done = (await admin.post('/api/units/import', { sectorId: eduSector, rows: good, commit: true })).data;
+  assert.deepEqual(done.counts, { add: 2, update: 1, same: 0, error: 0 });
+  const list = (await admin.get(`/api/units?sector=${eduSector}&state=${ABIA}`)).data.units;
+  assert.equal(list.length, 3);
+  assert.equal(list.find((u) => u.name === 'Central Primary School').code, 'AB-002');
+  assert.ok(list.some((u) => u.id === 'Sch0000001a'));
+  // LGA pickers and the normal metadata export are unchanged; units appear only when asked.
+  assert.equal((await admin.get('/api/orgunits?parent=' + ABA_NORTH)).data.children.length, 0);
+  const m1 = (await admin.get('/api/export/metadata')).data.organisationUnits.organisationUnits;
+  assert.equal(m1.length, 812);
+  const m2 = (await admin.get('/api/export/metadata?units=' + eduSector)).data.organisationUnits.organisationUnits;
+  assert.equal(m2.length, 815);
+  assert.deepEqual(m2.find((o) => o.id === 'Sch0000001a'), { id: 'Sch0000001a', parent: { id: AROCHUKWU }, name: 'Arochukwu Model School', level: 4 });
+  // A state officer only sees and imports within their state; an LGA user cannot manage units.
+  const st = await addUser(env, admin, { name: 'S', email: 's@ad.gov.ng', role: 'state', ouId: ADAMAWA, datasets: [edu.id] });
+  assert.equal((await st.c.get(`/api/units?sector=${eduSector}`)).data.units.length, 0);
+  const out = (await st.c.post('/api/units/import', { sectorId: eduSector, rows: [{ state: 'Abia', lga: 'Aba North', name: 'X' }] })).data;
+  assert.equal(out.counts.error, 1);
+  assert.equal((await st.c.get(`/api/units?sector=${eduSector}&state=${ABIA}`)).status, 403);
+  const lga = await addUser(env, admin, { name: 'L', email: 'l@abia.gov.ng', role: 'lga', ouId: ABA_NORTH });
+  assert.equal((await lga.c.post('/api/units', { sectorId: eduSector, lgaId: ABA_NORTH, name: 'Y' })).status, 403);
+  // Re-importing DHIS2 org units (levels 1-3) with closeMissing does not close sector units.
+  const ous = (await admin.get('/api/export/metadata')).data.organisationUnits;
+  await admin.post('/api/orgunits/import?closeMissing=true', ous);
+  assert.equal((await admin.get(`/api/units?sector=${eduSector}`)).data.units.filter((u) => !u.closed).length, 3);
+});

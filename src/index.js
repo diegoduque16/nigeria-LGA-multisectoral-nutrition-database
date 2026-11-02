@@ -7,6 +7,7 @@ import * as orgunits from './routes/orgunits.js';
 import * as meta from './routes/metadata.js';
 import * as entry from './routes/entry.js';
 import * as pic from './routes/picture.js';
+import * as units from './routes/units.js';
 
 // [method, path, handler, access]  access: 'public' | 'optional' | 'session'
 const ROUTES = [
@@ -30,6 +31,10 @@ const ROUTES = [
 
   ['GET', '/api/orgunits', orgunits.listOrgUnits, 'session'],
   ['POST', '/api/orgunits/import', orgunits.importOrgUnits, 'session'],
+  ['GET', '/api/units', units.listUnits, 'session'],
+  ['POST', '/api/units', units.createUnit, 'session'],
+  ['POST', '/api/units/import', units.importUnits, 'session'],
+  ['PATCH', '/api/units/:id', units.updateUnit, 'session'],
 
   ['GET', '/api/metadata', meta.getMetadata, 'session'],
   ['PATCH', '/api/sectors/:id', meta.updateSector, 'session'],
@@ -71,7 +76,7 @@ const SECURITY_HEADERS = {
   'referrer-policy': 'no-referrer',
   'x-frame-options': 'DENY',
   'strict-transport-security': 'max-age=31536000; includeSubDomains',
-  'content-security-policy': "default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'",
+  'content-security-policy': "default-src 'self'; connect-src 'self' https://www.malariascorecard.org; img-src 'self' data:; style-src 'self'; script-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'",
   'permissions-policy': 'camera=(), microphone=(), geolocation=()',
 };
 

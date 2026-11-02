@@ -93,9 +93,11 @@ async function exportDatasets(db, ctx, param) {
 }
 
 // Org units the export covers: the caller's scope plus the units above it (so parents resolve).
-async function exportOrgUnits(db, root) {
+// Sector units (level 4: schools, facilities ...) are included only when asked for, optionally for one sector.
+async function exportOrgUnits(db, root, units = null) {
   const ancestors = root.path.split('/').filter(Boolean).slice(0, -1);
-  const below = await all(db, 'SELECT id, name, level, parent_id, closed_at FROM org_units WHERE id = ? OR path LIKE ? ORDER BY level, name', root.id, root.path + '/%');
+  const below = (await all(db, 'SELECT id, name, level, parent_id, closed_at, sector_id FROM org_units WHERE (id = ? OR path LIKE ?) AND closed_at IS NULL ORDER BY level, name', root.id, root.path + '/%'))
+    .filter((o) => o.level <= 3 || (units && (units === 'all' || o.sector_id === units)));
   const above = ancestors.length ? await all(db, `SELECT id, name, level, parent_id, closed_at FROM org_units WHERE id IN (${ancestors.map(() => '?').join(',')}) ORDER BY level`, ...ancestors) : [];
   return [...above, ...below];
 }
@@ -109,7 +111,8 @@ export async function exportMetadata(request, env, ctx) {
   const q = new URL(request.url).searchParams;
   const root = await loadOu(env.DB, ctx, q.get('ou'));
   const datasets = await exportDatasets(env.DB, ctx, q.get('datasets'));
-  const units = await exportOrgUnits(env.DB, root);
+  const inc = q.get('units');
+  const units = await exportOrgUnits(env.DB, root, inc ? (inc === 'all' ? 'all' : inc) : null);
   const types = Object.fromEntries((await all(env.DB, 'SELECT id, name FROM indicator_types')).map((t) => [t.id, t.name]));
   const indicators = [];
   for (const ds of datasets) {
