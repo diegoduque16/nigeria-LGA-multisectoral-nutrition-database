@@ -1015,13 +1015,16 @@ function renderSectors(m) {
   const cards = sectorIds.map((sid) => {
     const sec = m.sectors.find((s) => s.id === sid) || { id: sid, name: 'No sector' };
     const mine = forms.filter((d) => d.sectorId === sid).sort((a, b) => (a.archived ? 1 : 0) - (b.archived ? 1 : 0) || a.name.localeCompare(b.name));
-    if (!mine.length && !sec.indicators) return null;
+    const unused = !mine.length && !sec.indicators;
     return h('div', { class: 'panel sector-card' },
       h('div', { class: 'rc-head' }, h('h2', {}, sec.name),
-        admin && sec.id ? h('button', { class: 'link', onclick: () => renameSector(sec) }, 'Rename sector') : null),
+        h('div', { class: 'actions' },
+          admin && sec.id ? h('button', { class: 'link', onclick: () => renameSector(sec) }, 'Rename sector') : null,
+          admin && sec.id && unused ? h('button', { class: 'link danger-link', onclick: () => removeSector(sec) }, 'Remove sector') : null)),
       mine.length ? h('table', { class: 'todo' }, h('tbody', {}, mine.map(formRow)))
-        : h('p', { class: 'muted small' }, 'This sector has indicators on other sectors’ forms but no form of its own.'),
-      admin ? h('div', { class: 'actions' }, h('button', { class: 'link', onclick: () => datasetDialog(null, m, false, sec.name) }, `+ Add another form to ${sec.name}`)) : null);
+        : unused ? h('div', { class: 'note info' }, `${sec.name} has no reporting form yet, so nobody can report for it. Add one below, then add its indicators.`)
+          : h('p', { class: 'muted small' }, 'This sector has indicators on other sectors’ forms but no form of its own.'),
+      admin ? h('div', { class: 'actions' }, h('button', { class: 'link', onclick: () => datasetDialog(null, m, false, sec.name) }, `+ Add ${mine.length ? 'another' : 'a'} form to ${sec.name}`)) : null);
   }).filter(Boolean);
 
   mount(h('div', {},
@@ -1061,6 +1064,11 @@ async function renderPopulation() {
       admin ? h('button', { class: 'primary', onclick: () => datasetDialog(null, m, true) }, 'Create population figures') : h('p', { class: 'muted' }, 'Ask a system administrator to create it.'))));
   }
   mount(h('div', {}, head, sharedPanel(ds)));
+}
+
+async function removeSector(sec) {
+  if (!confirm(`Remove the sector “${sec.name}”? It has no forms or indicators, so nothing is lost.`)) return;
+  try { await api('DELETE', '/api/sectors/' + sec.id); toast('Sector removed'); state.meta = null; route(); } catch (e) { toast(e.message, true); }
 }
 
 async function renameSector(sec) {
@@ -1116,6 +1124,7 @@ function renderForm(ds, m) {
 
 // A new sector is created together with its first reporting form.
 function sectorDialog(m) {
+  const forms = m.datasets.filter((d) => !d.shared);
   const sector = h('input', { placeholder: 'e.g. Agriculture' });
   const freq = select(m.frequencies, 'MONTHLY');
   const level = select([{ id: 'LGA', name: 'Each LGA' }, { id: 'UNIT', name: 'Each school / facility (added up to the LGA)' }], 'LGA');
@@ -1140,7 +1149,8 @@ function sectorDialog(m) {
   save.addEventListener('click', busy(save, async () => {
     err.textContent = '';
     if (!sector.value.trim()) { err.textContent = 'Give the sector a name.'; return; }
-    if (m.sectors.some((s) => s.name.toLowerCase() === sector.value.trim().toLowerCase())) { err.textContent = `“${sector.value.trim()}” already exists. Use “+ Add another form” on its card instead.`; return; }
+    const existing = m.sectors.find((s) => s.name.toLowerCase() === sector.value.trim().toLowerCase());
+    if (existing && forms.some((d) => d.sectorId === existing.id)) { err.textContent = `“${existing.name}” already exists. Use “+ Add another form to ${existing.name}” on its card instead.`; return; }
     try {
       const { data } = await api('POST', '/api/datasets', { name: name.value.trim() || sector.value.trim(), sector: sector.value.trim(), frequency: freq.value, reportLevel: level.value, dueDay: Number(due.value) });
       dlg.close(); state.meta = null; await loadMe(); toast(`Sector “${sector.value.trim()}” added. Now add its indicators.`); go('#/setup/' + data.id);

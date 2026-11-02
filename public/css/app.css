@@ -271,3 +271,4 @@ tr.newrow td { background: var(--accent-soft); color: var(--accent); }
   table.todo .late { display: block; margin: 4px 0 0; }
   table.todo .pill { white-space: normal; }
 }
+button.danger-link { color: var(--bad); }
