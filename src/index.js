@@ -13,6 +13,7 @@ import * as pv from './routes/pivot.js';
 import * as reg from './routes/register.js';
 import * as wp from './routes/worldpop.js';
 import * as rem from './routes/reminders.js';
+import * as dict from './routes/dictionary.js';
 
 // [method, path, handler, access]  access: 'public' | 'optional' | 'session'
 const ROUTES = [
@@ -65,6 +66,11 @@ const ROUTES = [
   ['POST', '/api/datasets/:datasetId/indicators', meta.createIndicator, 'session'],
   ['PATCH', '/api/indicators/:id', meta.updateIndicator, 'session'],
   ['DELETE', '/api/indicators/:id', meta.deleteIndicator, 'session'],
+  ['GET', '/api/dictionary', dict.listDictionary, 'session'],
+  ['POST', '/api/dictionary', dict.createDefinition, 'session'],
+  ['POST', '/api/dictionary/import', dict.importDictionary, 'session'],
+  ['PATCH', '/api/dictionary/:id', dict.patchDefinition, 'session'],
+  ['DELETE', '/api/dictionary/:id', dict.deleteDefinition, 'session'],
   ['POST', '/api/datasets/:datasetId/fields', meta.createDataElement, 'session'],
   ['GET', '/api/datasets/:id/population', pop.populationTable, 'session'],
   ['POST', '/api/datasets/:id/population', pop.importPopulation, 'session'],

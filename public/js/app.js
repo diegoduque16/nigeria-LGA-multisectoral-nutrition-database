@@ -133,6 +133,7 @@ const PAGES = [
   { id: 'pivot', group: 'results', name: () => (is(...ENTRY_ROLES) ? 'Results' : 'Compare over time'), short: 'Places × indicators × periods', roles: ['sysadmin', 'setupadmin', 'state', 'lga', 'viewer'], desc: 'Compare indicators across places and periods (a pivot table), and download it to Excel.' },
   { id: 'export', group: 'results', name: 'Export to scorecard', short: 'The two JSON files', roles: ['sysadmin', 'setupadmin', 'state', 'viewer'], desc: 'Download the two JSON files that the scorecard platform reads.' },
   { id: 'setup', group: 'setup', name: 'Sectors & indicators', short: 'Add a sector and its indicators', roles: ['sysadmin', 'setupadmin'], desc: 'Add a sector (Health, Education …), how often it reports, and its indicators.' },
+  { id: 'dictionary', group: 'setup', name: 'Indicator dictionary', short: 'Shared definitions and codes', roles: ['sysadmin', 'setupadmin'], desc: 'One definition per indicator — code, calculation, source, framework — shared by every sector that reports it.' },
   { id: 'population', group: 'setup', name: 'Population figures', short: 'Yearly denominators', roles: ['sysadmin', 'setupadmin'], desc: 'Yearly numbers per LGA that indicators divide by: population, under-5s, expected pregnancies …' },
   { id: 'units', group: 'setup', name: 'Units below the LGA', short: 'Child org units: facilities, schools …', roles: ['sysadmin', 'setupadmin', 'state'], desc: 'The child org units of each LGA (DHIS2 level 4) that a sector reports on: health facilities, schools, water points, markets … Set them up per sector.' },
   { id: 'rollout', group: 'setup', name: 'States in use', short: 'Which states take part', roles: ['sysadmin'], desc: 'Choose which states use the system. The others are hidden everywhere.' },
@@ -226,7 +227,7 @@ async function route() {
   renderChrome(target);
   mount(h('p', { class: 'muted' }, 'Loading…'));
   try {
-    await ({ home: renderHome, entry: renderEntry, review: renderReview, picture: renderPicture, pivot: renderPivot, export: renderExport, setup: renderSetup, population: renderPopulation, reminders: renderReminders, upload: renderUpload, units: renderUnits, rollout: renderRollout, accounts: renderAccounts, audit: renderAudit, me: renderMe })[target](...parts.slice(1));
+    await ({ home: renderHome, entry: renderEntry, review: renderReview, picture: renderPicture, pivot: renderPivot, export: renderExport, setup: renderSetup, population: renderPopulation, dictionary: renderDictionary, reminders: renderReminders, upload: renderUpload, units: renderUnits, rollout: renderRollout, accounts: renderAccounts, audit: renderAudit, me: renderMe })[target](...parts.slice(1));
   } catch (e) {
     if (e.status !== 401) mount(h('div', { class: 'note bad' }, e.message));
   }
@@ -1218,7 +1219,14 @@ const calcText = (i) => (i.denominator ? `${i.numerator} ÷ ${i.denominator}` : 
 
 // Sectors page: each sector with its indicators. Most sectors have one reporting schedule; a second one
 // (e.g. yearly, or by school) only shows up when someone adds it.
-function renderSectors(m) {
+async function renderSectors(m) {
+  const defs = (await get('/api/dictionary').catch(() => ({ definitions: [] }))).definitions;
+  const defById = new Map(defs.map((d) => [d.id, d]));
+  for (const d of m.datasets) for (const i of d.indicators) {
+    const def = defById.get(i.defId);
+    i.code = def ? def.code : '';
+    i.sharedWith = def ? [...new Set(def.uses.filter((u) => u.datasetId !== d.id).map((u) => u.sector || u.dataset))] : [];
+  }
   const admin = is('sysadmin');
   const canEdit = is('sysadmin', 'setupadmin');
   const shared = m.datasets.find((d) => d.shared && !d.archived);
@@ -1226,7 +1234,8 @@ function renderSectors(m) {
   const indTable = (d) => {
     const list = d.indicators.filter((i) => !i.archived);
     return list.length ? h('table', { class: 'todo indlist' }, h('tbody', {}, list.map((i) => h('tr', { class: canEdit ? 'click' : '', onclick: canEdit ? () => indicatorDialog(d, m, i) : null },
-      h('td', {}, h('strong', {}, i.name), i.sector && i.sector !== d.sector ? h('span', { class: 'muted small' }, ` · ${i.sector}`) : null),
+      h('td', {}, i.code ? h('span', { class: 'id' }, i.code) : null, i.code ? ' ' : null, h('strong', {}, i.name), i.sector && i.sector !== d.sector ? h('span', { class: 'muted small' }, ` · ${i.sector}`) : null,
+        i.sharedWith && i.sharedWith.length ? h('div', { class: 'cov' }, 'Shared with ', i.sharedWith.join(', ')) : null),
       h('td', { class: 'small' }, calcText(i)),
       h('td', { class: 'small muted' }, i.source || ''),
       h('td', { class: 'n small muted' }, { percent: '%', per1000: 'per 1,000', number: 'number' }[i.showAs] || '')))))
@@ -1290,7 +1299,14 @@ function renderSectors(m) {
 }
 
 // Add or change one indicator.
-function indicatorDialog(ds, m, i, first = false) {
+async function indicatorDialog(ds, m, i, first = false) {
+  const defs = (await get('/api/dictionary').catch(() => ({ definitions: [] }))).definitions.filter((d) => !d.archived);
+  const myDef = i && defs.find((d) => d.id === i.defId);
+  const onSchedule = new Set(ds.indicators.filter((x) => !x.archived).map((x) => x.defId));
+  const pickable = defs.filter((d) => !onSchedule.has(d.id));
+  const pick = i ? null : select([{ id: '', name: pickable.length ? '— a new indicator (adds it to the dictionary) —' : '— a new indicator —' },
+    ...pickable.map((d) => ({ id: d.id, name: `${d.code ? d.code + ' · ' : ''}${d.name}${d.sector ? ' (' + d.sector + ')' : ''}` }))], '');
+  const code = h('input', { placeholder: 'optional, e.g. NUT-01', size: 12, value: myDef ? myDef.code : '' });
   const sharedFields = m.datasets.filter((d) => d.shared && !d.archived).flatMap((d) => d.dataElements.filter((f) => !f.archived));
   const boxes = ds.dataElements.filter((d) => !d.archived);
   const listId = 'boxes-' + ds.id;
@@ -1315,12 +1331,26 @@ function indicatorDialog(ds, m, i, first = false) {
     showAs.disabled = !v;
   };
   den.addEventListener('input', paintDen); paintDen();
+  const fromDict = h('div', { class: 'note info', hidden: true });
+  const paintPick = () => {
+    const d = pick && defs.find((x) => x.id === pick.value);
+    for (const el of [name, num, den, source, showAs, code]) el.disabled = !!d;
+    if (d) { name.value = d.name; num.value = d.numerator; den.value = d.denominator; source.value = d.source; showAs.value = d.showAs; code.value = d.code; paintDen(); showAs.disabled = true; }
+    fromDict.hidden = !d;
+    if (d) fromDict.replaceChildren(h('strong', {}, 'From the indicator dictionary. '), d.definition ? d.definition.replace(/[.\s]*$/, '. ') : '', d.uses.length ? `Also reported by: ${[...new Set(d.uses.map((u) => u.sector || u.dataset))].join(', ')}. ` : '', 'To change it, edit it in the Indicator dictionary — it changes for every sector.');
+  };
+  if (pick) pick.addEventListener('change', paintPick);
+  const sharedWith = myDef ? myDef.uses.filter((u) => u.indicatorId !== i.id) : [];
   const dlg = h('dialog', {},
     first ? h('div', { class: 'area area-admin area-setup' }, 'Step 2 of 3') : null,
     h('h2', {}, i ? i.name : `New indicator — ${ds.sector || ds.name}`),
     h('p', { class: 'muted small' }, scheduleText(ds)), dl,
+    pick ? h('div', { class: 'f' }, h('span', {}, 'Pick from the indicator dictionary'), pick, h('span', { class: 'hint' }, 'Use the shared definition when another sector reports the same indicator, so the figures can be compared.')) : null,
+    fromDict,
+    sharedWith.length ? h('div', { class: 'note warn' }, `Shared definition: also used by ${[...new Set(sharedWith.map((u) => u.sector || u.dataset))].join(', ')}. Changing the name or calculation here changes it there too.`) : null,
     h('div', { class: 'grid2' },
       field('Indicator name', name, 'As people will see it.'),
+      field('Code (optional)', code, 'Your indicator code, e.g. from the national results framework.'),
       field('Source', source, 'Where the numbers come from.'),
       field('Numerator — what is counted', num, 'Becomes a box people fill in. The same name means the same box.'),
       field('Denominator — divided by (optional)', den, denHint),
@@ -1330,13 +1360,23 @@ function indicatorDialog(ds, m, i, first = false) {
     err, h('p'), h('div', { class: 'actions' }, save, again, h('button', { onclick: () => dlg.close() }, i ? 'Close' : 'Cancel'), del));
   dlg.addEventListener('close', () => { dlg.remove(); state.meta = null; route(); });
   const vals = () => ({ sector: sector.value, name: name.value.trim(), numerator: num.value.trim(), denominator: den.value.trim(), source: source.value.trim(), showAs: den.value.trim() ? showAs.value : 'number' });
+  const chosen = () => (pick && pick.value ? pick.value : null);
   const submit = async (keepOpen) => {
     err.textContent = '';
-    if (!name.value.trim() || !num.value.trim()) { err.textContent = 'Give the indicator a name and a numerator.'; return; }
+    if (!chosen() && (!name.value.trim() || !num.value.trim())) { err.textContent = 'Give the indicator a name and a numerator, or pick it from the dictionary.'; return; }
     try {
-      if (i) await api('PATCH', '/api/indicators/' + i.id, vals());
-      else { const body = vals(); if (id.value.trim()) body.id = id.value.trim(); await api('POST', `/api/datasets/${ds.id}/indicators`, body); }
-    } catch (e) { err.textContent = e.message; return; }
+      if (i) {
+        await api('PATCH', '/api/indicators/' + i.id, vals());
+        if (myDef && code.value.trim() !== (myDef.code || '')) await api('PATCH', '/api/dictionary/' + myDef.id, { code: code.value.trim() });
+      } else if (chosen()) await api('POST', `/api/datasets/${ds.id}/indicators`, { defId: chosen(), sector: sector.value || undefined });
+      else { const body = vals(); if (id.value.trim()) body.id = id.value.trim(); if (code.value.trim()) body.code = code.value.trim(); await api('POST', `/api/datasets/${ds.id}/indicators`, body); }
+    } catch (e) {
+      err.textContent = e.message;
+      // Same name, another calculation: offer the dictionary's one.
+      const d = e.body && e.body.error && e.body.error.definition;
+      if (d && pick) { pick.value = d.id; paintPick(); err.textContent += ' It is selected above — press Add to use it.'; }
+      return;
+    }
     toast(i ? 'Saved' : `Added “${name.value.trim()}”`);
     if (keepOpen) { state.meta = null; const m2 = await meta(true); const ds2 = m2.datasets.find((d) => d.id === ds.id); dlg.remove(); route(); indicatorDialog(ds2, m2, null); return; }
     dlg.close();
@@ -1348,6 +1388,131 @@ function indicatorDialog(ds, m, i, first = false) {
     await api('DELETE', '/api/indicators/' + i.id); toast('Removed'); dlg.close();
   }));
   document.body.append(dlg); dlg.showModal(); (i ? name : name).focus();
+}
+
+// ---------- indicator dictionary ----------
+const SHOW_NAMES = { percent: 'Percentage', per1000: 'Per 1,000', number: 'Number' };
+async function renderDictionary() {
+  const m = await meta(true);
+  const defs = (await get('/api/dictionary')).definitions;
+  const q = (pref('dictQ') || '').toLowerCase();
+  const sec = pref('dictSector') || '';
+  const shown = defs.filter((d) => (!q || `${d.code} ${d.name} ${d.definition} ${d.framework} ${d.numerator} ${d.denominator}`.toLowerCase().includes(q))
+    && (!sec || d.sectorId === sec || d.uses.some((u) => u.sector === (m.sectors.find((x) => x.id === sec) || {}).name)));
+  const search = h('input', { type: 'search', placeholder: 'Code, name, framework …', value: pref('dictQ') || '' });
+  search.addEventListener('change', () => { pref('dictQ', search.value.trim()); renderDictionary(); });
+  const fileIn = h('input', { type: 'file', accept: '.xlsx,.csv', hidden: true });
+  fileIn.addEventListener('change', async () => { const f = fileIn.files[0]; fileIn.value = ''; if (f) try { await dictionaryImport(f); } catch (e) { toast(e.message, true); } });
+  const tpl = h('button', {}, 'Download Excel template');
+  tpl.addEventListener('click', busy(tpl, async () => {
+    const { writeWorkbook } = await import('./xlsx.js');
+    const head = ['Code', 'Indicator', 'Definition', 'Numerator (what is counted)', 'Denominator (leave empty for a count)', 'Show as', 'Source', 'Framework / reference', 'Sector'];
+    const rows = defs.filter((d) => !d.archived).map((d) => [d.code, d.name, d.definition, d.numerator, d.denominator, SHOW_NAMES[d.showAs], d.source, d.framework, d.sector]);
+    const sectors = m.sectors.map((x) => x.name);
+    saveBlob(writeWorkbook([
+      { name: 'Indicators', rows: [head, ...rows], widths: [12, 40, 50, 36, 32, 14, 24, 24, 18],
+        lists: [{ sqref: 'F2:F2000', formula: 'Lists!$A$2:$A$4' }, ...(sectors.length ? [{ sqref: 'I2:I2000', formula: `Lists!$B$2:$B$${sectors.length + 1}` }] : [])] },
+      { name: 'How to fill', rows: [['How to fill'], ...[
+        'One row per indicator. Rows already in the dictionary are listed: change them here or add new rows below.',
+        'Code: your indicator code (e.g. from the national results framework). Rows are matched by code, otherwise by name.',
+        'Numerator: what is counted, e.g. “Infants 0-5 months exclusively breastfed”. Denominator: what it is divided by; empty for a plain count.',
+        'Use the same words for the same number across indicators — the same name is the same box people fill in.',
+        'Show as: Percentage, Per 1,000 or Number. Sector: the sector that usually reports it (optional; others can use it too).',
+        'Import it with “Import Excel” on the Indicator dictionary page; you see a check before anything is saved.',
+      ].map((x) => [x])], widths: [120] },
+      { name: 'Lists', hidden: true, rows: Array.from({ length: Math.max(4, sectors.length + 1) }, (_, r) => (r === 0 ? ['Show as', 'Sector'] : [['Percentage', 'Per 1,000', 'Number'][r - 1] || '', sectors[r - 1] || ''])) },
+    ]), 'Indicator_dictionary.xlsx');
+  }));
+  mount(h('div', {},
+    pageHead({
+      title: 'Indicator dictionary',
+      text: 'One definition per indicator, shared by every sector that reports it: its code, what is counted, what it is divided by, how it is shown, the source and the framework it belongs to. The same name always means the same calculation, so sectors can be compared and the codes go with the export.',
+      how: [
+        'Load your indicator list: download the Excel template, fill one row per indicator (or paste your list), and press Import Excel.',
+        'In Sectors & indicators, “+ Add indicator” lets each sector pick from this dictionary.',
+        'Change a definition here and it changes for every sector that uses it. Entries in use cannot be removed.',
+      ],
+      actions: [h('button', { class: 'primary', onclick: () => definitionDialog(null, m) }, '+ Add to dictionary'), tpl, h('button', { onclick: () => fileIn.click() }, 'Import Excel'), fileIn],
+    }),
+    h('div', { class: 'bar' }, field('Search', search),
+      field('Sector', select([{ id: '', name: 'All sectors' }, ...m.sectors], sec, { onchange: (e) => { pref('dictSector', e.target.value); renderDictionary(); } })),
+      h('span', { class: 'muted small' }, `${shown.length} of ${defs.length} indicators`)),
+    shown.length ? h('div', { class: 'scroll' }, h('table', {},
+      h('thead', {}, h('tr', {}, h('th', {}, 'Code'), h('th', {}, 'Indicator'), h('th', {}, 'Calculation'), h('th', {}, 'Show as'), h('th', {}, 'Source'), h('th', {}, 'Framework'), h('th', {}, 'Reported by'))),
+      h('tbody', {}, shown.map((d) => h('tr', { class: 'click' + (d.archived ? ' archived' : ''), onclick: () => definitionDialog(d, m) },
+        h('td', {}, d.code ? h('span', { class: 'id' }, d.code) : ''),
+        h('td', {}, h('strong', {}, d.name), d.definition ? h('div', { class: 'cov' }, d.definition) : null),
+        h('td', { class: 'small' }, d.numerator, d.denominator ? ' ÷ ' + d.denominator : ''),
+        h('td', { class: 'small' }, SHOW_NAMES[d.showAs]), h('td', { class: 'small' }, d.source), h('td', { class: 'small' }, d.framework),
+        h('td', { class: 'small' }, d.uses.length ? [...new Set(d.uses.map((u) => u.sector || u.dataset))].join(', ') : h('span', { class: 'muted' }, 'Not used yet'),
+          d.uses.some((u) => u.differs) ? h('div', { class: 'bad-text' }, 'Some sectors count it differently — open to see') : null))))))
+      : h('div', { class: 'panel empty' }, defs.length ? 'No indicator matches.' : 'The dictionary is empty. Download the Excel template, fill in your indicator list and import it — or add them one by one.'),
+  ));
+}
+
+function definitionDialog(d, m) {
+  const code = h('input', { value: d ? d.code : '', placeholder: 'e.g. NUT-01' });
+  const name = h('input', { value: d ? d.name : '', placeholder: 'e.g. Exclusive breastfeeding rate' });
+  const definition = h('textarea', { placeholder: 'What the indicator measures, in one or two sentences.' }); definition.value = d ? d.definition : '';
+  const num = h('input', { value: d ? d.numerator : '', placeholder: 'e.g. Infants 0-5 months exclusively breastfed' });
+  const den = h('input', { value: d ? d.denominator : '', placeholder: 'e.g. Infants 0-5 months (empty for a count)' });
+  const showAs = select(m.showAs, d ? d.showAs : 'percent');
+  const source = h('input', { value: d ? d.source : '', placeholder: 'e.g. HMIS register' });
+  const framework = h('input', { value: d ? d.framework : '', placeholder: 'e.g. national plan, output 1.2' });
+  const sector = select([{ id: '', name: '— any —' }, ...m.sectors.map((x) => ({ id: x.name, name: x.name }))], d ? d.sector : '');
+  const err = h('div', { class: 'err' });
+  const save = h('button', { class: 'primary' }, d ? 'Save' : 'Add to dictionary');
+  const del = d && !d.uses.length ? h('button', { class: 'link danger-link' }, 'Remove from dictionary') : null;
+  const dlg = h('dialog', { class: 'wide' }, h('h2', {}, d ? d.name : 'New indicator in the dictionary'),
+    d && d.uses.length ? h('div', { class: 'note warn' }, `Reported by ${d.uses.length} schedule${d.uses.length === 1 ? '' : 's'}: ${d.uses.map((u) => u.dataset).join(', ')}. Changing the name or calculation changes it for all of them.`) : null,
+    d && d.uses.some((u) => u.differs) ? h('div', { class: 'note bad' }, `These count it differently from this definition: ${d.uses.filter((u) => u.differs).map((u) => u.dataset).join(', ')}. Press Save to make them all use this definition.`) : null,
+    h('div', { class: 'grid2' }, field('Code', code), field('Indicator name', name), field('Numerator — what is counted', num), field('Denominator — divided by (optional)', den),
+      field('Show as', showAs), field('Source', source), field('Framework / reference', framework), field('Sector that usually reports it', sector)),
+    h('div', { class: 'f' }, h('span', {}, 'Definition'), definition),
+    err, h('p'), h('div', { class: 'actions' }, save, h('button', { onclick: () => dlg.close() }, 'Cancel'), del));
+  dlg.addEventListener('close', () => dlg.remove());
+  save.addEventListener('click', busy(save, async () => {
+    err.textContent = '';
+    const body = { code: code.value.trim(), name: name.value.trim(), definition: definition.value.trim(), numerator: num.value.trim(), denominator: den.value.trim(), showAs: den.value.trim() ? showAs.value : 'number', source: source.value.trim(), framework: framework.value.trim(), sector: sector.value };
+    try {
+      if (d) { const r = (await api('PATCH', '/api/dictionary/' + d.id, body)).data; toast(r.indicatorsUpdated ? `Saved — updated in ${r.indicatorsUpdated} schedule${r.indicatorsUpdated === 1 ? '' : 's'}` : 'Saved'); }
+      else { await api('POST', '/api/dictionary', body); toast('Added to the dictionary'); }
+    } catch (e) { err.textContent = e.message; return; }
+    dlg.close(); state.meta = null; renderDictionary();
+  }));
+  if (del) del.addEventListener('click', busy(del, async () => { await api('DELETE', '/api/dictionary/' + d.id); dlg.close(); toast('Removed'); renderDictionary(); }));
+  document.body.append(dlg); dlg.showModal();
+}
+
+async function dictionaryImport(file) {
+  const { readSheet } = await import('./xlsx.js');
+  const rows = await readSheet(file);
+  const hi = rows.findIndex((r) => r.some((c) => /^(indicator|name|indicator name)$/i.test(String(c).trim())));
+  if (hi < 0) throw new Error('No “Indicator” column found. Use the Excel template.');
+  const head = rows[hi].map((c) => String(c).trim().toLowerCase());
+  const col = (t) => head.findIndex(t);
+  const ci = { code: col((c) => c === 'code' || c.startsWith('code ')), name: col((c) => /^(indicator|name|indicator name)$/.test(c)), definition: col((c) => c.startsWith('definition') || c === 'description'),
+    numerator: col((c) => c.startsWith('numerator')), denominator: col((c) => c.startsWith('denominator')), showAs: col((c) => c.startsWith('show as') || c === 'type' || c === 'unit'),
+    source: col((c) => c.startsWith('source')), framework: col((c) => c.startsWith('framework') || c.startsWith('reference')), sector: col((c) => c.startsWith('sector')) };
+  if (ci.numerator < 0) throw new Error('No “Numerator” column found. Use the Excel template.');
+  const data = rows.slice(hi + 1).map((r, i) => Object.fromEntries([['row', hi + i + 2], ...Object.entries(ci).map(([k, c]) => [k, c >= 0 ? String(r[c] ?? '').trim() : ''])]))
+    .filter((r) => r.name || r.code || r.numerator);
+  if (!data.length) throw new Error('The file has no indicator rows.');
+  const { data: chk } = await api('POST', '/api/dictionary/import', { rows: data });
+  const c = chk.counts; const errors = chk.results.filter((r) => r.status === 'error'); const notes = chk.results.filter((r) => r.note);
+  const go = h('button', { class: 'primary', disabled: !!c.error || !(c.add + c.update) }, `Save ${c.add + c.update} indicator${c.add + c.update === 1 ? '' : 's'}`);
+  const dlg = h('dialog', { class: 'wide' }, h('h2', {}, 'Import the indicator dictionary — check'),
+    h('p', { class: 'muted small' }, `${file.name} · ${data.length} rows`),
+    h('div', { class: 'counts' }, h('span', { class: 'pill s-accepted' }, `New: ${c.add}`), h('span', { class: 'pill s-draft' }, `Updated: ${c.update}`), h('span', { class: 'pill s-none' }, `Unchanged: ${c.same}`), h('span', { class: 'pill s-returned' }, `Problems: ${c.error}`)),
+    notes.length ? h('div', { class: 'note warn' }, notes.map((n) => h('div', {}, `${n.code || ''} ${n.name}: ${n.note}`))) : null,
+    errors.length ? h('div', {}, h('div', { class: 'note bad' }, 'Fix these rows and import again. Nothing has been saved.'),
+      h('div', { class: 'scroll' }, h('table', {}, h('thead', {}, h('tr', {}, h('th', {}, 'Row'), h('th', {}, 'Indicator'), h('th', {}, 'Problem'))),
+        h('tbody', {}, errors.slice(0, 200).map((e) => h('tr', {}, h('td', {}, e.row), h('td', {}, e.name), h('td', {}, e.message)))))))
+      : h('div', { class: 'note ok' }, 'All rows look good.'),
+    h('p'), h('div', { class: 'actions' }, go, h('button', { onclick: () => dlg.close() }, 'Cancel')));
+  dlg.addEventListener('close', () => dlg.remove());
+  go.addEventListener('click', busy(go, async () => { await api('POST', '/api/dictionary/import', { rows: data, commit: true }); dlg.close(); toast(`Saved ${c.add + c.update} indicators`); state.meta = null; renderDictionary(); }));
+  document.body.append(dlg); dlg.showModal();
 }
 
 // Population figures: their own page under Set-up.

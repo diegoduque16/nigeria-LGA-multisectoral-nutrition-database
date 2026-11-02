@@ -1,6 +1,7 @@
 // Simple setup: data sets (name + reporting frequency) and indicators (name, numerator, denominator, source).
 // The numerator and denominator become the fields LGAs fill in ("data elements"); the same name
 // in one data set is the same field, so a shared denominator is entered once.
+import { definitionFor, updateDefinition } from './dictionary.js';
 import { HttpError, json, readJson, validate, v, now } from '../lib/util.js';
 import { one, all, run, audit } from '../lib/db.js';
 import { requireRole } from '../lib/auth.js';
@@ -54,7 +55,7 @@ function indOut(i, deNames, sectorNames = {}) {
     denominator: i.denominator.trim() === '1' ? '' : denId ? deNames[denId] || '' : i.denominator_description,
     numeratorId: numId, denominatorId: denId,
     numeratorExpression: i.numerator, denominatorExpression: i.denominator,
-    showAs: SHOW_AS[i.type_id] || 'number', typeId: i.type_id,
+    showAs: SHOW_AS[i.type_id] || 'number', typeId: i.type_id, defId: i.def_id || null,
     decimals: i.decimals, sort: i.sort, version: i.version, archived: !!i.archived_at,
   };
 }
@@ -329,9 +330,11 @@ const indicatorSchema = (partial) => {
   const req = (f) => (partial ? f.optional() : f);
   const shape = {
     id: partial ? undefined : idField,
-    name: req(v.string({ min: 1, max: 230 })),
+    defId: partial ? undefined : v.string({ max: 40 }).optional(),
+    code: partial ? undefined : v.string({ max: 40 }).optional(),
+    name: v.string({ min: 1, max: 230 }).optional(),      // required unless defId (a dictionary entry) is given
     sector: v.string({ min: 1, max: 100 }).optional(),  // defaults to the data set's sector; new names create a sector
-    numerator: req(v.string({ min: 1, max: 230 })),
+    numerator: v.string({ min: 1, max: 230 }).optional(),
     denominator: v.string({ max: 230 }).optional(),     // empty = a plain count
     source: v.string({ max: 300 }).optional(),
     showAs: v.string({ oneOf: Object.keys(TYPE) }).optional(),
@@ -357,11 +360,19 @@ export async function createIndicator(request, env, ctx, { datasetId }) {
   const ds = await loadDataset(env.DB, datasetId);
   requireSetupAdmin(ctx, datasetId);
   const body = validate(schemaFor(false), await readJson(request));
-  if (await one(env.DB, 'SELECT id FROM indicators WHERE dataset_id = ? AND lower(name) = lower(?) AND archived_at IS NULL', datasetId, body.name)) {
+  if (!body.defId && (!body.name || !body.numerator)) throw new HttpError(422, 'invalid', 'Give the indicator a name and a numerator, or pick it from the dictionary.', { field: body.name ? 'numerator' : 'name' });
+  if (body.name && await one(env.DB, 'SELECT id FROM indicators WHERE dataset_id = ? AND lower(name) = lower(?) AND archived_at IS NULL', datasetId, body.name)) {
     throw new HttpError(409, 'name_taken', 'This data set already has an indicator with that name.');
   }
   if (ds.shared) throw new HttpError(422, 'invalid', 'The shared denominators data set holds numbers only. Add its numbers with “Add number”, then use them as denominators in other data sets.');
   if (!body.sector && !ds.sector_id) throw new HttpError(422, 'invalid', 'Choose a sector for this indicator.', { field: 'sector' });
+  // The dictionary decides the definition: an existing entry (by id, or by the same name) is used as it is;
+  // a new name adds an entry.
+  const def = await definitionFor(env.DB, ctx, body, ds.sector_id);
+  Object.assign(body, { name: def.name, numerator: def.numerator, denominator: def.denominator, showAs: def.show_as, source: def.source, description: def.definition });
+  if (await one(env.DB, 'SELECT id FROM indicators WHERE dataset_id = ? AND def_id = ? AND archived_at IS NULL', datasetId, def.id)) {
+    throw new HttpError(409, 'name_taken', 'This schedule already has this indicator.');
+  }
   const sectorId = body.sector ? await sectorFor(env.DB, body.sector) : ds.sector_id;
   const id = await pickId(env.DB, body.id);
   const numId = await fieldFor(env.DB, datasetId, body.numerator);
@@ -371,9 +382,9 @@ export async function createIndicator(request, env, ctx, { datasetId }) {
   const t = now();
   const sort = body.sort ?? ((await one(env.DB, 'SELECT COALESCE(MAX(sort), 0) + 10 AS s FROM indicators WHERE dataset_id = ?', datasetId)).s);
   await run(env.DB,
-    `INSERT INTO indicators (id, dataset_id, sector_id, name, short_name, description, source, numerator, denominator, numerator_description,
-       denominator_description, type_id, decimals, sort, version, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,1,?,?)`,
-    id, ds.id, sectorId, body.name, body.shortName || body.name.slice(0, 50), body.description || '', body.source || '',
+    `INSERT INTO indicators (id, dataset_id, sector_id, def_id, name, short_name, description, source, numerator, denominator, numerator_description,
+       denominator_description, type_id, decimals, sort, version, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,1,?,?)`,
+    id, ds.id, sectorId, def.id, body.name, body.shortName || body.name.slice(0, 50), body.description || '', body.source || '',
     `#{${numId}}`, denId ? `#{${denId}}` : '1', body.numerator.trim(), den || '1', TYPE[showAs],
     body.decimals ?? (showAs === 'number' && !denId ? 0 : 1), sort, t, t);
   await audit(env.DB, ctx, 'indicator_created', 'indicator', id, { name: body.name });
@@ -392,6 +403,24 @@ export async function updateIndicator(request, env, ctx, { id }) {
   if (!i) throw new HttpError(404, 'not_found', 'Indicator not found.');
   requireSetupAdmin(ctx, i.dataset_id);
   const body = validate(schemaFor(true), await readJson(request));
+  // The shared definition (name, calculation, how shown, source, description) lives in the dictionary: changing it
+  // here changes it for every sector that uses it. Sector, order, decimals and archiving stay with this indicator.
+  const defFields = ['name', 'numerator', 'denominator', 'showAs', 'source', 'description'];
+  if (i.def_id && defFields.some((k) => body[k] !== undefined)) {
+    await updateDefinition(env.DB, ctx, i.def_id, {
+      name: body.name, numerator: body.numerator, denominator: body.denominator, showAs: body.showAs, source: body.source, definition: body.description,
+    });
+    const rest = Object.fromEntries(Object.entries(body).filter(([k]) => !defFields.includes(k)));
+    if (Object.keys(rest).length) await applyIndicatorChange(env.DB, ctx, await one(env.DB, 'SELECT * FROM indicators WHERE id = ?', id), rest);
+    return json({ indicator: await indicatorById(env.DB, id) });
+  }
+  await applyIndicatorChange(env.DB, ctx, i, body);
+  return json({ indicator: await indicatorById(env.DB, id) });
+}
+
+// Applies changes to one indicator row (also used when a dictionary entry changes).
+export async function applyIndicatorChange(db, ctx, i, body) {
+  const env = { DB: db }; const id = i.id;
   const before = await indicatorById(env.DB, id);
   let numerator = i.numerator; let denominator = i.denominator;
   let numDesc = i.numerator_description; let denDesc = i.denominator_description;
@@ -420,7 +449,6 @@ export async function updateIndicator(request, env, ctx, { id }) {
     body.archived === undefined ? i.archived_at : body.archived ? now() : null, id);
   if (formulaChanged || body.archived) for (const old of [before.numeratorId, before.denominatorId]) await tidyField(env.DB, old);
   await audit(env.DB, ctx, 'indicator_updated', 'indicator', id, body);
-  return json({ indicator: await indicatorById(env.DB, id) });
 }
 
 export async function deleteIndicator(request, env, ctx, { id }) {

@@ -129,11 +129,19 @@ export async function exportMetadata(request, env, ctx) {
   const units = await exportOrgUnits(env.DB, root, inc ? (inc === 'all' ? 'all' : inc) : null);
   const types = Object.fromEntries((await all(env.DB, 'SELECT id, name FROM indicator_types')).map((t) => [t.id, t.name]));
   const indicators = [];
-  for (const ds of datasets) {
-    const rows = await indicatorsOf(env.DB, ds.id, q.get('sector'));
+  // Dictionary codes: an indicator carries its dictionary code; when several sectors report the same entry, each
+  // gets the code plus its sector (codes stay unique, as DHIS2 requires).
+  const defs = new Map((await all(env.DB, 'SELECT id, code FROM indicator_defs WHERE code IS NOT NULL AND code != \'\'')).map((d) => [d.id, d.code]));
+  const sectorNames = Object.fromEntries((await all(env.DB, 'SELECT id, name FROM sectors')).map((x) => [x.id, x.name]));
+  const perDataset = await Promise.all(datasets.map((ds) => indicatorsOf(env.DB, ds.id, q.get('sector'))));
+  const defCount = {}; for (const rows of perDataset) for (const i of rows) if (i.def_id) defCount[i.def_id] = (defCount[i.def_id] || 0) + 1;
+  const codeOf = (i) => { const c = i.def_id && defs.get(i.def_id); if (!c) return null; return defCount[i.def_id] > 1 ? `${c}-${(sectorNames[i.sector_id] || 'X').toUpperCase().replace(/[^A-Z0-9]+/g, '_')}` : c; };
+  for (const [k, ds] of datasets.entries()) {
+    const rows = perDataset[k];
     for (const i of rows) {
       indicators.push({
         id: i.id,
+        ...(codeOf(i) ? { code: codeOf(i) } : {}),
         name: i.name,
         shortName: i.short_name,
         description: indicatorDescription(i.source, i.description) || i.name,
