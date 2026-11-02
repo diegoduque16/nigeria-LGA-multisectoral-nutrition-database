@@ -493,3 +493,37 @@ test('official population figures: template data, Excel-style import with checks
   const so = await addUser(env, admin, { name: 'S', email: 's@abia.gov.ng', role: 'state', ouId: ABIA });
   assert.equal((await so.c.get(`/api/datasets/${pop.id}/population?year=2026`)).status, 403);
 });
+
+test('pivot: all sectors or one sector, area + one level down, units under an LGA', async () => {
+  const env = makeEnv();
+  const admin = await setupAdmin(env);
+  const health = (await admin.post('/api/datasets', { name: 'Health – yearly', sector: 'Health', frequency: 'YEARLY' })).data;
+  const edu = (await admin.post('/api/datasets', { name: 'Education – schools', sector: 'Education', frequency: 'YEARLY', reportLevel: 'UNIT' })).data;
+  const anc = (await admin.post(`/api/datasets/${health.id}/indicators`, { name: 'ANC visits', numerator: 'ANC visits' })).data.indicator;
+  const pup = (await admin.post(`/api/datasets/${edu.id}/indicators`, { name: 'Pupils', numerator: 'Pupils' })).data.indicator;
+  const sec = Object.fromEntries((await admin.get('/api/units')).data.sectors.map((s) => [s.name, s.id]));
+  const school = (await admin.post('/api/units', { sectorId: sec.Education, lgaId: ABA_NORTH, name: 'School A' })).data.id;
+  const year = String(Number(lastCompletedPeriod('MONTHLY').slice(0, 4)) - 1);
+  const st = await addUser(env, admin, { name: 'S', email: 's@abia.gov.ng', role: 'state', ouId: ABIA });
+  await report(admin, health.id, ABA_NORTH, year, { [anc.numeratorId]: 50 });
+  await report(admin, edu.id, school, year, { [pup.numeratorId]: 300 });
+  await admin.post('/api/entry/review', { dataset: health.id, ou: ABA_NORTH, period: year, action: 'accept' });
+  await admin.post('/api/entry/review', { dataset: edu.id, ou: school, period: year, action: 'accept' });
+
+  const all = (await st.c.get(`/api/pivot?period=${year}`)).data;
+  assert.equal(all.area.id, ABIA);
+  assert.equal(all.ous.length, 18); // state + 17 LGAs
+  const cell = (d, dx, ou) => (d.cells.find((c) => c.dx === dx && c.ou === ou) || {}).v;
+  assert.equal(cell(all, anc.id, ABIA), 50);
+  assert.equal(cell(all, pup.id, ABA_NORTH), 300);
+  assert.equal(cell(all, health.reportingRateId, ABIA), Math.round(1000 / 17) / 10);
+  const onlyHealth = (await st.c.get(`/api/pivot?period=${year}&sector=${sec.Health}`)).data;
+  assert.deepEqual(onlyHealth.indicators.map((i) => i.name), ['ANC visits', 'Health – yearly – reporting rate']);
+  const nat = (await admin.get(`/api/pivot?period=${year}`)).data;
+  assert.equal(nat.ous.length, 38);
+  assert.equal(cell(nat, anc.id, ABIA), 50);
+  const lga = (await admin.get(`/api/pivot?period=${year}&ou=${ABA_NORTH}`)).data;
+  assert.equal(cell(lga, pup.id, school), 300);
+  assert.equal((await admin.get(`/api/pivot?period=${year}Q1`)).data.skipped.length, 2); // yearly data sets
+  assert.equal((await st.c.get(`/api/pivot?period=${year}&ou=${NIGERIA}`)).status, 403);
+});

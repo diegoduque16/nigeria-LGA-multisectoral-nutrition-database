@@ -9,6 +9,7 @@ import * as entry from './routes/entry.js';
 import * as pic from './routes/picture.js';
 import * as units from './routes/units.js';
 import * as pop from './routes/popimport.js';
+import * as pv from './routes/pivot.js';
 
 // [method, path, handler, access]  access: 'public' | 'optional' | 'session'
 const ROUTES = [
@@ -56,6 +57,7 @@ const ROUTES = [
   ['GET', '/api/status', entry.reportStatus, 'session'],
 
   ['GET', '/api/picture', pic.picture, 'session'],
+  ['GET', '/api/pivot', pv.pivot, 'session'],
   ['GET', '/api/export/metadata', pic.exportMetadata, 'session'],
   ['GET', '/api/export/data', pic.exportData, 'session'],
 

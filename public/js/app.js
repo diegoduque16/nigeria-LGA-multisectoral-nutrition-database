@@ -79,6 +79,7 @@ const PAGES = [
   { id: 'entry', name: 'Data entry', roles: ['sysadmin', 'state', 'lga', 'unit'] },
   { id: 'review', name: 'Review', roles: ['sysadmin', 'state', 'lga'] },
   { id: 'picture', name: 'State picture', roles: ['sysadmin', 'setupadmin', 'state', 'viewer'] },
+  { id: 'pivot', name: 'Pivot table', roles: ['sysadmin', 'setupadmin', 'state', 'lga', 'viewer'] },
   { id: 'export', name: 'Export', roles: ['sysadmin', 'setupadmin', 'state', 'viewer'] },
   { id: 'setup', name: 'Indicators', roles: ['sysadmin', 'setupadmin'] },
   { id: 'units', name: 'Org units', roles: ['sysadmin', 'setupadmin', 'state'] },
@@ -125,7 +126,7 @@ async function route() {
   renderChrome(target);
   mount(h('p', { class: 'muted' }, 'Loading…'));
   try {
-    await ({ entry: renderEntry, review: renderReview, picture: renderPicture, export: renderExport, setup: renderSetup, units: renderUnits, accounts: renderAccounts, audit: renderAudit, me: renderMe })[target]();
+    await ({ entry: renderEntry, review: renderReview, picture: renderPicture, pivot: renderPivot, export: renderExport, setup: renderSetup, units: renderUnits, accounts: renderAccounts, audit: renderAudit, me: renderMe })[target]();
   } catch (e) {
     if (e.status !== 401) mount(h('div', { class: 'note bad' }, e.message));
   }
@@ -489,6 +490,128 @@ async function renderPicture() {
       h('thead', {}, h('tr', {}, h('th', {}, unitLabel), p.fields.map((f) => h('th', { class: 'n' }, f.name)))),
       h('tbody', {}, fieldRow(p.total, 'total'), p.rows.map((r) => fieldRow(r))))),
   ));
+}
+
+// ---------- pivot table ----------
+function periodList(type, count) {
+  const now = new Date(Date.now() + 3600000); const y = now.getUTCFullYear(); const m = now.getUTCMonth() + 1;
+  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  const out = [];
+  if (type === 'MONTH') for (let i = 1; i <= count; i++) { const d = new Date(Date.UTC(y, m - 1 - i, 1)); out.push({ id: `${d.getUTCFullYear()}${String(d.getUTCMonth() + 1).padStart(2, '0')}`, name: `${months[d.getUTCMonth()]} ${d.getUTCFullYear()}` }); }
+  if (type === 'QUARTER') { let q = Math.ceil(m / 3) - 1; let qy = y; if (!q) { q = 4; qy--; } for (let i = 0; i < count; i++) { out.push({ id: `${qy}Q${q}`, name: `Q${q} ${qy}` }); if (!--q) { q = 4; qy--; } } }
+  if (type === 'YEAR') for (let i = 1; i <= count; i++) out.push({ id: String(y - i), name: String(y - i) });
+  return out; // newest first
+}
+
+const pivotCache = new Map();
+async function renderPivot() {
+  const m = await meta();
+  const o = await orgs();
+  const P = (k, d) => pref('pv.' + k) ?? d;
+  const setP = (k, v) => { pref('pv.' + k, v); renderPivot(); };
+  const ptype = P('ptype', 'YEAR');
+  const plist = periodList(ptype, ptype === 'MONTH' ? 24 : ptype === 'QUARTER' ? 12 : 6);
+  const from = plist.some((x) => x.id === P('from')) ? P('from') : plist[Math.min(ptype === 'MONTH' ? 2 : 0, plist.length - 1)].id;
+  const to = plist.some((x) => x.id === P('to')) ? P('to') : plist[0].id;
+  const periods = plist.filter((x) => x.id >= from && x.id <= to).reverse();
+  // Areas: what the account covers, plus LGAs (to see units) when a state is chosen.
+  let areas = [];
+  if (state.me.ou.level === 1) areas = [{ id: o.country.id, name: `${o.country.name} — by state` }, ...o.states.map((s) => ({ id: s.id, name: `${s.name} — by LGA` }))];
+  else if (state.me.ou.level === 2) areas = [{ id: state.me.ou.id, name: `${state.me.ou.name} — by LGA` }];
+  else areas = [{ id: state.me.ou.id, name: `${state.me.ou.name} — by unit` }];
+  const pstate = state.me.ou.level === 2 ? state.me.ou.id : areas.some((a) => a.id === P('pstate')) ? P('pstate') : '';
+  if (pstate && state.me.ou.level <= 2) areas = [...areas, ...(await lgasOf(pstate)).map((l) => ({ id: l.id, name: `   ${l.name} — by unit` }))];
+  const area = areas.some((a) => a.id === P('area')) ? P('area') : areas[0].id;
+  const sector = P('sector', '');
+  const prov = !!P('prov', false);
+  const rowsDim = P('rows', 'ou'); const colsDim = P('cols', 'dx') === rowsDim ? (rowsDim === 'dx' ? 'ou' : 'dx') : P('cols', 'dx');
+  const filterDim = ['ou', 'dx', 'pe'].find((d) => d !== rowsDim && d !== colsDim);
+  const shade = !!P('shade', true);
+  const hideEmpty = !!P('hideEmpty', true);
+
+  const status = h('p', { class: 'muted small' }, 'Loading…');
+  const holder = h('div');
+  const controls = h('div', {},
+    h('div', { class: 'bar' },
+      field('Sector', select([{ id: '', name: 'All sectors' }, ...m.sectors], sector, { onchange: (e) => setP('sector', e.target.value) })),
+      field('Area', select(areas, area, { onchange: (e) => { const v = e.target.value; pref('pv.area', v); if (o.states.some((s) => s.id === v)) pref('pv.pstate', v); else if (v === o.country.id) pref('pv.pstate', ''); renderPivot(); } })),
+      field('Periods', select([{ id: 'MONTH', name: 'Months' }, { id: 'QUARTER', name: 'Quarters' }, { id: 'YEAR', name: 'Years' }], ptype, { onchange: (e) => { pref('pv.from', null); pref('pv.to', null); setP('ptype', e.target.value); } })),
+      field('From', select([...plist].reverse(), from, { onchange: (e) => setP('from', e.target.value) })),
+      field('To', select([...plist].reverse(), to, { onchange: (e) => setP('to', e.target.value) }))),
+    h('div', { class: 'bar' },
+      field('Rows', select([{ id: 'ou', name: 'Org units' }, { id: 'dx', name: 'Indicators' }, { id: 'pe', name: 'Periods' }], rowsDim, { onchange: (e) => setP('rows', e.target.value) })),
+      field('Columns', select([{ id: 'ou', name: 'Org units' }, { id: 'dx', name: 'Indicators' }, { id: 'pe', name: 'Periods' }].filter((x) => x.id !== rowsDim), colsDim, { onchange: (e) => setP('cols', e.target.value) })),
+      h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: shade, onchange: (e) => setP('shade', e.target.checked) }), 'Shade values'),
+      h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: hideEmpty, onchange: (e) => setP('hideEmpty', e.target.checked) }), 'Hide empty rows/columns'),
+      h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: prov, onchange: (e) => setP('prov', e.target.checked) }), 'Include submitted (not yet accepted)')));
+  mount(h('div', {},
+    h('div', { class: 'head' }, h('div', {}, h('h1', {}, 'Pivot table'), h('div', { class: 'muted' }, 'Any sector’s indicators — or all sectors together — by org unit, indicator and period. Rates are recomputed from summed numerators and denominators.'))),
+    controls, status, holder));
+
+  // Fetch one period at a time (small requests), three in parallel.
+  const all_ = { indicators: new Map(), ous: new Map(), cells: [], skipped: new Set() };
+  let done = 0;
+  const queue = [...periods];
+  async function worker() {
+    while (queue.length) {
+      const pe = queue.shift();
+      const key = JSON.stringify([pe.id, area, sector, prov]);
+      let d = pivotCache.get(key);
+      if (!d) { d = await get('/api/pivot' + qs({ period: pe.id, ou: area, sector, provisional: prov ? 1 : '' })); pivotCache.set(key, d); }
+      for (const i of d.indicators) all_.indicators.set(i.id, i);
+      for (const u of d.ous) if (!all_.ous.has(u.id)) all_.ous.set(u.id, u);
+      all_.cells.push(...d.cells);
+      d.skipped.forEach((x) => all_.skipped.add(x));
+      status.textContent = `Loading… ${++done} of ${periods.length} periods`;
+    }
+  }
+  try { await Promise.all([1, 2, 3].map(worker)); } catch (e) { status.textContent = ''; holder.replaceChildren(h('div', { class: 'note bad' }, e.message)); return; }
+
+  const dims = {
+    ou: [...all_.ous.values()].sort((a, b) => (b.total ? 1 : 0) - (a.total ? 1 : 0) || a.name.localeCompare(b.name)).map((u) => ({ id: u.id, name: u.name, total: u.total })),
+    dx: [...all_.indicators.values()].map((i) => ({ id: i.id, name: i.name + (i.percent ? ' (%)' : ''), sub: [i.sector, i.reportingRate ? null : i.dataset].filter(Boolean).join(' · '), rr: i.reportingRate })),
+    pe: periods.map((p) => ({ id: p.id, name: p.name })),
+  };
+  const filterVal = dims[filterDim].some((x) => x.id === P('f.' + filterDim)) ? P('f.' + filterDim) : (filterDim === 'pe' ? dims.pe[dims.pe.length - 1] || {} : dims[filterDim][0] || {}).id;
+  const idx = new Map(all_.cells.map((c) => [`${c.dx}|${c.pe}|${c.ou}`, c]));
+  const at = (r, c) => { const k = { [rowsDim]: r, [colsDim]: c, [filterDim]: filterVal }; return idx.get(`${k.dx}|${k.pe}|${k.ou}`); };
+  let rowsList = dims[rowsDim]; let colsList = dims[colsDim];
+  if (hideEmpty) {
+    rowsList = rowsList.filter((r) => colsList.some((c) => at(r.id, c.id)));
+    colsList = colsList.filter((c) => rowsList.some((r) => at(r.id, c.id)));
+  }
+  // Shading: per indicator (values on different scales), light green scale.
+  const ranges = new Map();
+  for (const c of all_.cells) { const r = ranges.get(c.dx) || [Infinity, -Infinity]; ranges.set(c.dx, [Math.min(r[0], c.v), Math.max(r[1], c.v)]); }
+  const shadeOf = (c) => {
+    if (!shade || !c) return null;
+    const [lo, hi] = ranges.get(c.dx); if (hi <= lo) return null;
+    const t = (c.v - lo) / (hi - lo);
+    return `rgba(0, 112, 74, ${(0.06 + t * 0.34).toFixed(2)})`;
+  };
+  const label = (d) => h('div', {}, d.name, d.sub ? h('div', { class: 'cov' }, d.sub) : null);
+  const table = h('table', {},
+    h('thead', {}, h('tr', {}, h('th', {}, ''), colsList.map((c) => h('th', { class: 'n' }, label(c))))),
+    h('tbody', {}, rowsList.map((r) => h('tr', { class: r.total ? 'total' : '' }, h('td', {}, label(r)), colsList.map((c) => {
+      const v = at(r.id, c.id);
+      const td = h('td', { class: 'n', title: v ? `${fmtNum(v.n, 2)} / ${fmtNum(v.d, 2)}` : '' }, v ? fmtNum(v.v, 2) : '—');
+      const bg = shadeOf(v); if (bg && !r.total) td.style.background = bg;
+      return td;
+    })))));
+  const filterNames = { ou: 'Org unit', dx: 'Indicator', pe: 'Period' };
+  const xls = h('button', {}, 'Download Excel');
+  xls.addEventListener('click', busy(xls, async () => {
+    const { writeWorkbook } = await import('./xlsx.js');
+    const fv = dims[filterDim].find((x) => x.id === filterVal);
+    const sheet = [[`${filterNames[filterDim]}: ${fv ? fv.name : ''}`, ...colsList.map((c) => c.name)],
+      ...rowsList.map((r) => [r.name, ...colsList.map((c) => { const v = at(r.id, c.id); return v ? v.v : ''; })])];
+    saveBlob(writeWorkbook([{ name: 'Pivot', rows: sheet, widths: [36, ...colsList.map(() => 16)] }]), 'pivot_table.xlsx');
+  }));
+  status.textContent = all_.skipped.size ? `Not shown for these periods (different reporting frequency): ${[...all_.skipped].join(', ')}.` : '';
+  holder.replaceChildren(
+    h('div', { class: 'bar' }, dims[filterDim].length ? field(filterNames[filterDim], select(dims[filterDim].map((x) => ({ id: x.id, name: x.name })), filterVal, { onchange: (e) => setP('f.' + filterDim, e.target.value) })) : null, xls,
+      h('span', { class: 'muted small' }, `${rowsList.length} rows × ${colsList.length} columns · ${prov ? 'includes reports not yet accepted' : 'accepted reports only'} · hover a value for numerator / denominator`)),
+    rowsList.length && colsList.length ? h('div', { class: 'scroll' }, table) : h('div', { class: 'panel empty' }, 'No data for this selection.'));
 }
 
 // ---------- export ----------
