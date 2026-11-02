@@ -202,6 +202,17 @@ function renderMe() {
 }
 
 // ---------- shared pickers ----------
+// Shown when there is nothing to report on yet: admins get a way forward, others are told who to ask.
+function noDatasets() {
+  if (is('sysadmin', 'setupadmin')) {
+    return h('div', { class: 'panel empty' },
+      h('h2', {}, 'No data sets yet'),
+      h('p', {}, 'As an administrator, start by creating a data set (for example “LGA monthly report”) and adding its indicators.'),
+      h('a', { class: 'btn', href: '#/setup' }, 'Go to Indicators'));
+  }
+  return h('div', { class: 'note info' }, 'No data sets are assigned to your account yet. Ask your administrator.');
+}
+
 function myDatasets() { return state.me.datasets; }
 
 async function pickState(value, onChange) {
@@ -217,7 +228,7 @@ async function pickState(value, onChange) {
 async function renderEntry() {
   await meta();
   const sets = myDatasets();
-  if (!sets.length) return mount(h('div', { class: 'note info' }, 'No data sets are assigned to your account yet. Ask your administrator.'));
+  if (!sets.length) return mount(noDatasets());
   const ds = sets.find((d) => d.id === pref('ds')) || sets[0];
   let ouId; let pickers = [];
   if (role() === 'lga') ouId = state.me.ou.id;
@@ -338,7 +349,7 @@ function reviewControls(form, after) {
 // ---------- review (status of every LGA) ----------
 async function renderReview() {
   const sets = myDatasets();
-  if (!sets.length) return mount(h('div', { class: 'note info' }, 'No data sets are assigned to your account.'));
+  if (!sets.length) return mount(noDatasets());
   const ds = sets.find((d) => d.id === pref('ds')) || sets[0];
   const sp = role() === 'state' ? { value: state.me.ou.id } : await pickState(pref('state'), (v) => { pref('state', v); renderReview(); });
   const period = pref('pe:' + ds.id);
@@ -379,7 +390,7 @@ function periodChoices(freq) {
 async function renderPicture() {
   const m = await meta();
   const sets = myDatasets();
-  if (!sets.length) return mount(h('div', { class: 'note info' }, 'No data sets yet.'));
+  if (!sets.length) return mount(noDatasets());
   const ds = sets.find((d) => d.id === pref('ds')) || sets[0];
   const choices = periodChoices(ds.frequency);
   const period = choices.some((c) => c.id === pref('ppe:' + ds.id)) ? pref('ppe:' + ds.id) : choices[0].id;
@@ -430,6 +441,7 @@ async function renderPicture() {
 async function renderExport() {
   const m = await meta();
   const sets = myDatasets();
+  if (!sets.length) return mount(noDatasets());
   const o = await orgs();
   const areas = state.me.ou.level === 1 ? [{ id: o.country.id, name: `${o.country.name} (all states)` }, ...o.states] : [{ id: state.me.ou.id, name: state.me.ou.name }];
   const dsChecks = sets.map((d) => h('input', { type: 'checkbox', value: d.id, checked: true }));
