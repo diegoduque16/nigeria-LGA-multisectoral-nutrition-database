@@ -191,7 +191,9 @@ export async function updateDataset(request, env, ctx, { id }) {
   const sectorId = body.sector ? await sectorFor(env.DB, body.sector) : s.sector_id;
   const level = body.reportLevel ? (body.reportLevel === 'UNIT' ? 4 : 3) : s.report_level;
   if (s.shared && level === 4) throw new HttpError(422, 'invalid', 'Population figures are entered per LGA.');
-  if ((level !== s.report_level || sectorId !== s.sector_id) && await one(env.DB, 'SELECT 1 AS x FROM reports WHERE dataset_id = ? LIMIT 1', id)) {
+  // A form with no (or a removed) sector may always be given one; otherwise sector and who reports are fixed once reports exist.
+  const sectorKnown = s.sector_id && await one(env.DB, 'SELECT id FROM sectors WHERE id = ?', s.sector_id);
+  if ((level !== s.report_level || (sectorKnown && sectorId !== s.sector_id)) && await one(env.DB, 'SELECT 1 AS x FROM reports WHERE dataset_id = ? LIMIT 1', id)) {
     throw new HttpError(409, 'has_reports', 'Reports already exist for this data set, so who reports it (and its sector) can no longer change. Create a new data set instead.');
   }
   if (body.archived !== undefined && ctx.role !== 'sysadmin') throw new HttpError(403, 'forbidden', 'Only a system administrator can archive a data set.');
