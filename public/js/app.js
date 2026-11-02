@@ -1053,7 +1053,8 @@ async function renderPopulation() {
     text: 'Yearly numbers for every LGA that indicators of any sector can divide by — total population, children under 5, expected pregnancies, school-age children … They are usually imported from the official projections (NPC), not typed in by LGAs.',
     how: [
       'Add each number you need (e.g. “Expected pregnancies”) with “Add number”.',
-      'Choose the year, press “Download template”, fill in the official figure for each LGA, then “Import Excel”.',
+      'Fill in the figures for each LGA: press “Load from WorldPop” for the GRID3 / WorldPop modelled estimates (choose which column fills which number), or download the Excel template and import official figures (e.g. NPC).',
+      'When WorldPop publishes a new version, this page says so (it checks once a day, or press “Check for a new version”). Load it to refresh the figures.',
       'On a form, type the same name as an indicator’s denominator. Monthly indicators automatically use one twelfth of a yearly flow.',
     ],
     actions: ds ? [h('button', { onclick: () => datasetDialog(ds, m) }, 'Settings')] : null,
@@ -1227,8 +1228,144 @@ function sharedPanel(ds) {
         return h('tr', {}, h('td', {}, n), h('td', {}, sel), h('td', {}, idTag(d.id)), h('td', {}, b));
       }), h('tr', {}, h('td', {}, name), h('td', {}, h('label', { class: 'check' }, split, 'Split by months')), h('td'), h('td', {}, add))))),
     h('p', { class: 'muted small' }, '“Split by months” suits yearly flows such as expected pregnancies or births: a monthly indicator divides by one twelfth. “As is” suits counts such as households, schools or total population. Each LGA can also type these in once a year under My reports.'),
-    list.length ? h('h2', {}, '2 · The official figures for each LGA') : null,
+    list.length ? h('h2', {}, '2 · The figures for each LGA') : null,
+    list.length ? h('p', { class: 'muted small' }, 'Two ways to fill them: the GRID3 / WorldPop modelled estimates, downloaded for you, or official figures (e.g. NPC projections) from Excel. Each import only fills the numbers you choose for the year you choose.') : null,
+    list.length ? worldpopPanel(ds, list) : null,
     list.length ? populationImportPanel(ds, list) : h('div', { class: 'note info' }, 'Add at least one number above; then you can import the figures for each LGA.'));
+}
+
+// ---------- GRID3 / WorldPop modelled population estimates ----------
+function worldpopPanel(ds, fields) {
+  const box = h('div', { class: 'panel' }, h('h3', {}, 'GRID3 / WorldPop modelled estimates'), h('p', { class: 'muted small' }, 'Loading…'));
+  const fileIn = h('input', { type: 'file', accept: '.zip,.csv', hidden: true });
+  fileIn.addEventListener('change', async () => {
+    const f = fileIn.files[0]; fileIn.value = '';
+    if (!f) return;
+    try {
+      let csv; let name = f.name;
+      if (/\.zip$/i.test(f.name)) {
+        const { unzip } = await import('./unzip.js');
+        const files = (await unzip(await f.arrayBuffer())).filter((x) => /\.csv$/i.test(x.name));
+        const pick = files.find((x) => /lga/i.test(x.name.split('/').pop())) || files[0];
+        if (!pick) throw new Error('No CSV table inside this ZIP file.');
+        csv = await pick.text(); name = `${f.name} → ${pick.name}`;
+      } else csv = await f.text();
+      const m = /v(\d+)[_.](\d+)/i.exec(f.name);
+      const { data } = await api('POST', '/api/worldpop/table', { name, csv, version: m ? `${m[1]}.${m[2]}` : undefined });
+      worldpopDialog(ds, fields, data, paint);
+    } catch (e) { toast(e.message, true); }
+  });
+  async function paint(check) {
+    let st; let ok = true;
+    try { st = await get('/api/worldpop' + (check ? '?check=1' : '')); } catch (e) {
+      ok = false; if (check) toast(e.message, true);
+      st = await get('/api/worldpop').catch(() => ({}));
+    }
+    const latest = st.check && st.check.latest;
+    const want = latest || (st.imported && st.imported.version) || '3.0';
+    const load = h('button', { class: 'primary' }, `Load v${want} from WorldPop`);
+    load.addEventListener('click', busy(load, async () => worldpopDialog(ds, fields, await get('/api/worldpop/table?version=' + want), () => paint())));
+    const checkBtn = h('button', {}, 'Check for a new version');
+    checkBtn.addEventListener('click', busy(checkBtn, async () => {
+      if (await paint(true)) { const s2 = await get('/api/worldpop'); toast(s2.newerAvailable ? `New version on WorldPop: v${s2.check.latest}` : `Checked WorldPop: v${s2.check.latest} is the latest`); }
+    }));
+    box.replaceChildren(
+      h('h3', {}, 'GRID3 / WorldPop modelled estimates'),
+      h('p', { class: 'muted small' }, 'Population for every LGA modelled by WorldPop (University of Southampton) for GRID3, e.g. “NGA population v3.0” = 2025 estimates. The system downloads the LGA table, matches each LGA by name, and you choose which column fills which number.'),
+      st.imported ? h('div', { class: 'note ok' }, h('strong', {}, `In use: v${st.imported.version}`), ` — saved as the ${st.imported.year} figures by ${st.imported.by}, ${fmtDate(st.imported.at)}.`)
+        : h('div', { class: 'note info' }, 'Not imported yet.'),
+      st.newerAvailable && st.imported ? h('div', { class: 'note warn' }, h('strong', {}, `A newer version is available: v${latest}. `), 'Load it below to refresh the figures.') : null,
+      h('p', { class: 'muted small' }, latest ? `Latest on WorldPop: v${latest} · checked ${fmtDate(st.check.checkedAt)} (the system also checks once a day).` : 'Not checked yet.'),
+      h('div', { class: 'actions' }, load, checkBtn, h('button', { onclick: () => fileIn.click() }, 'Upload the table instead (.zip or .csv)'), fileIn,
+        h('a', { href: st.source || 'https://data.worldpop.org/repo/wopr/NGA/population/', target: '_blank', rel: 'noopener', class: 'small' }, 'WorldPop release files ↗')));
+    return ok;
+  }
+  paint();
+  return box;
+}
+
+// Which column of the WorldPop table suits each population number (by name).
+function suggestColumn(fieldName, cols) {
+  const n = fieldName.toLowerCase();
+  const pick = (re) => cols.find((c) => re.test(c.toLowerCase()));
+  if (/under.?1\b|infant|under one/.test(n)) return pick(/under_?1$|^u1$/);
+  if (/under.?5|u5|under five/.test(n)) return pick(/under_?5|^u5/);
+  if (/under.?15/.test(n)) return pick(/under_?15/);
+  if (/15.?49|women|childbearing|wcba/.test(n)) return pick(/f_?15_?49|wcba/);
+  if (/total|population|^pop/.test(n)) return pick(/total|^pop|population|mean|scaled|sum/) || (cols.length === 1 ? cols[0] : undefined);
+  return undefined;
+}
+
+function worldpopDialog(ds, fields, t, after) {
+  const cols = t.columns.numeric;
+  const thisYear = new Date().getFullYear();
+  const ref = t.referenceYear || thisYear;
+  const version = h('input', { value: t.version || '', placeholder: 'e.g. 3.0', size: 6 });
+  const years = [];
+  for (let y = Math.min(ref, thisYear) - 1; y <= thisYear + 2; y++) years.push({ id: String(y), name: String(y) + (y === ref ? ' (year of the estimates)' : '') });
+  const yearSel = select(years, String(ref));
+  const growth = h('input', { type: 'number', step: '0.1', min: 0, max: 10, placeholder: 'none', size: 6 });
+  const maps = fields.map((f) => {
+    const col = select([{ id: '', name: '— don’t fill —' }, ...cols.map((c) => ({ id: c, name: c }))], suggestColumn(f.name, cols) || '');
+    const factor = h('input', { type: 'number', step: 'any', min: 0, value: 1, size: 7 });
+    const ex = h('td', { class: 'n small' });
+    return { f, col, factor, ex };
+  });
+  const sample = t.rows[0];
+  const mult = () => {
+    const g = Number(growth.value) || 0; const dy = Number(yearSel.value) - ref;
+    return g ? Math.pow(1 + g / 100, dy) : 1;
+  };
+  const valueOf = (m, r) => { const v = r.values[m.col.value]; return m.col.value && Number.isFinite(v) ? Math.round(v * (Number(m.factor.value) || 0) * mult()) : null; };
+  const refresh = () => { for (const m of maps) m.ex.textContent = sample && m.col.value ? fmtNum(valueOf(m, sample)) : '—'; };
+  for (const m of maps) { m.col.addEventListener('change', refresh); m.factor.addEventListener('input', refresh); }
+  yearSel.addEventListener('change', refresh); growth.addEventListener('input', refresh);
+  refresh();
+  const fuzzy = t.rows.filter((r) => r.fuzzy);
+  const err = h('div', { class: 'err' }); const progress = h('span', { class: 'muted small' });
+  const save = h('button', { class: 'primary', disabled: !t.rows.length }, `Save figures for ${t.rows.length} LGAs`);
+  const list = (title, items, fmt) => (items.length ? h('details', {}, h('summary', { class: 'small' }, `${title} (${items.length})`), h('ul', { class: 'small' }, items.slice(0, 300).map((x) => h('li', {}, fmt(x))))) : null);
+  const dlg = h('dialog', { class: 'wide' }, h('h2', {}, `WorldPop population${t.version ? ' v' + t.version : ''} — check and choose`),
+    h('p', { class: 'muted small' }, t.url ? h('a', { href: t.url, target: '_blank', rel: 'noopener' }, t.file) : t.file, ` · ${t.fileRows} rows in the file · columns: ${[t.columns.state, t.columns.lga, ...cols].filter(Boolean).join(', ')}`),
+    h('div', { class: 'counts' },
+      h('span', { class: 'pill s-accepted' }, `Matched: ${t.rows.length} of ${t.lgasInUse} LGAs in the states in use`),
+      fuzzy.length ? h('span', { class: 'pill s-draft' }, `Matched by a close spelling: ${fuzzy.length}`) : null,
+      t.unmatched.length ? h('span', { class: 'pill s-returned' }, `Not matched: ${t.unmatched.length}`) : null,
+      t.otherStates ? h('span', { class: 'pill s-none' }, `Rows for states not in use: ${t.otherStates}`) : null),
+    list('Close spellings — please check', fuzzy, (r) => `${r.fileName} → ${r.lgaName} (${r.state})`),
+    list('Rows not matched to an LGA (skipped)', t.unmatched, (r) => `${r.lga}${r.state ? ', ' + r.state : ''}${r.note ? ' — ' + r.note : ''}`),
+    list('Our LGAs with no row in the file (keep their current figures)', t.missing, (r) => `${r.name} (${r.state})`),
+    h('h3', {}, 'Which column fills which number'),
+    h('table', {}, h('thead', {}, h('tr', {}, h('th', {}, 'Our number'), h('th', {}, 'Column in the file'), h('th', {}, '× factor'), h('th', { class: 'n' }, sample ? `Example: ${sample.lgaName}` : 'Example'))),
+      h('tbody', {}, maps.map((m) => h('tr', {}, h('td', {}, m.f.name), h('td', {}, m.col), h('td', {}, m.factor), m.ex)))),
+    h('p', { class: 'muted small' }, 'Factor: use it to derive a number from a column, e.g. expected pregnancies = total population × the share your programme uses. Leave 1 to copy the column as it is.'),
+    h('div', { class: 'grid2' },
+      field('Save as the figures for', yearSel),
+      field('Growth per year, % (optional)', growth, `Projects from ${ref} to a later year, e.g. 2.5. Empty = use the estimates as they are.`),
+      t.version ? null : field('WorldPop version', version, 'As in the file name, e.g. 3.0.')),
+    err, h('p'), h('div', { class: 'actions' }, save, progress, h('button', { onclick: () => dlg.close() }, 'Cancel')));
+  dlg.addEventListener('close', () => dlg.remove());
+  save.addEventListener('click', busy(save, async () => {
+    err.textContent = '';
+    const used = maps.filter((m) => m.col.value);
+    if (!used.length) { err.textContent = 'Choose a column for at least one number.'; return; }
+    const ver = t.version || version.value.trim();
+    if (!/^\d+(\.\d+)+$/.test(ver)) { err.textContent = 'Say which WorldPop version this is (e.g. 3.0).'; return; }
+    const year = yearSel.value;
+    const notes = [Number(growth.value) && Number(year) !== ref ? `projected from ${ref} at ${growth.value}%/yr` : null,
+      ...used.filter((m) => Number(m.factor.value) !== 1).map((m) => `${m.f.name} = ${m.col.value} × ${m.factor.value}`)].filter(Boolean);
+    const source = `GRID3/WorldPop NGA population v${ver} (${t.referenceYear || 'modelled'} estimates)${notes.length ? '; ' + notes.join('; ') : ''}`.slice(0, 200);
+    const rows = t.rows.map((r, i) => ({ row: i + 2, lgaId: r.lgaId, values: Object.fromEntries(used.map((m) => [m.f.id, valueOf(m, r)]).filter(([, v]) => v !== null)) }));
+    const { data: check } = await api('POST', `/api/datasets/${ds.id}/population`, { year, rows });
+    if (check.counts.error) { err.textContent = check.results.filter((r) => r.status === 'error').slice(0, 5).map((r) => `${r.lga}: ${r.message}`).join(' · '); return; }
+    for (let i = 0; i < rows.length; i += 60) {
+      progress.textContent = `Saving ${Math.min(i + 60, rows.length)} of ${rows.length}…`;
+      await api('POST', `/api/datasets/${ds.id}/population`, { year, source, rows: rows.slice(i, i + 60), commit: true });
+    }
+    await api('POST', '/api/worldpop/imported', { version: ver, year, mapping: used.map((m) => ({ number: m.f.name, column: m.col.value, factor: Number(m.factor.value) })) });
+    dlg.close(); toast(`Saved ${year} figures for ${rows.length} LGAs from WorldPop v${ver}`); pref('popYear', year); route();
+  }));
+  document.body.append(dlg); dlg.showModal();
 }
 
 // Official population figures (NPC / NBS …) for every LGA from one Excel sheet.
@@ -1268,7 +1405,7 @@ function populationImportPanel(ds, fields) {
     const f = fileIn.files[0]; fileIn.value = '';
     if (f) try { await populationImportDialog(ds, fields, f, yearSel.value, showSource); } catch (e) { toast(e.message, true); }
   });
-  return h('div', { class: 'panel' }, h('h2', {}, 'Official figures from Excel'),
+  return h('div', { class: 'panel' }, h('h3', {}, 'Official figures from Excel (NPC projections or any other source)'),
     h('p', { class: 'muted small' }, 'Download the template (one row per LGA, one column per number, filled with what is already stored), add the official figures, then import it. Imported figures are saved as accepted for that year.'),
     h('div', { class: 'bar' }, field('Year', yearSel), tpl, h('button', { class: 'primary', onclick: () => fileIn.click() }, 'Import Excel'), fileIn), info);
 }

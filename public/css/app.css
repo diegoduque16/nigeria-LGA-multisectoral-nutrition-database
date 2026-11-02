@@ -272,3 +272,4 @@ tr.newrow td { background: var(--accent-soft); color: var(--accent); }
   table.todo .pill { white-space: normal; }
 }
 button.danger-link { color: var(--bad); }
+dialog.wide { width: min(900px, 96vw); }

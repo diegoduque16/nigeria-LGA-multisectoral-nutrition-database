@@ -11,6 +11,7 @@ import * as units from './routes/units.js';
 import * as pop from './routes/popimport.js';
 import * as pv from './routes/pivot.js';
 import * as reg from './routes/register.js';
+import * as wp from './routes/worldpop.js';
 
 // [method, path, handler, access]  access: 'public' | 'optional' | 'session'
 const ROUTES = [
@@ -62,6 +63,10 @@ const ROUTES = [
   ['GET', '/api/datasets/:id/population', pop.populationTable, 'session'],
   ['POST', '/api/datasets/:id/population', pop.importPopulation, 'session'],
   ['PATCH', '/api/fields/:id', meta.updateDataElement, 'session'],
+  ['GET', '/api/worldpop', wp.worldpopStatus, 'session'],
+  ['GET', '/api/worldpop/table', wp.worldpopTable, 'session'],
+  ['POST', '/api/worldpop/table', wp.worldpopTable, 'session'],
+  ['POST', '/api/worldpop/imported', wp.worldpopImported, 'session'],
 
   ['GET', '/api/entry', entry.getEntry, 'session'],
   ['PUT', '/api/entry', entry.saveEntry, 'session'],
@@ -149,5 +154,7 @@ export default {
   fetch: (request, env) => handle(request, env),
   async scheduled(event, env, execCtx) {
     execCtx.waitUntil(housekeeping(env).catch((e) => console.error('housekeeping failed', e)));
+    // Look for newer GRID3 / WorldPop population releases (shown on the Population figures page).
+    execCtx.waitUntil(wp.checkWorldPop(env).catch((e) => console.error('WorldPop check failed', e)));
   },
 };
