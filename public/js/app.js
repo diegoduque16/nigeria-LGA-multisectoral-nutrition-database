@@ -1013,8 +1013,21 @@ function renderSectors(m) {
     h('td', { class: 'n' }, h('button', {}, 'Open')));
   const sectorIds = [...new Set([...m.sectors.map((s) => s.id), ...forms.map((d) => d.sectorId)])];
   const cards = sectorIds.map((sid) => {
-    const sec = m.sectors.find((s) => s.id === sid) || { id: sid, name: 'No sector' };
+    const known = m.sectors.find((s) => s.id === sid);
     const mine = forms.filter((d) => d.sectorId === sid).sort((a, b) => (a.archived ? 1 : 0) - (b.archived ? 1 : 0) || a.name.localeCompare(b.name));
+    if (!known) {
+      // Forms whose sector is missing: say so and offer the two ways out. Archived ones are not shown.
+      const open = mine.filter((d) => !d.archived);
+      if (!open.length) return null;
+      return h('div', { class: 'panel sector-card' },
+        h('div', { class: 'rc-head' }, h('h2', {}, 'Forms without a sector')),
+        h('div', { class: 'note warn' }, 'These forms belong to no sector. Open one and use Form settings to choose its sector — or, if it was only a test, Delete form (possible while nothing was reported on it; otherwise Archive form).'),
+        h('table', { class: 'todo' }, h('tbody', {}, open.map((d) => h('tr', {},
+          h('td', {}, h('strong', {}, d.name), h('div', { class: 'muted small' }, freqHow(d))),
+          h('td', { class: 'n small' }, `${d.indicators.filter((i) => !i.archived).length} indicators`),
+          h('td', { class: 'n' }, h('div', { class: 'actions' }, h('button', { onclick: () => go('#/setup/' + d.id) }, 'Open'), admin ? h('button', { onclick: () => datasetDialog(d, m) }, 'Form settings') : null)))))));
+    }
+    const sec = known;
     const unused = !mine.length && !sec.indicators;
     return h('div', { class: 'panel sector-card' },
       h('div', { class: 'rc-head' }, h('h2', {}, sec.name),
@@ -1490,7 +1503,12 @@ function datasetDialog(ds, m, makeShared = false, presetSector = '') {
       shared ? null : field('Due day', due, 'Day of the month after the period ends.'),
       ds ? field('ID', idTag(ds.id)) : field('ID (optional)', id, 'Only to reuse an existing DHIS2 ID.')),
     err, h('p'), h('div', { class: 'actions' }, save, h('button', { onclick: () => dlg.close() }, 'Cancel'),
-      ds && is('sysadmin') ? h('button', { class: 'danger', title: 'Archived forms are hidden from data entry; their data is kept.', onclick: async () => { await api('PATCH', '/api/datasets/' + ds.id, { archived: !ds.archived }); dlg.close(); state.meta = null; route(); } }, ds.archived ? 'Restore form' : 'Archive form') : null));
+      ds && is('sysadmin') ? h('button', { class: 'danger', title: 'Archived forms are hidden from data entry; their data is kept.', onclick: async () => { await api('PATCH', '/api/datasets/' + ds.id, { archived: !ds.archived }); dlg.close(); state.meta = null; route(); } }, ds.archived ? 'Restore form' : 'Archive form') : null,
+      ds && !shared && is('sysadmin') ? h('button', { class: 'link danger-link', title: 'Only while nothing was reported on it', onclick: async () => {
+        if (!confirm(`Delete the form “${ds.name}” and its indicators for good? This is only possible while nothing was reported on it.`)) return;
+        try { await api('DELETE', '/api/datasets/' + ds.id); } catch (e) { err.textContent = e.message; return; }
+        dlg.close(); state.meta = null; await loadMe(); toast(`Form “${ds.name}” deleted`); go('#/setup');
+      } }, 'Delete form') : null));
   dlg.addEventListener('close', () => dlg.remove());
   save.addEventListener('click', busy(save, async () => {
     err.textContent = '';

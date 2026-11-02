@@ -56,6 +56,7 @@ const ROUTES = [
   ['DELETE', '/api/sectors/:id', meta.deleteSector, 'session'],
   ['POST', '/api/datasets', meta.createDataset, 'session'],
   ['PATCH', '/api/datasets/:id', meta.updateDataset, 'session'],
+  ['DELETE', '/api/datasets/:id', meta.deleteDataset, 'session'],
   ['POST', '/api/datasets/:datasetId/indicators', meta.createIndicator, 'session'],
   ['PATCH', '/api/indicators/:id', meta.updateIndicator, 'session'],
   ['DELETE', '/api/indicators/:id', meta.deleteIndicator, 'session'],

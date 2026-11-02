@@ -114,6 +114,30 @@ export async function deleteSector(request, env, ctx, { id }) {
   return json({ ok: true });
 }
 
+// DELETE /api/datasets/:id — remove a form completely (e.g. a test), only while nothing was reported on it.
+// A form with reports is archived instead, so its data stays.
+export async function deleteDataset(request, env, ctx, { id }) {
+  requireRole(ctx, ['sysadmin']);
+  const ds = await one(env.DB, 'SELECT * FROM datasets WHERE id = ?', id);
+  if (!ds) throw new HttpError(404, 'not_found', 'Form not found.');
+  if (ds.shared) throw new HttpError(409, 'shared', 'The population figures cannot be deleted.');
+  if (await one(env.DB, 'SELECT 1 AS x FROM reports WHERE dataset_id = ? LIMIT 1', id)
+    || await one(env.DB, 'SELECT 1 AS x FROM data_values v JOIN data_elements de ON de.id = v.de_id WHERE de.dataset_id = ? LIMIT 1', id)) {
+    throw new HttpError(409, 'has_reports', 'Reports were already entered on this form, so it cannot be deleted. Archive it instead: it disappears from data entry and its data is kept.');
+  }
+  await env.DB.batch([
+    env.DB.prepare('DELETE FROM indicator_history WHERE indicator_id IN (SELECT id FROM indicators WHERE dataset_id = ?)').bind(id),
+    env.DB.prepare('DELETE FROM indicators WHERE dataset_id = ?').bind(id),
+    env.DB.prepare('DELETE FROM user_data_elements WHERE de_id IN (SELECT id FROM data_elements WHERE dataset_id = ?)').bind(id),
+    env.DB.prepare('DELETE FROM data_value_history WHERE de_id IN (SELECT id FROM data_elements WHERE dataset_id = ?)').bind(id),
+    env.DB.prepare('DELETE FROM data_elements WHERE dataset_id = ?').bind(id),
+    env.DB.prepare('DELETE FROM user_datasets WHERE dataset_id = ?').bind(id),
+    env.DB.prepare('DELETE FROM datasets WHERE id = ?').bind(id),
+  ]);
+  await audit(env.DB, ctx, 'dataset_deleted', 'dataset', id, { name: ds.name });
+  return json({ ok: true });
+}
+
 export async function updateSector(request, env, ctx, { id }) {
   requireRole(ctx, ['sysadmin']);
   const s = await one(env.DB, 'SELECT * FROM sectors WHERE id = ?', id);

@@ -679,3 +679,22 @@ test('a population figure added after the indicator takes over the same-named nu
   assert.deepEqual(hs.dataElements.map((d) => d.name), ['ANC visits']);
   assert.equal(hs.indicators.find((i) => i.id === ind.id).denominatorId, f.id);
 });
+
+test('a form can be deleted only while nothing was reported on it', async () => {
+  const env = makeEnv();
+  const admin = await setupAdmin(env);
+  const t = (await admin.post('/api/datasets', { name: 'Education test', sector: 'Education', frequency: 'MONTHLY' })).data;
+  await admin.post(`/api/datasets/${t.id}/indicators`, { name: 'Pupils', numerator: 'Pupils enrolled' });
+  const used = (await admin.post('/api/datasets', { name: 'Health – monthly', sector: 'Health', frequency: 'MONTHLY' })).data;
+  const ind = (await admin.post(`/api/datasets/${used.id}/indicators`, { name: 'ANC', numerator: 'ANC visits' })).data;
+  assert.ok(ind);
+  const form = (await admin.get(`/api/entry?dataset=${used.id}&ou=${ABA_NORTH}`)).data;
+  await admin.put('/api/entry', { dataset: used.id, ou: ABA_NORTH, period: form.period, values: { [form.fields[0].id]: '3' } });
+  const so = await addUser(env, admin, { name: 'S', email: 's@abia.gov.ng', role: 'state', ouId: ABIA });
+  assert.equal((await so.c.del('/api/datasets/' + t.id)).status, 403);
+  assert.equal((await admin.del('/api/datasets/' + used.id)).status, 409);
+  assert.equal((await admin.del('/api/datasets/' + t.id)).status, 200);
+  const meta = (await admin.get('/api/metadata')).data;
+  assert.ok(!meta.datasets.some((d) => d.id === t.id));
+  assert.ok(meta.datasets.some((d) => d.id === used.id));
+});
