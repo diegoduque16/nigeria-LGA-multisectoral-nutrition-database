@@ -80,17 +80,26 @@ const go = (hash) => { if (location.hash !== hash) location.hash = hash; else ro
 const role = () => state.me && state.me.user.role;
 const is = (...roles) => roles.includes(role());
 
+// Two areas: Reporting (what sector staff use every period) and Setup (administrators only).
 const PAGES = [
-  { id: 'entry', name: 'Data entry', roles: ['sysadmin', 'state', 'lga', 'unit'] },
-  { id: 'review', name: 'Review', roles: ['sysadmin', 'state', 'lga'] },
-  { id: 'picture', name: 'State picture', roles: ['sysadmin', 'setupadmin', 'state', 'viewer'] },
-  { id: 'pivot', name: 'Pivot table', roles: ['sysadmin', 'setupadmin', 'state', 'lga', 'viewer'] },
-  { id: 'export', name: 'Export', roles: ['sysadmin', 'setupadmin', 'state', 'viewer'] },
-  { id: 'setup', name: 'Indicators', roles: ['sysadmin', 'setupadmin'] },
-  { id: 'units', name: 'Org units', roles: ['sysadmin', 'setupadmin', 'state'] },
-  { id: 'accounts', name: 'Accounts', roles: ['sysadmin', 'state'] },
-  { id: 'audit', name: 'Audit log', roles: ['sysadmin'] },
+  { id: 'entry', area: 'report', name: 'Data entry', roles: ['sysadmin', 'state', 'lga', 'unit'] },
+  { id: 'review', area: 'report', name: 'Review', roles: ['sysadmin', 'state', 'lga'] },
+  { id: 'picture', area: 'report', name: 'State picture', roles: ['sysadmin', 'setupadmin', 'state', 'viewer'] },
+  { id: 'pivot', area: 'report', name: 'Pivot table', roles: ['sysadmin', 'setupadmin', 'state', 'lga', 'viewer'] },
+  { id: 'export', area: 'report', name: 'Export', roles: ['sysadmin', 'setupadmin', 'state', 'viewer'] },
+  { id: 'setuphome', area: 'setup', name: 'Overview', roles: ['sysadmin', 'setupadmin', 'state'] },
+  { id: 'sectors', area: 'setup', name: '1 Sectors', roles: ['sysadmin', 'setupadmin'] },
+  { id: 'population', area: 'setup', name: '2 Population', roles: ['sysadmin', 'setupadmin'] },
+  { id: 'setup', area: 'setup', name: '3 Data sets', roles: ['sysadmin', 'setupadmin'] },
+  { id: 'units', area: 'setup', name: '4 Org units', roles: ['sysadmin', 'setupadmin', 'state'] },
+  { id: 'rollout', area: 'setup', name: '5 Rollout', roles: ['sysadmin'] },
+  { id: 'accounts', area: 'setup', name: '6 Accounts', roles: ['sysadmin', 'state'] },
+  { id: 'audit', area: 'setup', name: 'Audit log', roles: ['sysadmin'] },
 ];
+// Role groups, so administrators and data-entry staff are easy to tell apart.
+const ROLE_GROUP = { sysadmin: 'admin', setupadmin: 'admin', state: 'admin', lga: 'entry', unit: 'entry', viewer: 'view' };
+const ROLE_GROUP_NAME = { admin: 'Administrator', entry: 'Data entry', view: 'View only' };
+const roleBadge = (r, name) => h('span', { class: 'rolebadge rb-' + ROLE_GROUP[r], title: ROLE_GROUP_NAME[ROLE_GROUP[r]] }, name || r);
 
 async function loadMe() {
   try { state.me = await get('/api/me'); } catch { state.me = null; }
@@ -107,17 +116,26 @@ function renderChrome(page) {
   const top = $('#top');
   if (!state.me) { top.hidden = true; return; }
   top.hidden = false;
-  $('#nav').replaceChildren(...PAGES.filter((p) => p.roles.includes(role())).map((p) => h('a', { href: '#/' + p.id, class: p.id === page ? 'on' : '', 'data-page': p.id }, p.name)));
+  const mine = PAGES.filter((p) => p.roles.includes(role()));
+  const cur = (PAGES.find((p) => p.id === page) || {}).area || pref('area') || 'report';
+  const hasSetup = mine.some((p) => p.area === 'setup'); const hasReport = mine.some((p) => p.area === 'report');
+  const firstOf = (area) => (mine.find((p) => p.area === area) || {}).id;
+  $('#nav').replaceChildren(
+    hasSetup && hasReport ? h('div', { class: 'areaswitch' },
+      h('a', { href: '#/' + firstOf('report'), class: cur === 'report' ? 'on' : '' }, 'Reporting'),
+      h('a', { href: '#/setuphome', class: cur === 'setup' ? 'on' : '' }, 'Setup')) : null,
+    h('div', { class: 'navlinks' }, ...mine.filter((p) => p.area === cur).map((p) => h('a', { href: '#/' + p.id, class: p.id === page ? 'on' : '', 'data-page': p.id }, p.name))));
   const setTop = () => document.documentElement.style.setProperty('--toph', `${top.offsetHeight}px`);
   setTop(); if (!window.__topWatch) { window.__topWatch = true; window.addEventListener('resize', () => { const t = $('#top'); if (t && !t.hidden) document.documentElement.style.setProperty('--toph', `${t.offsetHeight}px`); }); }
   if (is('sysadmin', 'state')) {
     get('/api/account-requests').then(({ requests }) => {
-      const a = $('#nav a[data-page="accounts"]');
-      if (a && requests.length) a.append(h('span', { class: 'badge', title: 'Account requests waiting for approval' }, String(requests.length)));
+      if (!requests.length) return;
+      const a = $('#nav a[data-page="accounts"]') || $('#nav .areaswitch a[href="#/setuphome"]');
+      if (a) a.append(h('span', { class: 'badge', title: 'Account requests waiting for approval' }, String(requests.length)));
     }).catch(() => {});
   }
   $('#who').replaceChildren(
-    h('span', {}, state.me.user.name, ' · ', state.me.user.roleName, state.me.ou ? ' · ' + state.me.ou.name : ''),
+    h('span', {}, state.me.user.name, ' ', roleBadge(role(), state.me.user.roleName), state.me.ou ? ' ' + state.me.ou.name : ''),
     h('a', { href: '#/me' }, 'Password'),
     h('button', { class: 'link', onclick: async () => { await api('POST', '/api/auth/logout', {}); state.me = null; state.meta = null; state.orgs = null; go('#/login'); } }, 'Sign out'),
   );
@@ -135,12 +153,15 @@ async function route() {
     return s.needsSetup ? renderFirstSetup(s) : renderLogin();
   }
   const allowed = PAGES.filter((p) => p.roles.includes(role()));
-  const target = page === 'me' ? 'me' : allowed.find((p) => p.id === page) ? page : allowed[0].id;
+  const home = (allowed.find((p) => p.area === (pref('area') || (ROLE_GROUP[role()] === 'admin' && role() !== 'state' ? 'setup' : 'report'))) || allowed[0]).id;
+  const target = page === 'me' ? 'me' : allowed.find((p) => p.id === page) ? page : home;
   if (target !== page) return go('#/' + target);
   renderChrome(target);
   mount(h('p', { class: 'muted' }, 'Loading…'));
   try {
-    await ({ entry: renderEntry, review: renderReview, picture: renderPicture, pivot: renderPivot, export: renderExport, setup: renderSetup, units: renderUnits, accounts: renderAccounts, audit: renderAudit, me: renderMe })[target]();
+    const pg = PAGES.find((p) => p.id === target);
+    if (pg) pref('area', pg.area);
+    await ({ entry: renderEntry, review: renderReview, picture: renderPicture, pivot: renderPivot, export: renderExport, setuphome: renderSetupHome, sectors: renderSectors, setup: renderSetup, population: renderPopulation, units: renderUnits, rollout: renderRollout, accounts: renderAccounts, audit: renderAudit, me: renderMe })[target]();
   } catch (e) {
     if (e.status !== 401) mount(h('div', { class: 'note bad' }, e.message));
   }
@@ -705,60 +726,45 @@ async function tokenPanel(areas) {
 // ---------- indicator setup ----------
 async function renderSetup() {
   const m = await meta(true);
-  const dsId = m.datasets.some((d) => d.id === pref('setupDs')) ? pref('setupDs') : (m.datasets[0] || {}).id;
-  const ds = m.datasets.find((d) => d.id === dsId);
-  const sectorList = h('datalist', { id: 'sector-list' }, m.sectors.map((s) => h('option', { value: s.name })));
-  const sharedSets = m.datasets.filter((d) => d.shared && !d.archived);
-  const sharedFields = sharedSets.flatMap((d) => d.dataElements.filter((f) => !f.archived));
+  const sets = m.datasets.filter((d) => !d.shared);
+  const dsId = sets.some((d) => d.id === pref('setupDs')) ? pref('setupDs') : (sets[0] || {}).id;
+  const ds = sets.find((d) => d.id === dsId);
+  const sharedFields = m.datasets.filter((d) => d.shared && !d.archived).flatMap((d) => d.dataElements.filter((f) => !f.archived));
   const fieldList = h('datalist', { id: 'field-list' },
     ds ? ds.dataElements.filter((d) => !d.archived).map((d) => h('option', { value: d.name })) : [],
-    ds && !ds.shared ? sharedFields.map((f) => h('option', { value: f.name, label: 'Population & denominators (shared)' })) : []);
-
-  const newDs = h('button', { onclick: () => datasetDialog(null, m) }, '+ New sector data set');
-  const newShared = sharedSets.length ? null : h('button', { onclick: () => datasetDialog(null, m, true) }, '+ Population & denominators');
+    sharedFields.map((f) => h('option', { value: f.name, label: 'Population figure (shared)' })));
   const head = h('div', { class: 'head' },
-    h('div', {}, h('h1', {}, 'Indicators'), h('div', { class: 'muted' }, 'One data set per sector. Write each indicator with its numerator, denominator and source; IDs are created automatically.')),
-    is('sysadmin') ? h('div', { class: 'actions' }, newShared, newDs) : null);
+    h('div', {}, h('h1', {}, 'Data sets & indicators'), h('div', { class: 'muted' }, 'A data set is one reporting form of a sector. Add its indicators: name, numerator, denominator and source. IDs are created automatically.')),
+    is('sysadmin') && m.sectors.length ? h('button', { class: 'primary', onclick: () => datasetDialog(null, m) }, '+ New data set') : null);
+  if (!m.sectors.length) {
+    return mount(h('div', {}, head, h('div', { class: 'panel empty' }, h('p', {}, 'First add the sectors that will report (Health, Education …).'), h('a', { class: 'btn primary', href: '#/sectors' }, 'Go to step 1: Sectors'))));
+  }
   if (!ds) {
-    return mount(head, h('div', { class: 'panel' },
-      h('h2', {}, 'Getting started'),
-      h('ol', {},
-        h('li', {}, h('strong', {}, 'Population & denominators'), ' — one yearly data set for numbers every sector divides by (total population, under-5s, expected pregnancies, households…). Entered once a year.'),
-        h('li', {}, h('strong', {}, 'One data set per sector'), ' — e.g. “Health – monthly”, “Agriculture – quarterly”, “WASH – yearly”, each with its own frequency.'),
-        h('li', {}, 'Add indicators to each sector data set. Type a population number’s name as the denominator and it is used automatically.')),
-      is('sysadmin') ? h('div', { class: 'actions' }, h('button', { class: 'primary', onclick: () => datasetDialog(null, m, true) }, 'Create Population & denominators'),
-        h('button', { onclick: () => datasetDialog(null, m) }, '+ New sector data set')) : null));
+    return mount(h('div', {}, head, h('div', { class: 'panel empty' }, h('p', {}, 'No data sets yet. Create one for a sector — for example “Health – monthly”.'),
+      is('sysadmin') ? h('button', { class: 'primary', onclick: () => datasetDialog(null, m) }, '+ New data set') : null)));
   }
-
-  const tabs = h('div', { class: 'bar' },
-    field('Data set', select(m.datasets.map((d) => ({ id: d.id, name: dsLabel(d) + (d.archived ? ' (archived)' : '') })), ds.id, { onchange: (e) => { pref('setupDs', e.target.value); renderSetup(); } })),
-    h('div', { class: 'muted small' }, ds.shared ? 'Shared by all sectors · ' : `Sector: `, ds.shared ? null : h('strong', {}, ds.sector || '—'), ds.shared ? null : ' · ',
-      `Reporting frequency: `, h('strong', {}, ds.frequencyName), ds.reportLevel === 'UNIT' ? ' · reported by each unit (added up to the LGA)' : '', ds.shared ? ' · current year can be entered' : ` · due on day ${ds.dueDay} of the following month`, ' · ',
-      h('button', { class: 'link', onclick: () => datasetDialog(ds, m) }, 'Edit data set')));
-  if (ds.shared) return mount(h('div', {}, head, tabs, sharedPanel(ds)));
-
+  // Data set picker grouped by sector.
+  const picker = h('select', { onchange: (e) => { pref('setupDs', e.target.value); renderSetup(); } },
+    m.sectors.map((sec) => { const list = sets.filter((d) => d.sectorId === sec.id); return list.length ? h('optgroup', { label: sec.name }, list.map((d) => h('option', { value: d.id, selected: d.id === ds.id }, d.name + (d.archived ? ' (archived)' : '')))) : null; }));
+  const facts = h('div', { class: 'facts' },
+    h('span', {}, 'Sector ', h('strong', {}, ds.sector || '—')),
+    h('span', {}, 'Reported ', h('strong', {}, ds.frequencyName.toLowerCase())),
+    h('span', {}, 'By ', h('strong', {}, ds.reportLevel === 'UNIT' ? 'each school / facility (added up to the LGA)' : 'each LGA')),
+    h('span', {}, 'Due on day ', h('strong', {}, String(ds.dueDay)), ' of the next month'),
+    h('button', { class: 'link', onclick: () => datasetDialog(ds, m) }, 'Edit'));
   const rows = ds.indicators.filter((i) => !i.archived);
-  const bySector = new Map();
-  for (const i of rows) { const k = i.sector || 'Other'; if (!bySector.has(k)) bySector.set(k, []); bySector.get(k).push(i); }
-  const body = [];
-  for (const [sector, list] of [...bySector.entries()].sort((a, b) => a[0].localeCompare(b[0]))) {
-    body.push(h('tr', { class: 'sector' }, h('td', { colspan: 7 }, sector)));
-    for (const i of list) body.push(indicatorRow(ds, i, m));
-  }
-  body.push(indicatorRow(ds, null, m));
-
-  mount(h('div', {}, head, tabs, sectorList, fieldList,
+  mount(h('div', {}, head,
+    h('div', { class: 'bar' }, field('Data set', picker)), facts, fieldList,
     h('div', { class: 'scroll' }, h('table', { class: 'setup' },
-      h('colgroup', {}, ['sector', 'name', 'num', 'den', 'src', 'show', 'id'].map((c) => h('col', { class: 'c-' + c }))),
-      h('thead', {}, h('tr', {}, h('th', {}, 'Sector'), h('th', {}, 'Indicator'), h('th', {}, 'Numerator'), h('th', {}, 'Denominator (optional)'), h('th', {}, 'Source'), h('th', {}, 'Show as'), h('th', {}, 'ID'))),
-      h('tbody', {}, body))),
-    h('p', { class: 'muted small' }, 'Numerators and denominators become the numbers LGAs enter. Typing the same name twice uses the same number. A name from Population & denominators (e.g. “Expected pregnancies”) uses that yearly figure instead of asking LGAs for it each time. Leave the denominator empty for a plain count.'),
+      h('colgroup', {}, ['name', 'num', 'den', 'src', 'show', 'id'].map((c) => h('col', { class: 'c-' + c }))),
+      h('thead', {}, h('tr', {}, h('th', {}, 'Indicator'), h('th', {}, 'Numerator'), h('th', {}, 'Denominator (optional)'), h('th', {}, 'Source'), h('th', {}, 'Show as'), h('th', {}, 'ID'))),
+      h('tbody', {}, rows.map((i) => indicatorRow(ds, i, m)), indicatorRow(ds, null, m)))),
+    h('p', { class: 'muted small' }, 'The numerator and denominator become the numbers people enter. The same name means the same number. A population figure’s name (e.g. “Expected pregnancies”) uses the yearly figure from step 2 instead of asking for it each time. Leave the denominator empty for a plain count.'),
     fieldsPanel(ds)));
 }
 
 function indicatorRow(ds, i, m) {
   const isNew = !i;
-  const sector = h('input', { list: 'sector-list', value: i ? i.sector : ds.sector || pref('lastSector') || '', placeholder: 'e.g. Health' });
   const name = h('input', { value: i ? i.name : '', placeholder: isNew ? 'New indicator name' : '' });
   const num = h('input', { list: 'field-list', value: i ? i.numerator : '', placeholder: 'e.g. Women with 4+ ANC visits' });
   const den = h('input', { list: 'field-list', value: i ? i.denominator : '', placeholder: 'e.g. Expected pregnancies' });
@@ -767,12 +773,12 @@ function indicatorRow(ds, i, m) {
   const id = h('input', { class: 'mono', placeholder: 'auto-generated', maxlength: 11, title: 'Leave empty to generate a DHIS2-style ID, or paste an existing DHIS2 indicator ID' });
   const btn = h('button', { class: isNew ? 'primary' : '' }, isNew ? 'Add' : 'Save');
   const del = isNew ? null : h('button', { class: 'link', title: 'Remove indicator' }, 'Remove');
-  const vals = () => ({ sector: sector.value.trim(), name: name.value.trim(), numerator: num.value.trim(), denominator: den.value.trim(), source: source.value.trim(), showAs: den.value.trim() ? showAs.value : 'number' });
+  const vals = () => ({ name: name.value.trim(), numerator: num.value.trim(), denominator: den.value.trim(), source: source.value.trim(), showAs: den.value.trim() ? showAs.value : 'number' });
   btn.addEventListener('click', busy(btn, async () => {
     if (isNew) {
       const body = vals(); if (id.value.trim()) body.id = id.value.trim();
       await api('POST', `/api/datasets/${ds.id}/indicators`, body);
-      pref('lastSector', body.sector); toast('Indicator added');
+      toast('Indicator added');
     } else { await api('PATCH', '/api/indicators/' + i.id, vals()); toast('Saved'); }
     state.meta = null; renderSetup();
   }));
@@ -780,7 +786,7 @@ function indicatorRow(ds, i, m) {
     if (!confirm(`Remove “${i.name}”? Values already reported are kept.`)) return;
     await api('DELETE', '/api/indicators/' + i.id); toast('Removed'); state.meta = null; renderSetup();
   }));
-  return h('tr', {}, h('td', {}, sector), h('td', {}, name), h('td', {}, num), h('td', {}, den), h('td', {}, source), h('td', {}, showAs),
+  return h('tr', {}, h('td', {}, name), h('td', {}, num), h('td', {}, den), h('td', {}, source), h('td', {}, showAs),
     h('td', {}, isNew ? id : idTag(i.id), h('div', { class: 'actions' }, btn, del)));
 }
 
@@ -810,7 +816,7 @@ function sharedPanel(ds) {
   const add = h('button', { class: 'primary' }, 'Add number');
   add.addEventListener('click', busy(add, async () => {
     await api('POST', `/api/datasets/${ds.id}/fields`, { name: name.value.trim(), prorate: split.checked });
-    toast('Added'); state.meta = null; renderSetup();
+    toast('Added'); state.meta = null; renderPopulation();
   }));
   return h('div', {},
     list.length ? populationImportPanel(ds, list) : null,
@@ -820,7 +826,7 @@ function sharedPanel(ds) {
         const n = h('input', { value: d.name, size: 36 });
         const sel = select([{ id: '1', name: 'Split by months (÷12 per month)' }, { id: '0', name: 'Use the yearly figure as is' }], d.prorate ? '1' : '0');
         const b = h('button', {}, 'Save');
-        b.addEventListener('click', busy(b, async () => { await api('PATCH', '/api/fields/' + d.id, { name: n.value.trim(), prorate: sel.value === '1' }); toast('Saved'); state.meta = null; renderSetup(); }));
+        b.addEventListener('click', busy(b, async () => { await api('PATCH', '/api/fields/' + d.id, { name: n.value.trim(), prorate: sel.value === '1' }); toast('Saved'); state.meta = null; renderPopulation(); }));
         return h('tr', {}, h('td', {}, n), h('td', {}, sel), h('td', {}, idTag(d.id)), h('td', {}, b));
       }), h('tr', {}, h('td', {}, name), h('td', {}, h('label', { class: 'check' }, split, 'Split by months')), h('td'), h('td', {}, add))))),
     h('p', { class: 'muted small' }, '“Split by months” suits yearly flows such as expected pregnancies or births: a monthly indicator divides by one twelfth. “As is” suits counts such as households, schools or total population. Each LGA (or the state on its behalf) enters these once a year under Data entry.'));
@@ -854,7 +860,7 @@ function populationImportPanel(ds, fields) {
         'Keep the State, LGA and LGA ID columns as they are — they link each row to the right LGA.',
         'Numbers only, without decimals or text (commas are fine). Leave a cell empty to keep what is already stored.',
         'You can delete rows you do not have figures for.',
-        'Then use “Import Excel” on the Population & denominators page, choose the same year and say where the figures come from.',
+        'Then use “Import Excel” under Setup → Population figures, choose the same year and say where the figures come from.',
       ].map((x) => [x])], widths: [110] },
     ]), `Population_${t.year}_template.xlsx`);
   }));
@@ -916,35 +922,114 @@ async function populationImportDialog(ds, fields, file, year, after) {
   document.body.append(dlg); dlg.showModal();
 }
 
-function datasetDialog(ds, m, makeShared = false) {
+function datasetDialog(ds, m, makeShared = false, presetSector = null, after = null) {
   const shared = ds ? ds.shared : makeShared;
-  const name = h('input', { value: ds ? ds.name : shared ? 'Population and denominators' : '' });
-  const sector = h('input', { list: 'sector-list-dlg', value: ds ? ds.sector : '', placeholder: 'e.g. Health' });
+  const name = h('input', { value: ds ? ds.name : shared ? 'Population and denominators' : '', placeholder: 'e.g. Health – monthly report' });
+  const sector = select(m.sectors.map((x) => ({ id: x.name, name: x.name })), ds ? ds.sector : presetSector || (m.sectors[0] || {}).name);
   const freq = select(m.frequencies, ds ? ds.frequency : 'MONTHLY');
   const level = select([{ id: 'LGA', name: 'Each LGA (one report per LGA)' }, { id: 'UNIT', name: 'Each unit — school, facility … (added up to the LGA)' }], ds ? ds.reportLevel : 'LGA');
   const due = h('input', { type: 'number', min: 1, max: 28, value: ds ? ds.dueDay : 15 });
   const id = h('input', { class: 'mono', placeholder: 'auto', maxlength: 11 });
   const err = h('div', { class: 'err' });
   const save = h('button', { class: 'primary' }, ds ? 'Save' : 'Create');
-  const dlg = h('dialog', {}, h('h2', {}, ds ? 'Edit data set' : shared ? 'Population & denominators' : 'New sector data set'),
+  const dlg = h('dialog', {}, h('h2', {}, ds ? 'Edit data set' : shared ? 'Population & denominators' : 'New data set'),
     h('datalist', { id: 'sector-list-dlg' }, m.sectors.map((x) => h('option', { value: x.name }))),
     shared ? h('p', { class: 'muted small' }, 'A yearly data set for numbers that every sector’s indicators divide by. It has no indicators of its own.') : null,
     h('div', { class: 'grid2' }, field('Name', name), shared ? null : field('Sector', sector), shared ? null : field('Reporting frequency', freq), shared ? null : field('Who reports', level),
       shared ? null : field('Due day (of the following month)', due), ds ? field('ID', idTag(ds.id)) : field('ID (optional)', id)),
     err, h('p'), h('div', { class: 'actions' }, save, h('button', { onclick: () => dlg.close() }, 'Cancel'),
-      ds && is('sysadmin') ? h('button', { class: 'danger', onclick: async () => { await api('PATCH', '/api/datasets/' + ds.id, { archived: !ds.archived }); dlg.close(); state.meta = null; renderSetup(); } }, ds.archived ? 'Restore' : 'Archive') : null));
+      ds && is('sysadmin') ? h('button', { class: 'danger', onclick: async () => { await api('PATCH', '/api/datasets/' + ds.id, { archived: !ds.archived }); dlg.close(); state.meta = null; (after || renderSetup)(); } }, ds.archived ? 'Restore' : 'Archive') : null));
   dlg.addEventListener('close', () => dlg.remove());
   save.addEventListener('click', busy(save, async () => {
     err.textContent = '';
-    const body = shared ? { name: name.value.trim() } : { name: name.value.trim(), sector: sector.value.trim(), frequency: freq.value, reportLevel: level.value, dueDay: Number(due.value) };
+    const body = shared ? { name: name.value.trim() } : { name: name.value.trim(), sector: sector.value, frequency: freq.value, reportLevel: level.value, dueDay: Number(due.value) };
     if (shared && !ds) body.shared = true;
     try {
       if (ds) await api('PATCH', '/api/datasets/' + ds.id, body);
       else { if (id.value.trim()) body.id = id.value.trim(); const { data } = await api('POST', '/api/datasets', body); pref('setupDs', data.id); }
     } catch (e) { err.textContent = e.message; return; }
-    dlg.close(); state.meta = null; await loadMe(); renderSetup();
+    dlg.close(); state.meta = null; await loadMe(); (after || renderSetup)();
   }));
   document.body.append(dlg); dlg.showModal();
+}
+
+// ---------- setup: overview, sectors, population, rollout ----------
+async function renderSetupHome() {
+  const m = await meta(true);
+  const o = await orgs();
+  const sets = m.datasets.filter((d) => !d.shared && !d.archived);
+  const shared = m.datasets.find((d) => d.shared && !d.archived);
+  const year = String(new Date().getFullYear());
+  let pop = null; let roll = null; let requests = [];
+  if (shared && is('sysadmin', 'setupadmin')) pop = await get(`/api/datasets/${shared.id}/population?year=${year}`).catch(() => null);
+  if (is('sysadmin')) roll = (await get('/api/orgunits?all=1')).states;
+  if (is('sysadmin', 'state')) requests = (await get('/api/account-requests').catch(() => ({ requests: [] }))).requests;
+  const inds = sets.reduce((n, d) => n + d.indicators.filter((i) => !i.archived).length, 0);
+  const popFilled = pop ? pop.lgas.filter((l) => Object.values(l.values).some((v) => v !== null)).length : 0;
+  const step = (n, title, done, status, href, button, who = ['sysadmin', 'setupadmin']) => (who.includes(role()) ? h('div', { class: 'step' + (done ? ' done' : '') },
+    h('div', { class: 'stepnum' }, done ? '✓' : String(n)),
+    h('div', { class: 'stepbody' }, h('h3', {}, title), h('p', { class: 'muted small' }, status)),
+    h('a', { class: 'btn' + (done ? '' : ' primary'), href }, button)) : null);
+  mount(h('div', {},
+    h('div', { class: 'head' }, h('div', {}, h('h1', {}, 'Setup'), h('div', { class: 'muted' }, 'Prepare the system in these steps. Sector staff never see this area — they only use Reporting.'))),
+    h('div', { class: 'steps' },
+      step(1, 'Sectors', m.sectors.length > 0, m.sectors.length ? `${m.sectors.length} sector${m.sectors.length === 1 ? '' : 's'}: ${m.sectors.map((x) => x.name).join(', ')}` : 'Add the sectors that report — Health, Education, Agriculture, WASH …', '#/sectors', m.sectors.length ? 'Open' : 'Add sectors'),
+      step(2, 'Population figures', popFilled > 0, !shared ? 'Yearly figures per LGA that indicators divide by (population, expected pregnancies …). Name them before writing indicators.' : pop ? `${year}: ${popFilled} of ${pop.lgas.length} LGAs have figures${pop.source ? ` · ${pop.source.source}` : ''}` : 'Set up', '#/population', shared ? 'Open' : 'Set up'),
+      step(3, 'Data sets & indicators', inds > 0, sets.length ? `${sets.length} data set${sets.length === 1 ? '' : 's'}, ${inds} indicator${inds === 1 ? '' : 's'}` : 'For each sector, a reporting form with its indicators', '#/setup', sets.length ? 'Open' : 'Create'),
+      step(4, 'Org units', true, 'Nigeria’s states and LGAs are loaded with their DHIS2 IDs. Add schools / facilities if a sector reports by unit.', '#/units', 'Open', ['sysadmin', 'setupadmin', 'state']),
+      step(5, 'Rollout', !!roll && roll.some((x) => !x.active), roll ? (() => { const on = roll.filter((x) => x.active); return `${on.length} of ${roll.length} states active${on.length <= 8 ? ': ' + on.map((x) => x.name.replace(/^[a-z]{2} /, '').replace(/ State$/, '')).join(', ') : ''}`; })() : '', '#/rollout', 'Open', ['sysadmin']),
+      step(6, 'Accounts', false, requests.length ? `${requests.length} request${requests.length === 1 ? '' : 's'} waiting for approval` : 'Share a registration QR code, approve requests, or create accounts', '#/accounts', requests.length ? 'Review requests' : 'Open', ['sysadmin', 'state'])),
+    h('p', { class: 'muted small' }, `States in use: ${o.states.length}.`)));
+}
+
+async function renderSectors() {
+  const m = await meta(true);
+  const name = h('input', { placeholder: 'e.g. Health, Education, Agriculture, WASH', size: 36 });
+  const add = h('button', { class: 'primary', type: 'submit' }, '+ Add sector');
+  const form = h('form', { class: 'bar' }, field('New sector', name), add);
+  form.addEventListener('submit', busy(add, async () => {
+    await api('POST', '/api/sectors', { name: name.value.trim() }); toast('Sector added'); renderSectors();
+  }));
+  const cards = m.sectors.map((sec) => {
+    const sets = m.datasets.filter((d) => d.sectorId === sec.id && !d.shared);
+    const rename = h('button', { class: 'link' }, 'Rename');
+    rename.addEventListener('click', busy(rename, async () => {
+      const n = prompt('New name for this sector:', sec.name); if (!n || n.trim() === sec.name) return;
+      await api('PATCH', '/api/sectors/' + sec.id, { name: n.trim() }); toast('Renamed'); renderSectors();
+    }));
+    const remove = sets.length || sec.indicators ? null : h('button', { class: 'link danger-link' }, 'Remove');
+    if (remove) remove.addEventListener('click', busy(remove, async () => { if (!confirm(`Remove the sector “${sec.name}”?`)) return; await api('DELETE', '/api/sectors/' + sec.id); toast('Removed'); renderSectors(); }));
+    return h('div', { class: 'panel sectorcard' },
+      h('div', { class: 'head' }, h('h2', {}, sec.name), h('div', { class: 'actions' }, is('sysadmin') ? rename : null, is('sysadmin') ? remove : null)),
+      sets.length ? h('table', {}, h('thead', {}, h('tr', {}, h('th', {}, 'Data set'), h('th', {}, 'Reported'), h('th', {}, 'By'), h('th', { class: 'n' }, 'Indicators'), h('th'))),
+        h('tbody', {}, sets.map((d) => h('tr', {}, h('td', {}, d.name, d.archived ? h('span', { class: 'muted small' }, ' (archived)') : null), h('td', {}, d.frequencyName),
+          h('td', {}, d.reportLevel === 'UNIT' ? 'Each school / facility' : 'Each LGA'), h('td', { class: 'n' }, String(d.indicators.filter((i) => !i.archived).length)),
+          h('td', {}, h('button', { onclick: () => { pref('setupDs', d.id); go('#/setup'); } }, 'Indicators →'))))))
+        : h('p', { class: 'muted' }, 'No data sets yet.'),
+      is('sysadmin') ? h('button', { onclick: () => datasetDialog(null, m, false, sec.name, renderSectors) }, `+ Add ${/^[aeiou]/i.test(sec.name) ? 'an' : 'a'} ${sec.name} data set`) : null);
+  });
+  mount(h('div', {},
+    h('div', { class: 'head' }, h('div', {}, h('h1', {}, 'Step 1 · Sectors'), h('div', { class: 'muted' }, 'Each sector has one or more data sets (reporting forms). Add a sector, then add its data sets.'))),
+    is('sysadmin') ? h('div', { class: 'panel' }, form) : null,
+    m.sectors.length ? cards : h('div', { class: 'panel empty' }, 'No sectors yet. Type a name above — for example Health — and click Add sector.'),
+    m.sectors.length ? h('p', {}, h('a', { class: 'btn', href: '#/population' }, 'Next: population figures →')) : null));
+}
+
+async function renderPopulation() {
+  const m = await meta(true);
+  const ds = m.datasets.find((d) => d.shared);
+  const head = h('div', { class: 'head' }, h('div', {}, h('h1', {}, 'Step 2 · Population figures'), h('div', { class: 'muted' }, 'Yearly figures per LGA that indicators of every sector can divide by — total population, expected pregnancies, children under 5, households …')));
+  if (!ds) {
+    return mount(h('div', {}, head, h('div', { class: 'panel empty' }, h('p', {}, 'Not set up yet.'),
+      is('sysadmin') ? h('button', { class: 'primary', onclick: () => datasetDialog(null, m, true, null, renderPopulation) }, 'Set up population figures') : null)));
+  }
+  mount(h('div', {}, head, sharedPanel(ds), h('p', {}, h('a', { class: 'btn', href: '#/setup' }, 'Next: data sets & indicators →'))));
+}
+
+async function renderRollout() {
+  mount(h('div', {},
+    h('div', { class: 'head' }, h('div', {}, h('h1', {}, 'Step 5 · Rollout'), h('div', { class: 'muted' }, 'Choose the states that use the system.'))),
+    await rolloutPanel()));
 }
 
 // ---------- sector org units (schools, facilities ...) ----------
@@ -964,8 +1049,7 @@ async function rolloutPanel() {
     toast(`Rollout saved (${data.changed} state${data.changed === 1 ? '' : 's'} changed)`);
   }));
   const all = (on) => () => { boxes.forEach((b) => { b.box.checked = on; }); upd(); };
-  return h('details', { class: 'panel', open: states.some((st) => !st.active) || undefined },
-    h('summary', {}, 'Rollout — which states use the system'),
+  return h('div', { class: 'panel' },
     h('p', { class: 'muted small' }, 'Only active states show up: in lists, registration QR codes, the state picture, pivot table, national totals and reporting rates, and exports. Data and accounts of inactive states are kept and come back when you activate them again.'),
     h('div', { class: 'actions' }, h('button', { class: 'link', onclick: all(true) }, 'Select all'), h('button', { class: 'link', onclick: all(false) }, 'Select none'), count),
     h('div', { class: 'chips rollout' }, boxes.map((b) => h('label', { class: 'check' }, b.box, b.st.name))),
@@ -973,7 +1057,7 @@ async function rolloutPanel() {
 }
 
 async function renderUnits() {
-  const rollout = is('sysadmin') ? await rolloutPanel() : null;
+  const rollout = null;
   const sectorPref = pref('unitSector');
   const first = await get('/api/units' + qs({ sector: sectorPref, state: state.me.ou.level === 1 ? pref('unitState') : undefined }));
   if (!first.sectors.length) return mount(h('div', {}, h('h1', {}, 'Org units'), rollout, h('div', { class: 'panel empty' }, 'Create a sector data set on the Indicators page first; units below LGAs are added per sector.')));
@@ -1207,17 +1291,31 @@ async function renderAccounts() {
   const [{ requests }, { links }] = await Promise.all([get('/api/account-requests'), get('/api/registration-links')]);
   const qrBtn = h('button', { onclick: () => linkDialog(m) }, '+ Registration QR code');
   mount(h('div', {},
-    h('div', { class: 'head' }, h('div', {}, h('h1', {}, 'Accounts'), h('div', { class: 'muted' }, 'Create accounts yourself, or share a registration QR code: people fill in their details and you approve them.')), h('div', { class: 'actions' }, qrBtn, add)),
+    h('div', { class: 'head' }, h('div', {}, h('h1', {}, 'Step 6 · Accounts'), h('div', { class: 'muted' }, 'Share a registration QR code (people fill in their details, you approve), or create an account yourself. Administrators set up and review; data-entry accounts only report numbers.')), h('div', { class: 'actions' }, qrBtn, add)),
     requestsPanel(requests, m),
     linksPanel(links),
-    h('h2', {}, 'Accounts'),
-    h('div', { class: 'scroll' }, h('table', {},
-      h('thead', {}, h('tr', {}, h('th', {}, 'Name'), h('th', {}, 'Email'), h('th', {}, 'Role'), h('th', {}, 'Area'), h('th', {}, 'Assigned'), h('th', {}, 'Last sign-in'), h('th', {}, 'Status'))),
-      h('tbody', {}, users.map((u) => h('tr', { class: 'click', onclick: () => userDialog(u, roles, m) },
-        h('td', {}, u.name), h('td', {}, u.email), h('td', {}, u.roleName), h('td', {}, u.ou ? u.ou.name : ''),
-        h('td', { class: 'small' }, assignedText(u, m)),
-        h('td', {}, fmtDate(u.lastLoginAt)),
-        h('td', {}, !u.active ? pill('none', 'Deactivated') : u.locked ? pill('returned', 'Locked') : !u.passwordSet ? pill('submitted', 'Invited') : pill('accepted', 'Active')))))))));
+    ...['admin', 'entry', 'view'].map((g) => {
+      const list = users.filter((u) => ROLE_GROUP[u.role] === g);
+      if (!list.length) return null;
+      return h('div', {}, h('h2', {}, { admin: 'Administrators', entry: 'Data entry', view: 'View only' }[g], h('span', { class: 'muted small' }, ` (${list.length})`)),
+        h('div', { class: 'scroll' }, h('table', {},
+          h('thead', {}, h('tr', {}, h('th', {}, 'Name'), h('th', {}, 'Email'), h('th', {}, 'Role'), h('th', {}, 'Area'), h('th', {}, 'Assigned'), h('th', {}, 'Last sign-in'), h('th', {}, 'Status'))),
+          h('tbody', {}, list.map((u) => h('tr', { class: 'click', onclick: () => userDialog(u, roles, m) },
+            h('td', {}, u.name), h('td', {}, u.email), h('td', {}, roleBadge(u.role, u.roleName)), h('td', {}, u.ou ? u.ou.name : ''),
+            h('td', { class: 'small' }, assignedText(u, m)),
+            h('td', {}, fmtDate(u.lastLoginAt)),
+            h('td', {}, !u.active ? pill('none', 'Deactivated') : u.locked ? pill('returned', 'Locked') : !u.passwordSet ? pill('submitted', 'Invited') : pill('accepted', 'Active'))))))));
+    }),
+  ));
+}
+
+// A role picker grouped into Administrators / Data entry / View only.
+function roleSelect(roles, value) {
+  const groups = ['admin', 'entry', 'view'];
+  return h('select', {}, groups.map((g) => {
+    const list = roles.filter((r) => ROLE_GROUP[r.id] === g);
+    return list.length ? h('optgroup', { label: { admin: 'Administrators (set up, review, manage)', entry: 'Data entry (report numbers)', view: 'View only' }[g] }, list.map((r) => h('option', { value: r.id, selected: r.id === value }, r.name))) : null;
+  }));
 }
 
 // ---------- self-registration: requests, links, QR codes ----------
@@ -1347,7 +1445,7 @@ async function renderRegister(token) {
   const places = async (parent, units) => (await api('GET', `/api/register/${token}/places?parent=${parent}${units ? '&units=1' : ''}`)).data.children;
   const name = h('input', { autocomplete: 'name' }); const email = h('input', { type: 'email', autocomplete: 'email' });
   const phone = h('input', { type: 'tel', autocomplete: 'tel' }); const job = h('input'); const org = h('input', { placeholder: 'e.g. Ministry of Health, Aba North LGA' });
-  const roleSel = select(info.roles, info.role && info.roles.some((r) => r.id === info.role) ? info.role : info.roles[0].id);
+  const roleSel = roleSelect(info.roles, info.role && info.roles.some((r) => r.id === info.role) ? info.role : (info.roles.find((r) => r.id === 'lga') || info.roles[0]).id);
   const stateSel = h('select'); const lgaSel = h('select'); const unitSel = h('select');
   const where = h('div', { class: 'grid2' });
   const note = h('textarea', { placeholder: 'Anything the administrator should know (optional)' });
@@ -1429,7 +1527,7 @@ async function userDialog(u, roles, m) {
   const allowedRoles = is('sysadmin') ? roles : roles.filter((r) => ['lga', 'unit'].includes(r.id));
   const name = h('input', { value: u ? u.name : '', autocomplete: 'off' });
   const email = h('input', { type: 'email', value: u ? u.email : '', autocomplete: 'off' });
-  const roleSel = select(allowedRoles, u ? u.role : allowedRoles[allowedRoles.length > 2 ? 3 : 0].id);
+  const roleSel = roleSelect(allowedRoles, u ? u.role : (allowedRoles.find((r) => r.id === 'lga') || allowedRoles[0]).id);
   const o = await orgs();
   const stateSel = select(o.states, u && u.ou && u.ou.level >= 2 ? null : o.states[0].id);
   const lgaSel = h('select');

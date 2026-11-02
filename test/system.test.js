@@ -650,3 +650,32 @@ test('rollout: only active states show up in lists, registration, picture, pivot
   const so = await addUser(env, admin, { name: 'S', email: 's@abia.gov.ng', role: 'state', ouId: ABIA });
   assert.equal((await so.c.call('PUT', '/api/rollout', { active: [ABIA] })).status, 403);
 });
+
+test('sectors can be added, renamed and removed (only when unused)', async () => {
+  const env = makeEnv();
+  const admin = await setupAdmin(env);
+  const r = await admin.post('/api/sectors', { name: 'Agriculture' });
+  assert.equal(r.status, 201);
+  assert.equal((await admin.post('/api/sectors', { name: 'agriculture' })).status, 409);
+  assert.equal((await admin.patch('/api/sectors/' + r.data.id, { name: 'Agriculture & Food Security' })).status, 200);
+  assert.ok((await admin.get('/api/metadata')).data.sectors.some((s) => s.name === 'Agriculture & Food Security'));
+  await admin.post('/api/datasets', { name: 'Agric – quarterly', sector: 'Agriculture & Food Security', frequency: 'QUARTERLY' });
+  assert.equal((await admin.del('/api/sectors/' + r.data.id)).status, 409);
+  const w = (await admin.post('/api/sectors', { name: 'WASH' })).data.id;
+  assert.equal((await admin.del('/api/sectors/' + w)).status, 200);
+  const so = await addUser(env, admin, { name: 'S', email: 's@abia.gov.ng', role: 'state', ouId: ABIA });
+  assert.equal((await so.c.post('/api/sectors', { name: 'X' })).status, 403);
+});
+
+test('a population figure added after the indicator takes over the same-named number', async () => {
+  const env = makeEnv();
+  const admin = await setupAdmin(env);
+  const h = (await admin.post('/api/datasets', { name: 'Health – monthly', sector: 'Health', frequency: 'MONTHLY' })).data;
+  const ind = (await admin.post(`/api/datasets/${h.id}/indicators`, { name: 'ANC', numerator: 'ANC visits', denominator: 'Expected pregnancies' })).data.indicator;
+  const pop = (await admin.post('/api/datasets', { name: 'Population', shared: true })).data;
+  const f = (await admin.post(`/api/datasets/${pop.id}/fields`, { name: 'Expected Pregnancies' })).data.dataElement;
+  const meta = (await admin.get('/api/metadata')).data;
+  const hs = meta.datasets.find((d) => d.id === h.id);
+  assert.deepEqual(hs.dataElements.map((d) => d.name), ['ANC visits']);
+  assert.equal(hs.indicators.find((i) => i.id === ind.id).denominatorId, f.id);
+});

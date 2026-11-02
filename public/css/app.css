@@ -114,9 +114,8 @@ dialog::backdrop { background: rgba(20, 30, 25, .35); }
 table.setup { table-layout: fixed; min-width: 1100px; }
 table.setup td { padding: 6px 6px; }
 table.setup input, table.setup select { width: 100%; min-width: 0; }
-table.setup col.c-sector { width: 10%; } table.setup col.c-name { width: 18%; }
-table.setup col.c-num { width: 17%; } table.setup col.c-den { width: 17%; }
-table.setup col.c-src { width: 12%; } table.setup col.c-show { width: 11%; } table.setup col.c-id { width: 15%; }
+table.setup col.c-name { width: 21%; } table.setup col.c-num { width: 20%; } table.setup col.c-den { width: 20%; }
+table.setup col.c-src { width: 13%; } table.setup col.c-show { width: 11%; } table.setup col.c-id { width: 15%; }
 table.setup .actions { flex-wrap: nowrap; gap: 2px; margin-top: 4px; }
 table.setup .actions button { padding: 4px 10px; min-height: 30px; }
 
@@ -132,3 +131,36 @@ form.reg { max-width: 560px; }
   dialog.qr .qrbox svg { width: 420px; height: 420px; }
 }
 .chips.rollout { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 4px 12px; }
+
+/* Reporting / Setup areas */
+nav { align-items: center; gap: 10px; }
+.areaswitch { display: inline-flex; border: 1px solid var(--line); border-radius: 8px; padding: 2px; background: var(--bg); }
+.areaswitch a { padding: 5px 12px; border-radius: 6px; font-weight: 600; color: var(--muted); }
+.areaswitch a.on { background: var(--ink); color: #fff; }
+.navlinks { display: flex; flex-wrap: wrap; gap: 0; }
+/* role badges: administrators vs data entry vs view only */
+.rolebadge { display: inline-block; padding: 1px 8px; border-radius: 999px; font-size: .76rem; font-weight: 650; white-space: nowrap; }
+.rb-admin { background: #ece4f7; color: #5b2d8e; }
+.rb-entry { background: var(--info-soft); color: var(--info); }
+.rb-view { background: #eef0ef; color: var(--muted); }
+/* setup overview steps */
+.steps { display: grid; gap: 10px; }
+.step { display: grid; grid-template-columns: 44px 1fr auto; align-items: center; gap: 14px; background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 14px 18px; }
+.step h3 { margin: 0 0 2px; font-size: 1rem; text-transform: none; letter-spacing: 0; color: var(--ink); }
+.step p { margin: 0; }
+.stepnum { width: 36px; height: 36px; border-radius: 50%; display: grid; place-items: center; font-weight: 700; background: var(--bg); border: 2px solid var(--line); color: var(--muted); }
+.step.done .stepnum { background: var(--ok-soft); border-color: var(--ok); color: var(--ok); }
+.btn.primary, a.btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+.facts { display: flex; flex-wrap: wrap; gap: 6px 18px; align-items: center; margin: -6px 0 14px; color: var(--muted); font-size: .9rem; }
+.sectorcard .head { margin-bottom: 6px; } .sectorcard h2 { margin: 0; }
+.sectorcard table { margin-bottom: 10px; }
+button.danger-link { color: var(--bad); }
+@media (max-width: 760px) { .step { grid-template-columns: 36px 1fr; } .step .btn { grid-column: 2; justify-self: start; } }
+/* Header: row 1 = brand · Reporting|Setup switch · user; row 2 = the area's pages as a tab bar */
+.top nav { display: contents; }
+.top .brand { order: 0; }
+.top .areaswitch { order: 1; }
+.top .who { order: 2; margin-left: auto; }
+.top .navlinks { order: 3; flex-basis: 100%; margin: 0 -9px; border-top: 1px solid var(--line); padding-top: 4px; }
+.top .navlinks:empty { display: none; }
+@media (max-width: 640px) { .top .who { flex-wrap: wrap; white-space: normal; margin-left: 0; row-gap: 2px; } }

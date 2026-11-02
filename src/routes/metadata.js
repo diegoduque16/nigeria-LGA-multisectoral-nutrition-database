@@ -91,6 +91,29 @@ async function sectorFor(db, name) {
   return id;
 }
 
+// POST /api/sectors { name } — add a sector (Health, Education, Agriculture, WASH …).
+export async function createSector(request, env, ctx) {
+  requireRole(ctx, ['sysadmin']);
+  const body = validate(v.object({ name: v.string({ min: 2, max: 100 }) }), await readJson(request));
+  if (await one(env.DB, 'SELECT id FROM sectors WHERE lower(name) = lower(?)', body.name)) throw new HttpError(409, 'name_taken', 'This sector already exists.');
+  const id = await sectorFor(env.DB, body.name);
+  await audit(env.DB, ctx, 'sector_created', 'sector', id, { name: body.name });
+  return json({ id }, 201);
+}
+
+// DELETE /api/sectors/:id — only while nothing uses it.
+export async function deleteSector(request, env, ctx, { id }) {
+  requireRole(ctx, ['sysadmin']);
+  const s = await one(env.DB, 'SELECT * FROM sectors WHERE id = ?', id);
+  if (!s) throw new HttpError(404, 'not_found', 'Sector not found.');
+  for (const [table, what] of [['datasets', 'data sets'], ['indicators', 'indicators'], ['org_units', 'org units']]) {
+    if (await one(env.DB, `SELECT 1 AS x FROM ${table} WHERE sector_id = ? LIMIT 1`, id)) throw new HttpError(409, 'in_use', `This sector still has ${what}. Remove or move them first.`);
+  }
+  await run(env.DB, 'DELETE FROM sectors WHERE id = ?', id);
+  await audit(env.DB, ctx, 'sector_deleted', 'sector', id, { name: s.name });
+  return json({ ok: true });
+}
+
 export async function updateSector(request, env, ctx, { id }) {
   requireRole(ctx, ['sysadmin']);
   const s = await one(env.DB, 'SELECT * FROM sectors WHERE id = ?', id);
@@ -202,6 +225,19 @@ export async function createDataElement(request, env, ctx, { datasetId }) {
   }
   const id = await fieldFor(env.DB, ds.id, body.name);
   await run(env.DB, 'UPDATE data_elements SET prorate = ? WHERE id = ?', body.prorate ? 1 : 0, id);
+  // A population figure added after indicators already asked for a number with the same name: link those
+  // indicators to the yearly figure and drop the per-period number (only while nobody has entered values for it).
+  if (ds.shared) {
+    const twins = await all(env.DB, `SELECT de.id FROM data_elements de JOIN datasets d ON d.id = de.dataset_id
+      WHERE d.shared = 0 AND lower(de.name) = lower(?) AND NOT EXISTS (SELECT 1 FROM data_values v WHERE v.de_id = de.id)`, body.name);
+    for (const t of twins) {
+      for (const col of ['numerator', 'denominator']) {
+        await run(env.DB, `UPDATE indicators SET ${col} = replace(${col}, ?, ?), version = version + 1, updated_at = ? WHERE ${col} LIKE ?`, `#{${t.id}}`, `#{${id}}`, now(), `%#{${t.id}}%`);
+      }
+      await run(env.DB, 'DELETE FROM user_data_elements WHERE de_id = ?', t.id);
+      await run(env.DB, 'DELETE FROM data_elements WHERE id = ?', t.id);
+    }
+  }
   await audit(env.DB, ctx, 'field_created', 'data_element', id, { name: body.name });
   return json({ dataElement: deOut(await one(env.DB, 'SELECT * FROM data_elements WHERE id = ?', id)) }, 201);
 }

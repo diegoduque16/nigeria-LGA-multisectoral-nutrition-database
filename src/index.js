@@ -50,7 +50,9 @@ const ROUTES = [
   ['PATCH', '/api/units/:id', units.updateUnit, 'session'],
 
   ['GET', '/api/metadata', meta.getMetadata, 'session'],
+  ['POST', '/api/sectors', meta.createSector, 'session'],
   ['PATCH', '/api/sectors/:id', meta.updateSector, 'session'],
+  ['DELETE', '/api/sectors/:id', meta.deleteSector, 'session'],
   ['POST', '/api/datasets', meta.createDataset, 'session'],
   ['PATCH', '/api/datasets/:id', meta.updateDataset, 'session'],
   ['POST', '/api/datasets/:datasetId/indicators', meta.createIndicator, 'session'],
