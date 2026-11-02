@@ -6,6 +6,7 @@ import {
   ROLES, ROLE_NAMES, ROLE_LEVEL, MAX_FAILED, LOCK_MS, requireRole, inScope, requireScope,
 } from '../lib/auth.js';
 import { loadSeedOrgUnits } from './orgunits.js';
+import { pendingFor } from './register.js';
 
 const INVITE_DAYS = 7;
 const RESET_HOURS = 24;
@@ -52,7 +53,17 @@ export async function login(request, env) {
   await rateLimit(env.DB, 'login-ip:' + ip(request), 30, 900);
   const user = await one(env.DB, 'SELECT * FROM users WHERE email = ?', email);
   const fail = () => new HttpError(401, 'bad_login', 'Email or password is not correct.');
-  if (!user) { await hashPassword(body.password); throw fail(); }
+  if (!user) {
+    // A self-registration that is not approved yet: say so, but only to someone who knows its password.
+    const req = await pendingFor(env.DB, email);
+    if (req && await verifyPassword(body.password, req)) {
+      throw req.status === 'pending'
+        ? new HttpError(403, 'pending_approval', 'Your account request is waiting for approval by an administrator. You can sign in once it is approved.')
+        : new HttpError(403, 'request_rejected', `Your account request was not approved${req.decision_note ? `: ${req.decision_note}` : '.'} Contact your administrator.`);
+    }
+    if (!req) await hashPassword(body.password);
+    throw fail();
+  }
   if (user.locked_until && user.locked_until > now()) {
     const mins = Math.ceil((user.locked_until - now()) / 60000);
     throw new HttpError(423, 'locked', `Too many wrong passwords. This account is locked for ${mins} more minute${mins === 1 ? '' : 's'}.`);

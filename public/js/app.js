@@ -1,6 +1,11 @@
 // LGA Sector Reporting — single-page app (no framework, no dashboards: forms and tables).
 
 // ---------- tiny helpers ----------
+// replaceChildren() would print empty slots as the text "null"; skip them, like h() does.
+const nativeReplace = Element.prototype.replaceChildren;
+Element.prototype.replaceChildren = function (...kids) {
+  return nativeReplace.apply(this, kids.flat(Infinity).filter((k) => k !== null && k !== undefined && k !== false));
+};
 const $ = (s, r = document) => r.querySelector(s);
 function h(tag, attrs = {}, ...kids) {
   const el = document.createElement(tag);
@@ -102,7 +107,15 @@ function renderChrome(page) {
   const top = $('#top');
   if (!state.me) { top.hidden = true; return; }
   top.hidden = false;
-  $('#nav').replaceChildren(...PAGES.filter((p) => p.roles.includes(role())).map((p) => h('a', { href: '#/' + p.id, class: p.id === page ? 'on' : '' }, p.name)));
+  $('#nav').replaceChildren(...PAGES.filter((p) => p.roles.includes(role())).map((p) => h('a', { href: '#/' + p.id, class: p.id === page ? 'on' : '', 'data-page': p.id }, p.name)));
+  const setTop = () => document.documentElement.style.setProperty('--toph', `${top.offsetHeight}px`);
+  setTop(); if (!window.__topWatch) { window.__topWatch = true; window.addEventListener('resize', () => { const t = $('#top'); if (t && !t.hidden) document.documentElement.style.setProperty('--toph', `${t.offsetHeight}px`); }); }
+  if (is('sysadmin', 'state')) {
+    get('/api/account-requests').then(({ requests }) => {
+      const a = $('#nav a[data-page="accounts"]');
+      if (a && requests.length) a.append(h('span', { class: 'badge', title: 'Account requests waiting for approval' }, String(requests.length)));
+    }).catch(() => {});
+  }
   $('#who').replaceChildren(
     h('span', {}, state.me.user.name, ' · ', state.me.user.roleName, state.me.ou ? ' · ' + state.me.ou.name : ''),
     h('a', { href: '#/me' }, 'Password'),
@@ -114,6 +127,7 @@ async function route() {
   const parts = location.hash.replace(/^#\/?/, '').split('/');
   const page = parts[0] || '';
   if (page === 'set-password') return renderSetPassword(parts[1]);
+  if (page === 'register') return renderRegister(parts[1]);
   if (!state.me) await loadMe();
   if (!state.me) {
     const s = await get('/api/setup').catch(() => ({ needsSetup: false }));
@@ -146,7 +160,7 @@ function renderLogin() {
     h('p', { class: 'muted small' }, 'Forgot your password? Ask your administrator for a new sign-in link.'));
   form.addEventListener('submit', busy(btn, async () => {
     err.textContent = '';
-    try { await api('POST', '/api/auth/login', { email: email.value, password: pw.value }); await loadMe(); go('#/'); } catch (e) { err.textContent = e.message; }
+    try { await api('POST', '/api/auth/login', { email: email.value, password: pw.value }); await loadMe(); go('#/'); } catch (e) { err.textContent = e.message; if (e.body && e.body.error && e.body.error.code === 'pending_approval') err.className = 'note info'; }
   }));
   mount(form); email.focus();
 }
@@ -1166,8 +1180,13 @@ async function checkAndImport(data, sectorId, sectorName, sourceName) {
 async function renderAccounts() {
   const [{ users, roles }, m] = await Promise.all([get('/api/users'), meta()]);
   const add = h('button', { class: 'primary', onclick: () => userDialog(null, roles, m) }, '+ New account');
+  const [{ requests }, { links }] = await Promise.all([get('/api/account-requests'), get('/api/registration-links')]);
+  const qrBtn = h('button', { onclick: () => linkDialog(m) }, '+ Registration QR code');
   mount(h('div', {},
-    h('div', { class: 'head' }, h('div', {}, h('h1', {}, 'Accounts'), h('div', { class: 'muted' }, 'Create an account, choose where it works, and which data sets and numbers it reports. The person gets a one-time link to set their password.')), add),
+    h('div', { class: 'head' }, h('div', {}, h('h1', {}, 'Accounts'), h('div', { class: 'muted' }, 'Create accounts yourself, or share a registration QR code: people fill in their details and you approve them.')), h('div', { class: 'actions' }, qrBtn, add)),
+    requestsPanel(requests, m),
+    linksPanel(links),
+    h('h2', {}, 'Accounts'),
     h('div', { class: 'scroll' }, h('table', {},
       h('thead', {}, h('tr', {}, h('th', {}, 'Name'), h('th', {}, 'Email'), h('th', {}, 'Role'), h('th', {}, 'Area'), h('th', {}, 'Assigned'), h('th', {}, 'Last sign-in'), h('th', {}, 'Status'))),
       h('tbody', {}, users.map((u) => h('tr', { class: 'click', onclick: () => userDialog(u, roles, m) },
@@ -1175,6 +1194,181 @@ async function renderAccounts() {
         h('td', { class: 'small' }, assignedText(u, m)),
         h('td', {}, fmtDate(u.lastLoginAt)),
         h('td', {}, !u.active ? pill('none', 'Deactivated') : u.locked ? pill('returned', 'Locked') : !u.passwordSet ? pill('submitted', 'Invited') : pill('accepted', 'Active')))))))));
+}
+
+// ---------- self-registration: requests, links, QR codes ----------
+function requestsPanel(requests, m) {
+  if (!requests.length) return null;
+  const dsName = (id) => (m.datasets.find((d) => d.id === id) || {}).name || '';
+  return h('div', { class: 'panel' }, h('h2', {}, `Waiting for approval (${requests.length})`),
+    h('div', { class: 'scroll' }, h('table', {},
+      h('thead', {}, h('tr', {}, h('th', {}, 'Name'), h('th', {}, 'Contact'), h('th', {}, 'Job / organisation'), h('th', {}, 'Asked for'), h('th', {}, 'Where'), h('th', {}, 'Data sets'), h('th', {}, 'Sent'), h('th'))),
+      h('tbody', {}, requests.map((r) => {
+        const approve = h('button', { class: 'primary' }, 'Approve');
+        const reject = h('button', { class: 'danger' }, 'Reject');
+        approve.addEventListener('click', busy(approve, async () => { await api('POST', `/api/account-requests/${r.id}/approve`, {}); toast(`${r.name} can now sign in`); renderAccounts(); }));
+        reject.addEventListener('click', busy(reject, async () => {
+          const note = prompt(`Reason for not approving ${r.name} (shown to them when they try to sign in):`, '');
+          if (note === null) return;
+          await api('POST', `/api/account-requests/${r.id}/reject`, { note }); toast('Request rejected'); renderAccounts();
+        }));
+        return h('tr', {},
+          h('td', {}, r.name, r.note ? h('div', { class: 'cov' }, `“${r.note}”`) : null),
+          h('td', { class: 'small' }, r.email, r.phone ? h('div', {}, r.phone) : null),
+          h('td', { class: 'small' }, [r.jobTitle, r.organisation].filter(Boolean).join(' · ')),
+          h('td', {}, r.roleName),
+          h('td', { class: 'small' }, r.ou.name, r.ou.lga ? h('div', { class: 'cov' }, r.ou.lga) : null),
+          h('td', { class: 'small' }, r.datasets.map(dsName).filter(Boolean).join(', ') || 'All'),
+          h('td', { class: 'small' }, fmtDate(r.createdAt), h('div', { class: 'cov' }, `via “${r.link}”`)),
+          h('td', {}, h('div', { class: 'actions' }, approve, reject)));
+      })))),
+    h('p', { class: 'muted small' }, 'Approving creates the account with the password the person chose. You can change their data sets or limit them to certain numbers afterwards in the account list.'));
+}
+
+function linksPanel(links) {
+  if (!links.length) return null;
+  return h('details', { class: 'panel', open: links.some((l) => l.active) || undefined }, h('summary', {}, `Registration QR codes (${links.filter((l) => l.active).length} active)`),
+    h('table', {}, h('thead', {}, h('tr', {}, h('th', {}, 'Name'), h('th', {}, 'Area'), h('th', {}, 'Requests'), h('th', {}, 'Valid until'), h('th', {}, 'Status'), h('th'))),
+      h('tbody', {}, links.map((l) => h('tr', {},
+        h('td', {}, l.name), h('td', {}, l.area ? l.area.name : ''),
+        h('td', { class: 'small' }, `${l.requests.pending} waiting · ${l.requests.approved} approved · ${l.requests.total} total`),
+        h('td', { class: 'small' }, fmtDay(l.expiresAt)),
+        h('td', {}, l.active ? pill('accepted', 'Active') : pill('none', l.revoked ? 'Stopped' : 'Expired')),
+        h('td', {}, h('div', { class: 'actions' },
+          l.active ? h('button', { onclick: () => showQr(l) }, 'Show QR') : null,
+          l.active ? h('button', { class: 'link', onclick: async () => { if (!confirm(`Stop “${l.name}”? The QR code will no longer work.`)) return; await api('DELETE', '/api/registration-links/' + l.id); toast('Stopped'); renderAccounts(); } }, 'Stop') : null)))))));
+}
+
+async function linkDialog(m) {
+  const o = await orgs();
+  const areas = state.me.ou.level === 1 ? [{ id: o.country.id, name: `${o.country.name} (any state)` }, ...o.states] : [{ id: state.me.ou.id, name: state.me.ou.name }];
+  const name = h('input', { placeholder: 'e.g. Abia LGA M&E officers — Nov 2026', size: 40 });
+  const area = select(areas, areas[0].id);
+  const lgaPick = h('select');
+  const fillLga = async () => {
+    const l = area.value === o.country.id ? [] : await lgasOf(area.value);
+    lgaPick.replaceChildren(h('option', { value: '' }, '— whole area —'), ...l.map((x) => h('option', { value: x.id }, x.name)));
+  };
+  area.addEventListener('change', fillLga); await fillLga();
+  const roleOpts = [{ id: '', name: 'Let them choose' }, { id: 'lga', name: 'LGA data entry' }, { id: 'unit', name: 'Unit data entry (school, facility …)' },
+    ...(is('sysadmin') ? [{ id: 'state', name: 'State officer' }, { id: 'viewer', name: 'Viewer' }] : [])];
+  const roleSel = select(roleOpts, is('state') ? 'lga' : '');
+  const days = h('input', { type: 'number', min: 1, max: 365, value: 30, size: 5 });
+  const dsBoxes = m.datasets.filter((d) => !d.archived && !d.shared).map((d) => ({ d, box: h('input', { type: 'checkbox' }) }));
+  const err = h('div', { class: 'err' });
+  const create = h('button', { class: 'primary' }, 'Create QR code');
+  const dlg = h('dialog', {}, h('h2', {}, 'New registration QR code'),
+    h('p', { class: 'muted small' }, 'Anyone with this QR code can ask for an account inside the area you choose. Nobody gets in until you approve them.'),
+    h('div', { class: 'grid2' }, field('Name (for you)', name), field('Area', area), field('Or one LGA', lgaPick), field('Suggested role', roleSel), field('Valid for (days)', days)),
+    dsBoxes.length ? h('div', {}, h('h3', {}, 'Data sets to suggest'), h('div', { class: 'chips' }, dsBoxes.map((x) => h('label', { class: 'check' }, x.box, dsLabel(x.d))))) : null,
+    err, h('p'), h('div', { class: 'actions' }, create, h('button', { onclick: () => dlg.close() }, 'Cancel')));
+  dlg.addEventListener('close', () => dlg.remove());
+  create.addEventListener('click', busy(create, async () => {
+    err.textContent = '';
+    try {
+      const { data } = await api('POST', '/api/registration-links', {
+        name: name.value.trim(), ouId: lgaPick.value || area.value, role: roleSel.value || undefined,
+        datasets: dsBoxes.filter((x) => x.box.checked).map((x) => x.d.id), days: Number(days.value) || 30,
+      });
+      dlg.close(); renderAccounts(); showQr(data.link);
+    } catch (e) { err.textContent = e.message; }
+  }));
+  document.body.append(dlg); dlg.showModal();
+}
+
+async function showQr(link) {
+  const { qrSvg, qrMatrix } = await import('./qr.js');
+  const svg = new DOMParser().parseFromString(qrSvg(link.url, 260), 'image/svg+xml').documentElement;
+  const png = h('button', {}, 'Download image');
+  png.addEventListener('click', () => {
+    // Printable card: QR code + title + short instructions.
+    const mtx = qrMatrix(link.url); const n = mtx.length + 8; const scale = 12; const W = n * scale; const H = W + 170;
+    const c = document.createElement('canvas'); c.width = W; c.height = H; const g = c.getContext('2d');
+    g.fillStyle = '#fff'; g.fillRect(0, 0, W, H); g.fillStyle = '#000';
+    mtx.forEach((row, r) => row.forEach((dark, k) => { if (dark) g.fillRect((k + 4) * scale, (r + 4) * scale, scale, scale); }));
+    g.textAlign = 'center'; g.fillStyle = '#1c2321';
+    g.font = 'bold 26px system-ui, sans-serif'; g.fillText('LGA Sector Reporting — request an account', W / 2, W + 40);
+    g.font = '22px system-ui, sans-serif'; g.fillText(link.name.slice(0, 60), W / 2, W + 80);
+    g.fillStyle = '#5d6b66'; g.font = '18px system-ui, sans-serif';
+    g.fillText('Scan with your phone camera, fill in your details, wait for approval.', W / 2, W + 118);
+    g.fillText(`Valid until ${fmtDay(link.expiresAt)}`, W / 2, W + 148);
+    c.toBlob((b) => saveBlob(b, `registration_qr_${link.name.replace(/[^A-Za-z0-9]+/g, '_').slice(0, 40)}.png`), 'image/png');
+  });
+  const dlg = h('dialog', { class: 'qr' }, h('h2', {}, link.name),
+    h('p', { class: 'muted small' }, `${link.area ? link.area.name + ' · ' : ''}valid until ${fmtDay(link.expiresAt)}`),
+    h('div', { class: 'qrbox' }, svg),
+    h('p', { class: 'small' }, 'Share it on WhatsApp, in an email, or print it. People scan it with their phone camera, fill in their details and wait for approval.'),
+    h('div', { class: 'linkbox' }, h('input', { value: link.url, readonly: true }), h('button', { onclick: () => copy(link.url) }, 'Copy link')),
+    h('p'), h('div', { class: 'actions' }, png, h('button', { onclick: () => window.print() }, 'Print'), h('button', { onclick: () => dlg.close() }, 'Close')));
+  dlg.addEventListener('close', () => dlg.remove());
+  document.body.append(dlg); dlg.showModal();
+}
+
+// Public page reached from the QR code.
+async function renderRegister(token) {
+  renderChrome();
+  let info;
+  try { info = (await api('GET', '/api/register/' + token)).data; } catch (e) {
+    return mount(h('div', { class: 'panel card-narrow' }, h('h1', {}, 'Link not valid'), h('p', {}, e.message), h('a', { href: '#/login' }, 'Go to sign in')));
+  }
+  const places = async (parent, units) => (await api('GET', `/api/register/${token}/places?parent=${parent}${units ? '&units=1' : ''}`)).data.children;
+  const name = h('input', { autocomplete: 'name' }); const email = h('input', { type: 'email', autocomplete: 'email' });
+  const phone = h('input', { type: 'tel', autocomplete: 'tel' }); const job = h('input'); const org = h('input', { placeholder: 'e.g. Ministry of Health, Aba North LGA' });
+  const roleSel = select(info.roles, info.role && info.roles.some((r) => r.id === info.role) ? info.role : info.roles[0].id);
+  const stateSel = h('select'); const lgaSel = h('select'); const unitSel = h('select');
+  const where = h('div', { class: 'grid2' });
+  const note = h('textarea', { placeholder: 'Anything the administrator should know (optional)' });
+  const pw = h('input', { type: 'password', autocomplete: 'new-password' }); const pw2 = h('input', { type: 'password', autocomplete: 'new-password' });
+  const dsBoxes = info.datasets.map((d) => ({ d, box: h('input', { type: 'checkbox', checked: d.suggested }) }));
+  const err = h('div', { class: 'err' });
+  const send = h('button', { class: 'primary', type: 'submit' }, 'Send request');
+  const opt = (list, empty) => [h('option', { value: '' }, empty), ...list.map((x) => h('option', { value: x.id }, x.name + (x.type ? ` (${x.type})` : '')))];
+  // The link's area decides where pickers start: country → states, state → LGAs, LGA → units.
+  const lvl = () => (info.roles.find((r) => r.id === roleSel.value) || {}).level;
+  async function fillStates() { if (info.area.level === 1) stateSel.replaceChildren(...opt(await places(info.area.id), 'Choose your state')); }
+  async function fillLgas() {
+    const sid = info.area.level === 1 ? stateSel.value : info.area.level === 2 ? info.area.id : null;
+    if (info.area.level === 3) { lgaSel.replaceChildren(h('option', { value: info.area.id }, info.area.name)); return fillUnits(); }
+    lgaSel.replaceChildren(...opt(sid ? await places(sid) : [], 'Choose your LGA')); await fillUnits();
+  }
+  async function fillUnits() { unitSel.replaceChildren(...opt(lgaSel.value ? await places(lgaSel.value, true) : [], lgaSel.value ? 'Choose your school / facility' : '—')); }
+  stateSel.addEventListener('change', fillLgas); lgaSel.addEventListener('change', fillUnits);
+  function layout() {
+    const l = lvl();
+    where.replaceChildren(...[
+      info.area.level === 1 && l !== 1 ? field('State', stateSel) : null,
+      (l === 3 || l === 4 || l === null) && info.area.level <= 3 ? field(l === null ? 'LGA (optional)' : 'LGA', lgaSel) : null,
+      l === 4 ? field('Unit (school, facility …)', unitSel) : null].filter(Boolean));
+  }
+  roleSel.addEventListener('change', layout);
+  await fillStates(); await fillLgas(); layout();
+  const form = h('form', { class: 'panel card-narrow reg' },
+    h('h1', {}, 'Request an account'),
+    h('p', { class: 'muted small' }, `LGA Sector Reporting · ${info.name} · ${info.area.name}`),
+    h('div', { class: 'grid2' }, field('Full name', name), field('Email', email), field('Phone', phone), field('Job title', job)), field('Organisation / office', org),
+    h('h3', {}, 'Where you work'), field('I will be', roleSel), where,
+    dsBoxes.length ? h('div', {}, h('h3', {}, 'What you will report or follow'), h('div', { class: 'chips' }, dsBoxes.map((x) => h('label', { class: 'check' }, x.box, `${x.d.sector ? x.d.sector + ' — ' : ''}${x.d.name}`)))) : null,
+    h('h3', {}, 'Choose a password'), h('div', { class: 'grid2' }, field('Password (10+ characters)', pw), field('Type it again', pw2)),
+    note, err, h('p'), send,
+    h('p', { class: 'muted small' }, 'An administrator checks your request. Once approved, sign in with your email and this password.'));
+  form.addEventListener('submit', busy(send, async () => {
+    err.textContent = '';
+    if (pw.value !== pw2.value) { err.textContent = 'The two passwords do not match.'; return; }
+    const l = lvl();
+    const ouId = l === 4 ? unitSel.value : l === 3 ? lgaSel.value : l === 2 ? (info.area.level === 1 ? stateSel.value : info.area.id) : (lgaSel.value || stateSel.value || info.area.id);
+    if (!ouId) { err.textContent = 'Choose where you work.'; return; }
+    try {
+      await api('POST', '/api/register/' + token, {
+        name: name.value.trim(), email: email.value.trim(), phone: phone.value.trim() || undefined, jobTitle: job.value.trim() || undefined,
+        organisation: org.value.trim() || undefined, role: roleSel.value, ouId, datasets: dsBoxes.filter((x) => x.box.checked).map((x) => x.d.id),
+        note: note.value.trim() || undefined, password: pw.value,
+      });
+      mount(h('div', { class: 'panel card-narrow' }, h('h1', {}, 'Request sent'),
+        h('p', {}, 'Thank you. An administrator will check your request. Once it is approved you can sign in with your email and the password you chose.'),
+        h('a', { href: '#/login', class: 'btn' }, 'Go to sign in')));
+    } catch (e) { err.textContent = e.message; }
+  }));
+  mount(form);
 }
 
 function assignedText(u, m) {

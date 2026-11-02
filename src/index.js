@@ -10,6 +10,7 @@ import * as pic from './routes/picture.js';
 import * as units from './routes/units.js';
 import * as pop from './routes/popimport.js';
 import * as pv from './routes/pivot.js';
+import * as reg from './routes/register.js';
 
 // [method, path, handler, access]  access: 'public' | 'optional' | 'session'
 const ROUTES = [
@@ -19,6 +20,15 @@ const ROUTES = [
   ['POST', '/api/auth/logout', users.logout, 'optional'],
   ['GET', '/api/password-links/:token', users.linkInfo, 'public'],
   ['POST', '/api/password-links/:token', users.setPassword, 'public'],
+  ['GET', '/api/register/:token', reg.registrationInfo, 'public'],
+  ['GET', '/api/register/:token/places', reg.registrationPlaces, 'public'],
+  ['POST', '/api/register/:token', reg.submitRegistration, 'public'],
+  ['GET', '/api/registration-links', reg.listLinks, 'session'],
+  ['POST', '/api/registration-links', reg.createLink, 'session'],
+  ['DELETE', '/api/registration-links/:id', reg.revokeLink, 'session'],
+  ['GET', '/api/account-requests', reg.listRequests, 'session'],
+  ['POST', '/api/account-requests/:id/approve', reg.approveRequest, 'session'],
+  ['POST', '/api/account-requests/:id/reject', reg.rejectRequest, 'session'],
   ['GET', '/api/me', users.me, 'session'],
   ['POST', '/api/me/password', users.changePassword, 'session'],
 
