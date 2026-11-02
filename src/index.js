@@ -38,6 +38,7 @@ const ROUTES = [
   ['POST', '/api/datasets/:datasetId/indicators', meta.createIndicator, 'session'],
   ['PATCH', '/api/indicators/:id', meta.updateIndicator, 'session'],
   ['DELETE', '/api/indicators/:id', meta.deleteIndicator, 'session'],
+  ['POST', '/api/datasets/:datasetId/fields', meta.createDataElement, 'session'],
   ['PATCH', '/api/fields/:id', meta.updateDataElement, 'session'],
 
   ['GET', '/api/entry', entry.getEntry, 'session'],

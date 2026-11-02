@@ -38,7 +38,7 @@ async function loadDataset(db, id) {
 
 const deOut = (d) => ({
   id: d.id, datasetId: d.dataset_id, name: d.name, valueType: d.value_type,
-  min: d.min_value, max: d.max_value, sort: d.sort, archived: !!d.archived_at,
+  min: d.min_value, max: d.max_value, sort: d.sort, archived: !!d.archived_at, prorate: d.prorate !== 0,
 });
 
 function deIdOf(expr) {
@@ -62,7 +62,7 @@ function indOut(i, deNames, sectorNames = {}) {
 // ---------- read ----------
 export async function getMetadata(request, env, ctx) {
   const sectors = await all(env.DB, 'SELECT * FROM sectors ORDER BY sort, name');
-  const datasets = await all(env.DB, 'SELECT * FROM datasets ORDER BY name');
+  const datasets = await all(env.DB, 'SELECT * FROM datasets ORDER BY shared DESC, name');
   const des = await all(env.DB, 'SELECT * FROM data_elements ORDER BY dataset_id, sort, name');
   const inds = await all(env.DB, 'SELECT * FROM indicators ORDER BY dataset_id, sort, name');
   const names = Object.fromEntries(des.map((d) => [d.id, d.name]));
@@ -72,7 +72,7 @@ export async function getMetadata(request, env, ctx) {
     showAs: [{ id: 'percent', name: 'Percentage' }, { id: 'per1000', name: 'Per 1,000' }, { id: 'number', name: 'Number' }],
     sectors: sectors.map((s) => ({ id: s.id, name: s.name, indicators: inds.filter((i) => i.sector_id === s.id && !i.archived_at).length })),
     datasets: datasets.map((s) => ({
-      id: s.id, name: s.name, frequency: s.frequency, frequencyName: FREQUENCY_NAMES[s.frequency], dueDay: s.due_day,
+      id: s.id, name: s.name, sectorId: s.sector_id, sector: sectorNames[s.sector_id] || '', shared: !!s.shared, frequency: s.frequency, frequencyName: FREQUENCY_NAMES[s.frequency], dueDay: s.due_day,
       groupId: s.group_id, reportingRateId: s.reporting_rate_id, archived: !!s.archived_at,
       dataElements: des.filter((d) => d.dataset_id === s.id).map(deOut),
       indicators: inds.filter((i) => i.dataset_id === s.id).map((i) => indOut(i, names, sectorNames)),
@@ -109,16 +109,21 @@ export async function createDataset(request, env, ctx) {
   requireRole(ctx, ['sysadmin']);
   const body = validate(v.object({
     name: v.string({ min: 1, max: 100 }),
+    sector: v.string({ min: 1, max: 100 }).optional(),
+    shared: v.boolean().default(false),
     frequency: v.string({ oneOf: Object.keys(FREQUENCIES) }).default('MONTHLY'),
     dueDay: v.number({ min: 1, max: 28, int: true }).default(15),
     id: idField, groupId: idField, reportingRateId: idField,
   }), await readJson(request));
+  if (body.shared) body.frequency = 'YEARLY';
+  else if (!body.sector) throw new HttpError(422, 'invalid', 'Choose the sector this data set belongs to.', { field: 'sector' });
+  const sectorId = body.sector ? await sectorFor(env.DB, body.sector) : null;
   if (await one(env.DB, 'SELECT id FROM datasets WHERE name = ?', body.name)) throw new HttpError(409, 'name_taken', 'A data set with this name already exists.');
   const id = await pickId(env.DB, body.id);
   const groupId = await pickId(env.DB, body.groupId, [id]);
   const rrId = await pickId(env.DB, body.reportingRateId, [id, groupId]);
-  await run(env.DB, 'INSERT INTO datasets (id, name, frequency, group_id, reporting_rate_id, due_day, created_at) VALUES (?,?,?,?,?,?,?)',
-    id, body.name, body.frequency, groupId, rrId, body.dueDay, now());
+  await run(env.DB, 'INSERT INTO datasets (id, name, sector_id, shared, frequency, group_id, reporting_rate_id, due_day, created_at) VALUES (?,?,?,?,?,?,?,?,?)',
+    id, body.name, sectorId, body.shared ? 1 : 0, body.frequency, groupId, rrId, body.dueDay, now());
   await audit(env.DB, ctx, 'dataset_created', 'dataset', id, { name: body.name, frequency: body.frequency });
   return json({ id, groupId, reportingRateId: rrId }, 201);
 }
@@ -128,17 +133,20 @@ export async function updateDataset(request, env, ctx, { id }) {
   requireSetupAdmin(ctx, id);
   const body = validate(v.object({
     name: v.string({ min: 1, max: 100 }).optional(),
+    sector: v.string({ min: 1, max: 100 }).optional(),
     frequency: v.string({ oneOf: Object.keys(FREQUENCIES) }).optional(),
     dueDay: v.number({ min: 1, max: 28, int: true }).optional(),
     archived: v.boolean().optional(),
   }), await readJson(request));
+  if (s.shared && body.frequency && body.frequency !== 'YEARLY') throw new HttpError(422, 'invalid', 'The shared denominators data set is yearly.', { field: 'frequency' });
+  const sectorId = body.sector ? await sectorFor(env.DB, body.sector) : s.sector_id;
   if (body.archived !== undefined && ctx.role !== 'sysadmin') throw new HttpError(403, 'forbidden', 'Only a system administrator can archive a data set.');
   if (body.name && body.name !== s.name && await one(env.DB, 'SELECT id FROM datasets WHERE name = ?', body.name)) throw new HttpError(409, 'name_taken', 'A data set with this name already exists.');
   if (body.frequency && body.frequency !== s.frequency && await one(env.DB, 'SELECT 1 AS x FROM reports WHERE dataset_id = ? LIMIT 1', id)) {
     throw new HttpError(409, 'has_reports', 'Reports already exist for this data set, so its frequency can no longer change. Create a new data set instead.');
   }
-  await run(env.DB, 'UPDATE datasets SET name = ?, frequency = ?, due_day = ?, archived_at = ? WHERE id = ?',
-    body.name ?? s.name, body.frequency ?? s.frequency, body.dueDay ?? s.due_day,
+  await run(env.DB, 'UPDATE datasets SET name = ?, sector_id = ?, frequency = ?, due_day = ?, archived_at = ? WHERE id = ?',
+    body.name ?? s.name, sectorId, body.frequency ?? s.frequency, body.dueDay ?? s.due_day,
     body.archived === undefined ? s.archived_at : body.archived ? now() : null, id);
   await audit(env.DB, ctx, 'dataset_updated', 'dataset', id, body);
   return json({ ok: true });
@@ -146,9 +154,12 @@ export async function updateDataset(request, env, ctx, { id }) {
 
 // ---------- fields (numerators / denominators) ----------
 // Finds the field with this name in the data set (case-insensitive) or creates it.
+// A name that matches a number in the shared denominators data set uses that number instead.
 async function fieldFor(db, datasetId, name) {
   const clean = name.replace(/\s+/g, ' ').trim();
-  const e = await one(db, 'SELECT * FROM data_elements WHERE dataset_id = ? AND lower(name) = lower(?)', datasetId, clean);
+  const e = await one(db, 'SELECT * FROM data_elements WHERE dataset_id = ? AND lower(name) = lower(?)', datasetId, clean)
+    || await one(db, `SELECT de.* FROM data_elements de JOIN datasets d ON d.id = de.dataset_id
+                       WHERE d.shared = 1 AND d.archived_at IS NULL AND de.archived_at IS NULL AND lower(de.name) = lower(?) LIMIT 1`, clean);
   if (e) {
     if (e.archived_at) await run(db, 'UPDATE data_elements SET archived_at = NULL WHERE id = ?', e.id);
     return e.id;
@@ -163,6 +174,7 @@ async function fieldFor(db, datasetId, name) {
 // Removes a field that no indicator uses any more and that has no values; archives it if it has values.
 async function tidyField(db, deId) {
   if (!deId) return;
+  if (await one(db, 'SELECT 1 AS x FROM data_elements de JOIN datasets d ON d.id = de.dataset_id WHERE de.id = ? AND d.shared = 1', deId)) return;
   const used = await one(db, 'SELECT COUNT(*) AS n FROM indicators WHERE archived_at IS NULL AND (numerator LIKE ? OR denominator LIKE ?)', `%${deId}%`, `%${deId}%`);
   if (used.n) return;
   const vals = await one(db, 'SELECT COUNT(*) AS n FROM data_values WHERE de_id = ?', deId);
@@ -171,6 +183,20 @@ async function tidyField(db, deId) {
     await run(db, 'DELETE FROM user_data_elements WHERE de_id = ?', deId);
     await run(db, 'DELETE FROM data_elements WHERE id = ?', deId);
   }
+}
+
+// POST /api/datasets/:id/fields { name, prorate } — numbers added directly (used for the shared denominators data set).
+export async function createDataElement(request, env, ctx, { datasetId }) {
+  const ds = await loadDataset(env.DB, datasetId);
+  requireSetupAdmin(ctx, datasetId);
+  const body = validate(v.object({ name: v.string({ min: 1, max: 230 }), prorate: v.boolean().default(true) }), await readJson(request));
+  if (await one(env.DB, 'SELECT id FROM data_elements WHERE dataset_id = ? AND lower(name) = lower(?) AND archived_at IS NULL', ds.id, body.name)) {
+    throw new HttpError(409, 'name_taken', 'This data set already has a number with that name.');
+  }
+  const id = await fieldFor(env.DB, ds.id, body.name);
+  await run(env.DB, 'UPDATE data_elements SET prorate = ? WHERE id = ?', body.prorate ? 1 : 0, id);
+  await audit(env.DB, ctx, 'field_created', 'data_element', id, { name: body.name });
+  return json({ dataElement: deOut(await one(env.DB, 'SELECT * FROM data_elements WHERE id = ?', id)) }, 201);
 }
 
 // Rename a field (fixes a typo everywhere, keeps its values) or set its limits.
@@ -183,6 +209,7 @@ export async function updateDataElement(request, env, ctx, { id }) {
     valueType: v.string({ oneOf: ['INTEGER', 'NUMBER'] }).optional(),
     min: v.number().nullable(),
     max: v.number().nullable(),
+    prorate: v.boolean().optional(),
   }), await readJson(request));
   const min = body.min === undefined ? d.min_value : body.min;
   const max = body.max === undefined ? d.max_value : body.max;
@@ -195,8 +222,9 @@ export async function updateDataElement(request, env, ctx, { id }) {
     const frac = await one(env.DB, 'SELECT COUNT(*) AS n FROM data_values WHERE de_id = ? AND value != CAST(value AS INTEGER)', id);
     if (frac.n) throw new HttpError(409, 'has_decimals', 'Some values already have decimals, so this cannot become a whole-number field.');
   }
-  await run(env.DB, 'UPDATE data_elements SET name = ?, short_name = ?, value_type = ?, min_value = ?, max_value = ? WHERE id = ?',
-    body.name ?? d.name, (body.name ?? d.name).slice(0, 50), body.valueType ?? d.value_type, min, max, id);
+  await run(env.DB, 'UPDATE data_elements SET name = ?, short_name = ?, value_type = ?, min_value = ?, max_value = ?, prorate = ? WHERE id = ?',
+    body.name ?? d.name, (body.name ?? d.name).slice(0, 50), body.valueType ?? d.value_type, min, max,
+    body.prorate === undefined ? d.prorate : body.prorate ? 1 : 0, id);
   await audit(env.DB, ctx, 'field_updated', 'data_element', id, body);
   return json({ dataElement: deOut(await one(env.DB, 'SELECT * FROM data_elements WHERE id = ?', id)) });
 }
@@ -207,7 +235,7 @@ const indicatorSchema = (partial) => {
   const shape = {
     id: partial ? undefined : idField,
     name: req(v.string({ min: 1, max: 230 })),
-    sector: req(v.string({ min: 1, max: 100 })),     // typed or picked; new names create a sector
+    sector: v.string({ min: 1, max: 100 }).optional(),  // defaults to the data set's sector; new names create a sector
     numerator: req(v.string({ min: 1, max: 230 })),
     denominator: v.string({ max: 230 }).optional(),     // empty = a plain count
     source: v.string({ max: 300 }).optional(),
@@ -237,7 +265,9 @@ export async function createIndicator(request, env, ctx, { datasetId }) {
   if (await one(env.DB, 'SELECT id FROM indicators WHERE dataset_id = ? AND lower(name) = lower(?) AND archived_at IS NULL', datasetId, body.name)) {
     throw new HttpError(409, 'name_taken', 'This data set already has an indicator with that name.');
   }
-  const sectorId = await sectorFor(env.DB, body.sector);
+  if (ds.shared) throw new HttpError(422, 'invalid', 'The shared denominators data set holds numbers only. Add its numbers with “Add number”, then use them as denominators in other data sets.');
+  if (!body.sector && !ds.sector_id) throw new HttpError(422, 'invalid', 'Choose a sector for this indicator.', { field: 'sector' });
+  const sectorId = body.sector ? await sectorFor(env.DB, body.sector) : ds.sector_id;
   const id = await pickId(env.DB, body.id);
   const numId = await fieldFor(env.DB, datasetId, body.numerator);
   const den = (body.denominator || '').trim();
@@ -257,7 +287,7 @@ export async function createIndicator(request, env, ctx, { datasetId }) {
 
 async function indicatorById(db, id) {
   const i = await one(db, 'SELECT * FROM indicators WHERE id = ?', id);
-  const des = await all(db, 'SELECT id, name FROM data_elements WHERE dataset_id = ?', i.dataset_id);
+  const des = await all(db, 'SELECT de.id, de.name FROM data_elements de JOIN datasets d ON d.id = de.dataset_id WHERE de.dataset_id = ? OR d.shared = 1', i.dataset_id);
   const sec = await one(db, 'SELECT id, name FROM sectors WHERE id = ?', i.sector_id);
   return indOut(i, Object.fromEntries(des.map((d) => [d.id, d.name])), sec ? { [sec.id]: sec.name } : {});
 }

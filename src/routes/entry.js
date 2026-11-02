@@ -3,9 +3,9 @@ import { HttpError, json, readJson, validate, v, now } from '../lib/util.js';
 import { one, all, run, audit } from '../lib/db.js';
 import { requireRole, requireScope, requireDataset, canEnterElement, inScope, datasetAllowed } from '../lib/auth.js';
 import {
-  periodMatches, periodName, lastCompletedPeriod, recentPeriods, dueAt, FREQUENCY_NAMES,
+  periodMatches, periodName, lastCompletedPeriod, recentPeriods, dueAt, monthsOf, FREQUENCY_NAMES,
 } from '../lib/dhis.js';
-import { compileIndicators, indicatorValue, round } from '../lib/aggregate.js';
+import { compileIndicators, indicatorValue, round, sharedIdsOf } from '../lib/aggregate.js';
 
 const STATUS_NAMES = { none: 'Not started', draft: 'Draft', submitted: 'Submitted', accepted: 'Accepted', returned: 'Sent back' };
 const EDITABLE = ['none', 'draft', 'returned'];
@@ -20,7 +20,8 @@ function checkPeriod(ds, period) {
   if (!periodMatches(period, ds.frequency)) {
     throw new HttpError(422, 'invalid', `“${ds.name}” is reported ${FREQUENCY_NAMES[ds.frequency].toLowerCase()}; that period does not fit.`, { field: 'period' });
   }
-  const last = lastCompletedPeriod(ds.frequency);
+  // Shared population/denominator figures are planning numbers, so the current year can be entered.
+  const last = ds.shared ? String(Number(lastCompletedPeriod('YEARLY')) + 1) : lastCompletedPeriod(ds.frequency);
   if (period > last && period.length === last.length) throw new HttpError(422, 'future_period', 'You can only report for periods that have ended.', { field: 'period' });
   if (Number(period.slice(0, 4)) < 2015) throw new HttpError(422, 'invalid', 'That period is too far in the past.', { field: 'period' });
 }
@@ -55,23 +56,41 @@ async function formFor(db, ctx, ds, ou, period) {
   const status = rep ? rep.status : 'none';
   const locked = !EDITABLE.includes(status);
   const inds = compileIndicators(await all(db, 'SELECT * FROM indicators WHERE dataset_id = ? AND archived_at IS NULL ORDER BY sort, name', ds.id), await factors(db));
+  // Shared yearly numbers (population etc.) for this LGA, scaled to this period, so the preview matches the state picture.
+  const sharedIds = sharedIdsOf(inds, fields.map((f) => f.id));
+  const preview = { ...byDe };
+  const sharedOut = [];
+  if (sharedIds.length) {
+    const year = period.slice(0, 4);
+    const share = monthsOf(period).length / 12;
+    const sv = await all(db,
+      `SELECT de.id, de.name, de.prorate, dv.value FROM data_elements de
+         LEFT JOIN data_values dv ON dv.de_id = de.id AND dv.ou_id = ? AND dv.period = ?
+        WHERE de.id IN (${sharedIds.map(() => '?').join(',')})`, ou.id, year, ...sharedIds);
+    for (const x of sv) {
+      const scaled = x.value === null ? null : x.prorate ? x.value * share : x.value;
+      if (scaled !== null) preview[x.id] = scaled;
+      sharedOut.push({ id: x.id, name: x.name, year, yearValue: x.value, value: scaled === null ? null : round(scaled, 1), prorate: !!x.prorate });
+    }
+  }
   const sectorNames = Object.fromEntries((await all(db, 'SELECT id, name FROM sectors')).map((x) => [x.id, x.name]));
   const due = dueAt(period, ds.due_day);
   const users = rep ? await all(db, 'SELECT id, name FROM users WHERE id IN (?, ?, ?)', rep.updated_by || '', rep.submitted_by || '', rep.reviewed_by || '') : [];
   const nameOf = (id) => (users.find((u) => u.id === id) || {}).name || null;
   return {
-    dataset: { id: ds.id, name: ds.name, frequency: ds.frequency, frequencyName: FREQUENCY_NAMES[ds.frequency] },
+    dataset: { id: ds.id, name: ds.name, shared: !!ds.shared, frequency: ds.frequency, frequencyName: FREQUENCY_NAMES[ds.frequency] },
     ou: { id: ou.id, name: ou.name },
     period, periodName: periodName(period),
-    periods: recentPeriods(ds.frequency, 12).map((p) => ({ id: p, name: periodName(p) })),
-    due, overdue: status !== 'submitted' && status !== 'accepted' && now() > due,
+    sharedValues: sharedOut,
+    periods: (ds.shared ? [String(Number(lastCompletedPeriod('YEARLY')) + 1), ...recentPeriods('YEARLY', 6)] : recentPeriods(ds.frequency, 12)).map((p) => ({ id: p, name: periodName(p) })),
+    due: ds.shared ? null : due, overdue: status !== 'submitted' && status !== 'accepted' && now() > due,
     fields: fields.map((f) => ({
       id: f.id, name: f.name, valueType: f.value_type, min: f.min_value, max: f.max_value,
       value: byDe[f.id] ?? null,
       editable: canEnter(ctx) && !locked && canEnterElement(ctx, f.id),
     })),
     indicators: inds.map((i) => {
-      const r = indicatorValue(i, byDe);
+      const r = indicatorValue(i, preview);
       return { id: i.id, name: i.name, sectorId: i.sector_id, sector: sectorNames[i.sector_id] || '', source: i.source, value: r ? round(r.value, i.decimals) : null };
     }),
     report: {
@@ -96,7 +115,7 @@ export async function getEntry(request, env, ctx) {
   const ds = await loadDataset(env.DB, q.get('dataset') || '');
   requireDataset(ctx, ds.id);
   const ou = await loadLga(env.DB, ctx, q.get('ou') || '');
-  const period = q.get('period') || lastCompletedPeriod(ds.frequency);
+  const period = q.get('period') || (ds.shared ? String(Number(lastCompletedPeriod('YEARLY')) + 1) : lastCompletedPeriod(ds.frequency));
   checkPeriod(ds, period);
   return json(await formFor(env.DB, ctx, ds, ou, period));
 }

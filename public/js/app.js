@@ -202,6 +202,7 @@ function renderMe() {
 }
 
 // ---------- shared pickers ----------
+const dsLabel = (d) => (d.shared ? d.name + ' (shared)' : d.sector && !d.name.toLowerCase().startsWith(d.sector.toLowerCase()) ? `${d.sector} — ${d.name}` : d.name);
 // Shown when there is nothing to report on yet: admins get a way forward, others are told who to ask.
 function noDatasets() {
   if (is('sysadmin', 'setupadmin')) {
@@ -263,7 +264,8 @@ function sectorGroups(form) {
     }
   }
   const rest = form.fields.filter((f) => !placed.has(f.id)).map((f) => f.id);
-  if (rest.length) bySector.set('Other', [...(bySector.get('Other') || []), ...rest]);
+  const restLabel = set && set.shared ? 'Population & denominators (for the year)' : 'Other';
+  if (rest.length) bySector.set(restLabel, [...(bySector.get(restLabel) || []), ...rest]);
   return [...bySector.entries()].sort((a, b) => a[0].localeCompare(b[0]));
 }
 
@@ -271,7 +273,7 @@ function entryView(form, sets, pickers) {
   const r = form.report;
   const inputs = {};
   const err = h('div', { class: 'err' });
-  const dsSel = select(sets.map((d) => ({ id: d.id, name: d.name })), form.dataset.id, { onchange: (e) => { pref('ds', e.target.value); renderEntry(); } });
+  const dsSel = select(sets.map((d) => ({ id: d.id, name: dsLabel(d) })), form.dataset.id, { onchange: (e) => { pref('ds', e.target.value); renderEntry(); } });
   const peSel = select(form.periods, form.period, { onchange: (e) => { pref('pe:' + form.dataset.id, e.target.value); renderEntry(); } });
 
   const fieldById = Object.fromEntries(form.fields.map((f) => [f.id, f]));
@@ -326,6 +328,10 @@ function entryView(form, sets, pickers) {
         : h('div', { class: 'empty' }, 'This data set has no indicators yet.'),
       err,
       form.can.edit ? h('div', { class: 'actions' }, h('p'), saveBtn, submitBtn, h('span', { class: 'muted small' }, 'Every value is needed to submit — enter 0 if there were none.')) : null),
+    form.sharedValues && form.sharedValues.length ? h('div', { class: 'panel' }, h('h2', {}, 'Population figures used'),
+      h('p', { class: 'muted small' }, 'From the yearly “Population & denominators” data set for this LGA.'),
+      h('table', {}, h('tbody', {}, form.sharedValues.map((x) => h('tr', {}, h('td', {}, x.name),
+        h('td', { class: 'n' }, x.yearValue === null ? h('span', { class: 'late' }, `Missing for ${x.year}`) : x.prorate && form.dataset.frequency !== 'YEARLY' ? `${fmtNum(x.yearValue)} for ${x.year} → ${fmtNum(x.value, 1)} for this period` : fmtNum(x.yearValue))))))) : null,
     form.indicators.length ? h('div', { class: 'panel' }, h('h2', {}, 'Indicators for this LGA'),
       h('table', {}, h('tbody', {}, form.indicators.map((i) => h('tr', {}, h('td', {}, i.name, h('span', { class: 'muted small' }, i.sector ? ` · ${i.sector}` : '')), h('td', { class: 'n' }, fmtNum(i.value, 2))))))) : null,
     reviewBox,
@@ -362,7 +368,7 @@ async function renderReview() {
   mount(h('div', {},
     h('div', { class: 'head' }, h('div', {}, h('h1', {}, `${st.state.name} — review`), h('div', { class: 'muted' }, `${st.dataset.name} · ${st.periodName} · due ${fmtDay(st.due)}`))),
     h('div', { class: 'bar' },
-      field('Data set', select(sets, ds.id, { onchange: (e) => { pref('ds', e.target.value); renderReview(); } })),
+      field('Data set', select(sets.map((d) => ({ id: d.id, name: dsLabel(d) })), ds.id, { onchange: (e) => { pref('ds', e.target.value); renderReview(); } })),
       sp.el,
       field('Period', select(st.periods, st.period, { onchange: (e) => { pref('pe:' + ds.id, e.target.value); renderReview(); } }))),
     h('div', { class: 'counts' }, Object.entries(st.counts).map(([k, n]) => h('span', { class: 'pill s-' + k }, `${names[k]}: ${n}`)), h('span', { class: 'pill s-none' }, `Total LGAs: ${st.total}`)),
@@ -418,7 +424,7 @@ async function renderPicture() {
     h('div', { class: 'head' }, h('div', {}, h('h1', {}, `${p.ou.name} — ${p.periodName}`), h('div', { class: 'muted' }, `${p.dataset.name} · ${p.total.reportingUnits} of ${p.total.totalUnits} LGAs reporting · ${provisional ? 'includes reports not yet accepted' : 'accepted reports only'}`)),
       h('div', { class: 'actions' }, h('button', { onclick: () => window.print() }, 'Print'))),
     h('div', { class: 'bar' },
-      field('Data set', select(sets, ds.id, { onchange: (e) => { pref('ds', e.target.value); renderPicture(); } })),
+      field('Data set', select(sets.map((d) => ({ id: d.id, name: dsLabel(d) })), ds.id, { onchange: (e) => { pref('ds', e.target.value); renderPicture(); } })),
       ouOptions.length ? field('Area', select(ouOptions, ou, { onchange: (e) => { pref('pou', e.target.value); renderPicture(); } })) : null,
       field('Period', select(choices, period, { onchange: (e) => { pref('ppe:' + ds.id, e.target.value); renderPicture(); } })),
       field('Sector', select([{ id: '', name: 'All sectors' }, ...sectors], sector, { onchange: (e) => { pref('sector', e.target.value); renderPicture(); } })),
@@ -476,7 +482,7 @@ async function renderExport() {
     h('div', { class: 'head' }, h('div', {}, h('h1', {}, 'Export'), h('div', { class: 'muted' }, 'JSON files in the same format as the ALMA Export app, ready to upload to the scorecard platform.'))),
     h('div', { class: 'panel' },
       h('h3', {}, 'What'),
-      h('div', { class: 'chips' }, sets.map((d, i) => h('label', { class: 'check' }, dsChecks[i], d.name))),
+      h('div', { class: 'chips' }, sets.map((d, i) => h('label', { class: 'check' }, dsChecks[i], dsLabel(d)))),
       h('div', { class: 'bar' }, field('Sector', sectorSel), field('Area', areaSel)),
       h('h3', {}, '1 · Metadata'),
       h('p', { class: 'muted small' }, 'organisationUnits_indicators.json — org units with their DHIS2 IDs, and the indicators (with a reporting-rate indicator per data set).'),
@@ -515,17 +521,34 @@ async function renderSetup() {
   const dsId = m.datasets.some((d) => d.id === pref('setupDs')) ? pref('setupDs') : (m.datasets[0] || {}).id;
   const ds = m.datasets.find((d) => d.id === dsId);
   const sectorList = h('datalist', { id: 'sector-list' }, m.sectors.map((s) => h('option', { value: s.name })));
-  const fieldList = h('datalist', { id: 'field-list' }, ds ? ds.dataElements.filter((d) => !d.archived).map((d) => h('option', { value: d.name })) : []);
+  const sharedSets = m.datasets.filter((d) => d.shared && !d.archived);
+  const sharedFields = sharedSets.flatMap((d) => d.dataElements.filter((f) => !f.archived));
+  const fieldList = h('datalist', { id: 'field-list' },
+    ds ? ds.dataElements.filter((d) => !d.archived).map((d) => h('option', { value: d.name })) : [],
+    ds && !ds.shared ? sharedFields.map((f) => h('option', { value: f.name, label: 'Population & denominators (shared)' })) : []);
 
-  const newDs = h('button', { onclick: () => datasetDialog(null, m) }, '+ New data set');
+  const newDs = h('button', { onclick: () => datasetDialog(null, m) }, '+ New sector data set');
+  const newShared = sharedSets.length ? null : h('button', { onclick: () => datasetDialog(null, m, true) }, '+ Population & denominators');
   const head = h('div', { class: 'head' },
-    h('div', {}, h('h1', {}, 'Indicators'), h('div', { class: 'muted' }, 'Write the indicator, its numerator and denominator, its sector and source. IDs are created automatically.')),
-    is('sysadmin') ? newDs : null);
-  if (!ds) return mount(head, h('div', { class: 'panel empty' }, 'Start by creating a data set — for example “LGA monthly report”, reported monthly.'));
+    h('div', {}, h('h1', {}, 'Indicators'), h('div', { class: 'muted' }, 'One data set per sector. Write each indicator with its numerator, denominator and source; IDs are created automatically.')),
+    is('sysadmin') ? h('div', { class: 'actions' }, newShared, newDs) : null);
+  if (!ds) {
+    return mount(head, h('div', { class: 'panel' },
+      h('h2', {}, 'Getting started'),
+      h('ol', {},
+        h('li', {}, h('strong', {}, 'Population & denominators'), ' — one yearly data set for numbers every sector divides by (total population, under-5s, expected pregnancies, households…). Entered once a year.'),
+        h('li', {}, h('strong', {}, 'One data set per sector'), ' — e.g. “Health – monthly”, “Agriculture – quarterly”, “WASH – yearly”, each with its own frequency.'),
+        h('li', {}, 'Add indicators to each sector data set. Type a population number’s name as the denominator and it is used automatically.')),
+      is('sysadmin') ? h('div', { class: 'actions' }, h('button', { class: 'primary', onclick: () => datasetDialog(null, m, true) }, 'Create Population & denominators'),
+        h('button', { onclick: () => datasetDialog(null, m) }, '+ New sector data set')) : null));
+  }
 
   const tabs = h('div', { class: 'bar' },
-    field('Data set', select(m.datasets.map((d) => ({ id: d.id, name: d.name + (d.archived ? ' (archived)' : '') })), ds.id, { onchange: (e) => { pref('setupDs', e.target.value); renderSetup(); } })),
-    h('div', { class: 'muted small' }, `Reporting frequency: `, h('strong', {}, ds.frequencyName), ` · due on day ${ds.dueDay} of the following month · `, h('button', { class: 'link', onclick: () => datasetDialog(ds, m) }, 'Edit data set')));
+    field('Data set', select(m.datasets.map((d) => ({ id: d.id, name: dsLabel(d) + (d.archived ? ' (archived)' : '') })), ds.id, { onchange: (e) => { pref('setupDs', e.target.value); renderSetup(); } })),
+    h('div', { class: 'muted small' }, ds.shared ? 'Shared by all sectors · ' : `Sector: `, ds.shared ? null : h('strong', {}, ds.sector || '—'), ds.shared ? null : ' · ',
+      `Reporting frequency: `, h('strong', {}, ds.frequencyName), ds.shared ? ' · current year can be entered' : ` · due on day ${ds.dueDay} of the following month`, ' · ',
+      h('button', { class: 'link', onclick: () => datasetDialog(ds, m) }, 'Edit data set')));
+  if (ds.shared) return mount(h('div', {}, head, tabs, sharedPanel(ds)));
 
   const rows = ds.indicators.filter((i) => !i.archived);
   const bySector = new Map();
@@ -542,13 +565,13 @@ async function renderSetup() {
       h('colgroup', {}, ['sector', 'name', 'num', 'den', 'src', 'show', 'id'].map((c) => h('col', { class: 'c-' + c }))),
       h('thead', {}, h('tr', {}, h('th', {}, 'Sector'), h('th', {}, 'Indicator'), h('th', {}, 'Numerator'), h('th', {}, 'Denominator (optional)'), h('th', {}, 'Source'), h('th', {}, 'Show as'), h('th', {}, 'ID'))),
       h('tbody', {}, body))),
-    h('p', { class: 'muted small' }, 'Numerators and denominators become the numbers LGAs enter. Typing the same name twice (for example a shared population denominator) uses the same field. Leave the denominator empty for a plain count.'),
+    h('p', { class: 'muted small' }, 'Numerators and denominators become the numbers LGAs enter. Typing the same name twice uses the same number. A name from Population & denominators (e.g. “Expected pregnancies”) uses that yearly figure instead of asking LGAs for it each time. Leave the denominator empty for a plain count.'),
     fieldsPanel(ds)));
 }
 
 function indicatorRow(ds, i, m) {
   const isNew = !i;
-  const sector = h('input', { list: 'sector-list', value: i ? i.sector : pref('lastSector') || '', placeholder: 'e.g. Health' });
+  const sector = h('input', { list: 'sector-list', value: i ? i.sector : ds.sector || pref('lastSector') || '', placeholder: 'e.g. Health' });
   const name = h('input', { value: i ? i.name : '', placeholder: isNew ? 'New indicator name' : '' });
   const num = h('input', { list: 'field-list', value: i ? i.numerator : '', placeholder: 'e.g. Women with 4+ ANC visits' });
   const den = h('input', { list: 'field-list', value: i ? i.denominator : '', placeholder: 'e.g. Expected pregnancies' });
@@ -593,21 +616,49 @@ function fieldsPanel(ds) {
       }))));
 }
 
-function datasetDialog(ds, m) {
-  const name = h('input', { value: ds ? ds.name : '' });
+function sharedPanel(ds) {
+  const list = ds.dataElements.filter((d) => !d.archived);
+  const name = h('input', { placeholder: 'e.g. Expected pregnancies' });
+  const split = h('input', { type: 'checkbox', checked: true });
+  const add = h('button', { class: 'primary' }, 'Add number');
+  add.addEventListener('click', busy(add, async () => {
+    await api('POST', `/api/datasets/${ds.id}/fields`, { name: name.value.trim(), prorate: split.checked });
+    toast('Added'); state.meta = null; renderSetup();
+  }));
+  return h('div', {},
+    h('div', { class: 'scroll' }, h('table', {},
+      h('thead', {}, h('tr', {}, h('th', {}, 'Number (entered once a year per LGA)'), h('th', {}, 'For monthly or quarterly indicators'), h('th', {}, 'ID'), h('th'))),
+      h('tbody', {}, list.map((d) => {
+        const n = h('input', { value: d.name, size: 36 });
+        const sel = select([{ id: '1', name: 'Split by months (÷12 per month)' }, { id: '0', name: 'Use the yearly figure as is' }], d.prorate ? '1' : '0');
+        const b = h('button', {}, 'Save');
+        b.addEventListener('click', busy(b, async () => { await api('PATCH', '/api/fields/' + d.id, { name: n.value.trim(), prorate: sel.value === '1' }); toast('Saved'); state.meta = null; renderSetup(); }));
+        return h('tr', {}, h('td', {}, n), h('td', {}, sel), h('td', {}, idTag(d.id)), h('td', {}, b));
+      }), h('tr', {}, h('td', {}, name), h('td', {}, h('label', { class: 'check' }, split, 'Split by months')), h('td'), h('td', {}, add))))),
+    h('p', { class: 'muted small' }, '“Split by months” suits yearly flows such as expected pregnancies or births: a monthly indicator divides by one twelfth. “As is” suits counts such as households, schools or total population. Each LGA (or the state on its behalf) enters these once a year under Data entry.'));
+}
+
+function datasetDialog(ds, m, makeShared = false) {
+  const shared = ds ? ds.shared : makeShared;
+  const name = h('input', { value: ds ? ds.name : shared ? 'Population and denominators' : '' });
+  const sector = h('input', { list: 'sector-list-dlg', value: ds ? ds.sector : '', placeholder: 'e.g. Health' });
   const freq = select(m.frequencies, ds ? ds.frequency : 'MONTHLY');
   const due = h('input', { type: 'number', min: 1, max: 28, value: ds ? ds.dueDay : 15 });
   const id = h('input', { class: 'mono', placeholder: 'auto', maxlength: 11 });
   const err = h('div', { class: 'err' });
   const save = h('button', { class: 'primary' }, ds ? 'Save' : 'Create');
-  const dlg = h('dialog', {}, h('h2', {}, ds ? 'Edit data set' : 'New data set'),
-    h('div', { class: 'grid2' }, field('Name', name), field('Reporting frequency', freq), field('Due day (of the following month)', due), ds ? field('ID', idTag(ds.id)) : field('ID (optional)', id)),
+  const dlg = h('dialog', {}, h('h2', {}, ds ? 'Edit data set' : shared ? 'Population & denominators' : 'New sector data set'),
+    h('datalist', { id: 'sector-list-dlg' }, m.sectors.map((x) => h('option', { value: x.name }))),
+    shared ? h('p', { class: 'muted small' }, 'A yearly data set for numbers that every sector’s indicators divide by. It has no indicators of its own.') : null,
+    h('div', { class: 'grid2' }, field('Name', name), shared ? null : field('Sector', sector), shared ? null : field('Reporting frequency', freq),
+      shared ? null : field('Due day (of the following month)', due), ds ? field('ID', idTag(ds.id)) : field('ID (optional)', id)),
     err, h('p'), h('div', { class: 'actions' }, save, h('button', { onclick: () => dlg.close() }, 'Cancel'),
       ds && is('sysadmin') ? h('button', { class: 'danger', onclick: async () => { await api('PATCH', '/api/datasets/' + ds.id, { archived: !ds.archived }); dlg.close(); state.meta = null; renderSetup(); } }, ds.archived ? 'Restore' : 'Archive') : null));
   dlg.addEventListener('close', () => dlg.remove());
   save.addEventListener('click', busy(save, async () => {
     err.textContent = '';
-    const body = { name: name.value.trim(), frequency: freq.value, dueDay: Number(due.value) };
+    const body = shared ? { name: name.value.trim() } : { name: name.value.trim(), sector: sector.value.trim(), frequency: freq.value, dueDay: Number(due.value) };
+    if (shared && !ds) body.shared = true;
     try {
       if (ds) await api('PATCH', '/api/datasets/' + ds.id, body);
       else { if (id.value.trim()) body.id = id.value.trim(); const { data } = await api('POST', '/api/datasets', body); pref('setupDs', data.id); }
@@ -702,7 +753,7 @@ async function userDialog(u, roles, m) {
     h('div', { class: 'grid2' }, field('Full name', name), field('Email', email), field('Role', roleSel)),
     where,
     h('h3', {}, 'Data sets'),
-    h('div', { class: 'chips' }, dsBoxes.map((x) => h('label', { class: 'check' }, x.box, x.d.name))),
+    h('div', { class: 'chips' }, dsBoxes.map((x) => h('label', { class: 'check' }, x.box, dsLabel(x.d)))),
     h('p', { class: 'muted small' }, 'None ticked = all data sets.'),
     h('h3', {}, 'Numbers this account enters'),
     h('p', { class: 'muted small' }, 'Tick only the numerators/denominators this person is responsible for. None ticked = all numbers in their data sets.'),

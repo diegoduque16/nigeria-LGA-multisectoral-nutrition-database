@@ -77,7 +77,9 @@ export async function logout(request, env, ctx) {
 }
 
 export async function me(request, env, ctx) {
-  const datasets = await all(env.DB, 'SELECT id, name, frequency FROM datasets WHERE archived_at IS NULL ORDER BY name');
+  const datasets = await all(env.DB, `SELECT d.id, d.name, d.frequency, d.shared, s.name AS sector
+    FROM datasets d LEFT JOIN sectors s ON s.id = d.sector_id WHERE d.archived_at IS NULL ORDER BY d.shared, s.name, d.name`);
+  for (const d of datasets) d.shared = !!d.shared;
   const mine = ctx.datasets.length && ctx.role !== 'sysadmin' ? datasets.filter((s) => ctx.datasets.includes(s.id)) : datasets;
   return json({
     user: { ...ctx.user, roleName: ROLE_NAMES[ctx.role] },

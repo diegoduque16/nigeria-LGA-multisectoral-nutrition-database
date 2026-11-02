@@ -13,7 +13,7 @@ const ADAMAWA = 'OgjFloqKoqk';
 async function world() {
   const env = makeEnv();
   const admin = await setupAdmin(env);
-  const ds = await admin.post('/api/datasets', { name: 'LGA monthly report', frequency: 'MONTHLY' });
+  const ds = await admin.post('/api/datasets', { name: 'LGA monthly report', sector: 'Health', frequency: 'MONTHLY' });
   assert.equal(ds.status, 201, JSON.stringify(ds.data));
   const dsId = ds.data.id;
   const anc = await admin.post(`/api/datasets/${dsId}/indicators`, {
@@ -290,4 +290,56 @@ test('state officers manage only LGA users in their state', async () => {
   assert.equal((await st.c.post('/api/users', { name: 'X', email: 'x2@abia.gov.ng', role: 'state', ouId: ABIA })).status, 403);
   const list = (await st.c.get('/api/users')).data.users;
   assert.ok(list.every((u) => u.role === 'lga' || u.email === 's@abia.gov.ng'));
+});
+
+test('per-sector data sets and a shared yearly population data set used as denominator', async () => {
+  const env = makeEnv();
+  const admin = await setupAdmin(env);
+  assert.equal((await admin.post('/api/datasets', { name: 'No sector', frequency: 'MONTHLY' })).status, 422);
+  const pop = (await admin.post('/api/datasets', { name: 'Population and denominators', shared: true, frequency: 'MONTHLY' })).data;
+  const health = (await admin.post('/api/datasets', { name: 'Health – monthly', sector: 'Health', frequency: 'MONTHLY' })).data;
+  const wash = (await admin.post('/api/datasets', { name: 'WASH – yearly', sector: 'WASH', frequency: 'YEARLY' })).data;
+  const preg = await admin.post(`/api/datasets/${pop.id}/fields`, { name: 'Expected pregnancies', prorate: true });
+  assert.equal(preg.status, 201);
+  const hh = await admin.post(`/api/datasets/${pop.id}/fields`, { name: 'Households', prorate: false });
+  assert.equal((await admin.post(`/api/datasets/${pop.id}/indicators`, { name: 'x', numerator: 'y' })).status, 422);
+  // Indicator sector defaults to the data set's; denominator name matches the shared number.
+  const anc = (await admin.post(`/api/datasets/${health.id}/indicators`, { name: 'ANC 4+ coverage', numerator: 'Women with 4+ ANC visits', denominator: 'expected pregnancies' })).data.indicator;
+  assert.equal(anc.sector, 'Health');
+  assert.equal(anc.denominatorId, preg.data.dataElement.id);
+  const latr = (await admin.post(`/api/datasets/${wash.id}/indicators`, { name: 'Households with latrine', numerator: 'Households with a latrine', denominator: 'Households' })).data.indicator;
+  assert.equal(latr.denominatorId, hh.data.dataElement.id);
+  const meta = (await admin.get('/api/metadata')).data;
+  assert.equal(meta.datasets.find((d) => d.id === pop.id).frequency, 'YEARLY');
+  assert.equal(meta.datasets.find((d) => d.id === health.id).dataElements.length, 1); // shared number not duplicated
+
+  const lga = await addUser(env, admin, { name: 'A', email: 'a@abia.gov.ng', role: 'lga', ouId: ABA_NORTH });
+  const st = await addUser(env, admin, { name: 'S', email: 's@abia.gov.ng', role: 'state', ouId: ABIA });
+  const month = lastCompletedPeriod('MONTHLY');
+  const year = month.slice(0, 4);
+  // Yearly population: 1,200 expected pregnancies -> 100 per month.
+  await report(lga.c, pop.id, ABA_NORTH, year, { [preg.data.dataElement.id]: 1200, [hh.data.dataElement.id]: 500 });
+  await st.c.post('/api/entry/review', { dataset: pop.id, ou: ABA_NORTH, period: year, action: 'accept' });
+  const numId = anc.numeratorId;
+  const form = (await lga.c.put('/api/entry', { dataset: health.id, ou: ABA_NORTH, period: month, values: { [numId]: 40 } })).data;
+  assert.deepEqual(form.fields.map((f) => f.name), ['Women with 4+ ANC visits']);
+  assert.equal(form.indicators[0].value, 40);
+  assert.equal(form.sharedValues[0].value, 100);
+  await lga.c.post('/api/entry/submit', { dataset: health.id, ou: ABA_NORTH, period: month });
+  await st.c.post('/api/entry/review', { dataset: health.id, ou: ABA_NORTH, period: month, action: 'accept' });
+  const pic = (await st.c.get(`/api/picture?dataset=${health.id}&period=${month}`)).data;
+  assert.equal(pic.total.indicators[anc.id].value, 40);
+  assert.equal(pic.total.indicators[anc.id].denominator, 100);
+  assert.ok(pic.fields.some((f) => f.shared && f.name === 'Expected pregnancies'));
+  // Yearly view of the monthly data set: only one month reported -> denominator is 1/12 of the year, not the whole year.
+  const yp = (await st.c.get(`/api/picture?dataset=${health.id}&period=${year}`)).data;
+  assert.equal(yp.total.indicators[anc.id].denominator, 100);
+  // "Use as is" numbers are not split (yearly WASH indicator over yearly households).
+  const prev = String(Number(year) - 1);
+  await report(lga.c, pop.id, ABA_NORTH, prev, { [preg.data.dataElement.id]: 1000, [hh.data.dataElement.id]: 500 });
+  await st.c.post('/api/entry/review', { dataset: pop.id, ou: ABA_NORTH, period: prev, action: 'accept' });
+  await report(lga.c, wash.id, ABA_NORTH, prev, { [latr.numeratorId]: 200 });
+  await st.c.post('/api/entry/review', { dataset: wash.id, ou: ABA_NORTH, period: prev, action: 'accept' });
+  const wp = (await st.c.get(`/api/picture?dataset=${wash.id}&period=${prev}`)).data;
+  assert.equal(wp.total.indicators[latr.id].value, 40);
 });

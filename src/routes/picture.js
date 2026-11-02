@@ -4,7 +4,7 @@ import { one, all, audit } from '../lib/db.js';
 import { inScope, datasetAllowed } from '../lib/auth.js';
 import { periodType, periodName, periodRange, lastCompletedPeriod, FREQUENCY_NAMES } from '../lib/dhis.js';
 import {
-  compileIndicators, indicatorValue, round, loadLgaTotals, rollUp, STATUSES_FINAL, STATUSES_PROVISIONAL,
+  compileIndicators, indicatorValue, round, loadLgaTotals, rollUp, sharedIdsOf, STATUSES_FINAL, STATUSES_PROVISIONAL,
 } from '../lib/aggregate.js';
 import { indicatorDescription } from './metadata.js';
 
@@ -45,9 +45,12 @@ export async function picture(request, env, ctx) {
   if (!periodType(period)) throw new HttpError(422, 'invalid', 'Unknown period.', { field: 'period' });
   const provisional = q.get('provisional') === '1';
   const statuses = provisional ? STATUSES_PROVISIONAL : STATUSES_FINAL;
-  const { subPeriods, lgas } = await loadLgaTotals(env.DB, ds, period, ou, statuses);
   const inds = compileIndicators(await indicatorsOf(env.DB, ds.id, q.get('sector')), await factorMap(env.DB));
-  const fields = await all(env.DB, 'SELECT id, name FROM data_elements WHERE dataset_id = ? AND archived_at IS NULL ORDER BY sort, name', ds.id);
+  const own = await all(env.DB, 'SELECT id, name FROM data_elements WHERE dataset_id = ? AND archived_at IS NULL ORDER BY sort, name', ds.id);
+  const sharedIds = sharedIdsOf(inds, own.map((f) => f.id));
+  const shared = sharedIds.length ? await all(env.DB, `SELECT id, name FROM data_elements WHERE id IN (${sharedIds.map(() => '?').join(',')}) ORDER BY sort, name`, ...sharedIds) : [];
+  const fields = [...own, ...shared.map((f) => ({ ...f, shared: true }))];
+  const { subPeriods, lgas } = await loadLgaTotals(env.DB, ds, period, ou, statuses, sharedIds);
   const sectorNames = Object.fromEntries((await all(env.DB, 'SELECT id, name FROM sectors')).map((x) => [x.id, x.name]));
 
   const lgaList = [...lgas.values()];
@@ -176,13 +179,15 @@ export async function exportData(request, env, ctx) {
 
   for (const ds of datasets) {
     const inds = compileIndicators(await indicatorsOf(env.DB, ds.id, q.get('sector')), factors);
+    const ownIds = (await all(env.DB, 'SELECT id FROM data_elements WHERE dataset_id = ?', ds.id)).map((f) => f.id);
+    const sharedIds = sharedIdsOf(inds, ownIds);
     for (const i of inds) { items[i.id] = { name: i.name }; if (!dims.dx.includes(i.id)) dims.dx.push(i.id); }
     items[ds.reporting_rate_id] = { name: `${ds.name} – reporting rate` };
     if (!dims.dx.includes(ds.reporting_rate_id)) dims.dx.push(ds.reporting_rate_id);
 
     for (const pe of periods) {
       let totals;
-      try { totals = await loadLgaTotals(env.DB, ds, pe, root, statuses); } catch (e) {
+      try { totals = await loadLgaTotals(env.DB, ds, pe, root, statuses, sharedIds); } catch (e) {
         if (e.code === 'period_mismatch') { skipped.push(`${ds.name} ${pe}`); continue; } else throw e;
       }
       const { subPeriods, lgas } = totals;
