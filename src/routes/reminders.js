@@ -62,7 +62,7 @@ function message(ds, period, user, link, note) {
     '2. Or open the same link and type the numbers in online.', '',
     'Put 0 where there was nothing — every box is needed before the report can be sent.',
     ...(note ? ['', note] : []), '',
-    'Thank you.', 'LGA Multi-Sectoral Scorecard Data Reporting System',
+    'Thank you.', 'LGA Multi-Sectoral Nutrition Scorecard Data Reporting System',
   ].join('\n');
   const esc = (s) => String(s).replace(/[<>&"]/g, (c) => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;' }[c]));
   const html = `<div style="font-family:system-ui,Segoe UI,Arial,sans-serif;font-size:15px;line-height:1.5;color:#1c2321;max-width:560px">
@@ -73,7 +73,7 @@ function message(ds, period, user, link, note) {
 <ol><li>Fill in the attached Excel template (one row per place you report for), then upload it with the button above.</li><li>Or open the same link and type the numbers in online.</li></ol>
 <p>Put <strong>0</strong> where there was nothing — every box is needed before the report can be sent.</p>
 ${note ? `<p style="background:#fff4dc;padding:10px 12px;border-radius:6px">${esc(note)}</p>` : ''}
-<p style="color:#5d6b66;font-size:13px">LGA Multi-Sectoral Scorecard Data Reporting System</p></div>`;
+<p style="color:#5d6b66;font-size:13px">LGA Multi-Sectoral Nutrition Scorecard Data Reporting System</p></div>`;
   return { subject: `Reminder: ${ds.name} — ${pn} (due ${due})`, text, html };
 }
 

@@ -1,4 +1,4 @@
-# LGA Multi-Sectoral Scorecard Data Reporting System
+# LGA Multi-Sectoral Nutrition Scorecard Data Reporting System
 
 (Repository: Nigeria LGA multisectoral nutrition database)
 

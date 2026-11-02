@@ -1,4 +1,4 @@
-// LGA Multi-Sectoral Scorecard Data Reporting System — single-page app (no framework, no dashboards: forms and tables).
+// LGA Multi-Sectoral Nutrition Scorecard Data Reporting System — single-page app (no framework, no dashboards: forms and tables).
 
 // ---------- tiny helpers ----------
 // replaceChildren() would print empty slots as the text "null"; skip them, like h() does.
@@ -241,7 +241,7 @@ function renderLogin() {
   const pw = h('input', { type: 'password', autocomplete: 'current-password', required: true });
   const btn = h('button', { class: 'primary', type: 'submit' }, 'Sign in');
   const form = h('form', { class: 'panel card-narrow' },
-    h('h1', {}, 'Sign in'), h('p', { class: 'muted small' }, 'LGA Multi-Sectoral Scorecard Data Reporting System'),
+    h('h1', {}, 'Sign in'), h('p', { class: 'muted small' }, 'LGA Multi-Sectoral Nutrition Scorecard Data Reporting System'),
     h('div', { class: 'grid2' }, field('Email', email)), field('Password', pw), h('p'), btn, err,
     h('p', { class: 'muted small' }, 'Forgot your password? Ask your administrator for a new sign-in link.'));
   form.addEventListener('submit', busy(btn, async () => {
@@ -2356,7 +2356,7 @@ async function showQr(link) {
     g.fillStyle = '#fff'; g.fillRect(0, 0, W, H); g.fillStyle = '#000';
     mtx.forEach((row, r) => row.forEach((dark, k) => { if (dark) g.fillRect((k + 4) * scale, (r + 4) * scale, scale, scale); }));
     g.textAlign = 'center'; g.fillStyle = '#1c2321';
-    g.font = 'bold 26px system-ui, sans-serif'; g.fillText('LGA Multi-Sectoral Scorecard — request an account', W / 2, W + 40);
+    g.font = 'bold 26px system-ui, sans-serif'; g.fillText('LGA Multi-Sectoral Nutrition Scorecard — request an account', W / 2, W + 40);
     g.font = '22px system-ui, sans-serif'; g.fillText(link.name.slice(0, 60), W / 2, W + 80);
     g.fillStyle = '#5d6b66'; g.font = '18px system-ui, sans-serif';
     g.fillText('Scan with your phone camera, fill in your details, wait for approval.', W / 2, W + 118);
@@ -2431,7 +2431,7 @@ async function renderRegister(token) {
   await fillStates(); await fillLgas(); layout(); fillDatasets();
   const form = h('form', { class: 'panel card-narrow reg' },
     h('h1', {}, 'Request an account'),
-    h('p', { class: 'muted small' }, `LGA Multi-Sectoral Scorecard Data Reporting System · ${info.name} · ${info.area.name}`),
+    h('p', { class: 'muted small' }, `LGA Multi-Sectoral Nutrition Scorecard Data Reporting System · ${info.name} · ${info.area.name}`),
     h('div', { class: 'grid2' }, field('Full name', name), field('Email', email), field('Phone', phone), field('Job title', job)), field('Organisation / office', org),
     h('h3', {}, 'Your sector and where you work'), h('div', { class: 'grid2' }, field('Sector', sectorSel), field('I will be', roleSel)), where,
     dsArea,
