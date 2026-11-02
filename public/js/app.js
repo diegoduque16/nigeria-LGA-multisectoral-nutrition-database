@@ -1815,7 +1815,9 @@ async function renderAccounts() {
       choice('Add one person', 'Fill in their name, email, role and place. You get a one-time link to send them (email or WhatsApp); they choose their own password.',
         h('button', { class: 'primary', onclick: () => userDialog(null, roles, m) }, '+ New account')),
       choice('Let many people sign up', 'Make a QR code for an area and sector, and print or share it. People scan it and ask for an account; you approve them here.',
-        h('button', { onclick: () => linkDialog(m) }, '+ Registration QR code'))),
+        h('button', { onclick: () => linkDialog(m) }, '+ Registration QR code')),
+      is('sysadmin') ? choice('Add an administrator', 'A System administrator can do everything you can: set-up, users, states in use. A Data set administrator only sets up sectors, forms and indicators, and sees the results.',
+        h('button', { onclick: () => userDialog(null, roles, m, 'admin') }, '+ New administrator')) : null),
     linksPanel(links),
     h('details', { class: 'panel roles' }, h('summary', {}, 'What each role can do'),
       h('table', {}, h('tbody', {}, roles.map((r) => h('tr', {}, h('td', {}, h('strong', {}, r.name)), h('td', { class: 'small' }, ROLE_HELP[r.id] || '')))))),
@@ -2038,11 +2040,12 @@ function assignedText(u, m) {
   return u.dataElements.length ? `${ds} · ${u.dataElements.length} number${u.dataElements.length === 1 ? '' : 's'} only` : ds;
 }
 
-async function userDialog(u, roles, m) {
-  const allowedRoles = is('sysadmin') ? roles : roles.filter((r) => ['lga', 'unit'].includes(r.id));
+async function userDialog(u, roles, m, presetRole = null) {
+  const allowedRoles = (is('sysadmin') ? roles : roles.filter((r) => ['lga', 'unit'].includes(r.id)))
+    .filter((r) => presetRole !== 'admin' || ['sysadmin', 'setupadmin'].includes(r.id));
   const name = h('input', { value: u ? u.name : '', autocomplete: 'off' });
   const email = h('input', { type: 'email', value: u ? u.email : '', autocomplete: 'off' });
-  const roleSel = select(allowedRoles, u ? u.role : allowedRoles[allowedRoles.length > 2 ? 3 : 0].id);
+  const roleSel = select(allowedRoles, u ? u.role : presetRole === 'admin' ? 'sysadmin' : (allowedRoles.find((r) => r.id === 'lga') || allowedRoles[0]).id);
   const o = await orgs();
   const stateSel = select(o.states, u && u.ou && u.ou.level >= 2 ? null : o.states[0].id);
   const lgaSel = h('select');
@@ -2111,7 +2114,7 @@ async function userDialog(u, roles, m) {
   const save = h('button', { class: 'primary' }, u ? 'Save' : 'Create account');
   const reset = u ? h('button', {}, u.passwordSet ? 'New password link' : 'New invite link') : null;
   const dlg = h('dialog', {},
-    h('h2', {}, u ? u.name : 'New account'),
+    h('h2', {}, u ? u.name : presetRole === 'admin' ? 'New administrator' : 'New account'),
     h('div', { class: 'grid2' }, field('Full name', name), field('Email', email), field('Role', roleSel)),
     where,
     h('p', { class: 'muted small role-help' }),
