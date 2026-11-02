@@ -458,3 +458,38 @@ test('unit-level reporting: schools report, totals add up to LGA/state, rates co
   // Who reports can no longer change once there are reports.
   assert.equal((await admin.patch(`/api/datasets/${ds.id}`, { reportLevel: 'LGA' })).status, 409);
 });
+
+test('official population figures: template data, Excel-style import with checks, saved as accepted', async () => {
+  const env = makeEnv();
+  const admin = await setupAdmin(env);
+  const pop = (await admin.post('/api/datasets', { name: 'Population and denominators', shared: true })).data;
+  const preg = (await admin.post(`/api/datasets/${pop.id}/fields`, { name: 'Expected pregnancies' })).data.dataElement.id;
+  const u5 = (await admin.post(`/api/datasets/${pop.id}/fields`, { name: 'Children under 5', prorate: false })).data.dataElement.id;
+  const t0 = (await admin.get(`/api/datasets/${pop.id}/population?year=2026`)).data;
+  assert.equal(t0.lgas.length, 774);
+  assert.deepEqual(t0.fields.map((f) => f.name), ['Expected pregnancies', 'Children under 5']);
+  const rows = [
+    { row: 2, state: 'ab Abia State', lga: 'ab Aba North LGA', lgaId: ABA_NORTH, values: { [preg]: '4,820', [u5]: 21000 } },
+    { row: 3, state: 'Abia', lga: 'Aba South', values: { [preg]: 5100, [u5]: '' } },
+    { row: 4, lgaId: ABA_NORTH, values: { [preg]: 1 } },          // duplicate
+    { row: 5, lga: 'Nowhere', values: { [preg]: 1 } },             // unknown
+    { row: 6, lgaId: AROCHUKWU, values: { [preg]: -5 } },          // negative
+    { row: 7, lgaId: ADAMAWA, values: {} },                        // a state ID, not an LGA
+  ];
+  const check = (await admin.post(`/api/datasets/${pop.id}/population`, { year: '2026', rows })).data;
+  assert.deepEqual(check.counts, { lgas: 2, values: 3, changed: 3, error: 4 });
+  assert.equal((await admin.post(`/api/datasets/${pop.id}/population`, { year: '2026', rows: rows.slice(0, 2), commit: true })).status, 422); // source needed
+  const ok = await admin.post(`/api/datasets/${pop.id}/population`, { year: '2026', source: 'NPC 2026 projections', rows: rows.slice(0, 2), commit: true });
+  assert.equal(ok.status, 200, JSON.stringify(ok.data));
+  const t1 = (await admin.get(`/api/datasets/${pop.id}/population?year=2026`)).data;
+  assert.equal(t1.source.source, 'NPC 2026 projections');
+  assert.equal(t1.lgas.find((l) => l.id === ABA_NORTH).values[preg], 4820);
+  assert.equal(t1.lgas.find((l) => l.id === ABA_SOUTH).values[u5], null);
+  const st = (await admin.get(`/api/status?dataset=${pop.id}&state=${ABIA}&period=2026`)).data;
+  assert.equal(st.counts.accepted, 2);
+  // Re-import is idempotent; non-admins cannot import.
+  const again = (await admin.post(`/api/datasets/${pop.id}/population`, { year: '2026', rows: rows.slice(0, 2) })).data;
+  assert.equal(again.counts.changed, 0);
+  const so = await addUser(env, admin, { name: 'S', email: 's@abia.gov.ng', role: 'state', ouId: ABIA });
+  assert.equal((await so.c.get(`/api/datasets/${pop.id}/population?year=2026`)).status, 403);
+});

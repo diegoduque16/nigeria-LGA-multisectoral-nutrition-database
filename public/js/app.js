@@ -676,6 +676,7 @@ function sharedPanel(ds) {
     toast('Added'); state.meta = null; renderSetup();
   }));
   return h('div', {},
+    list.length ? populationImportPanel(ds, list) : null,
     h('div', { class: 'scroll' }, h('table', {},
       h('thead', {}, h('tr', {}, h('th', {}, 'Number (entered once a year per LGA)'), h('th', {}, 'For monthly or quarterly indicators'), h('th', {}, 'ID'), h('th'))),
       h('tbody', {}, list.map((d) => {
@@ -686,6 +687,96 @@ function sharedPanel(ds) {
         return h('tr', {}, h('td', {}, n), h('td', {}, sel), h('td', {}, idTag(d.id)), h('td', {}, b));
       }), h('tr', {}, h('td', {}, name), h('td', {}, h('label', { class: 'check' }, split, 'Split by months')), h('td'), h('td', {}, add))))),
     h('p', { class: 'muted small' }, '“Split by months” suits yearly flows such as expected pregnancies or births: a monthly indicator divides by one twelfth. “As is” suits counts such as households, schools or total population. Each LGA (or the state on its behalf) enters these once a year under Data entry.'));
+}
+
+// Official population figures (NPC / NBS …) for every LGA from one Excel sheet.
+function populationImportPanel(ds, fields) {
+  const y = new Date().getFullYear();
+  const years = [y + 1, y, y - 1, y - 2, y - 3, y - 4].map((x) => ({ id: String(x), name: String(x) }));
+  const yearSel = select(years, pref('popYear') || String(y), { onchange: () => { pref('popYear', yearSel.value); showSource(); } });
+  const info = h('div', { class: 'muted small' });
+  const showSource = async () => {
+    info.textContent = '';
+    try {
+      const t = await get(`/api/datasets/${ds.id}/population?year=${yearSel.value}`);
+      const filled = t.lgas.filter((l) => Object.values(l.values).some((v) => v !== null)).length;
+      info.textContent = t.source ? `${yearSel.value}: ${filled} of ${t.lgas.length} LGAs have figures · last import “${t.source.source}” by ${t.source.by}, ${fmtDate(t.source.at)}` : `${yearSel.value}: ${filled} of ${t.lgas.length} LGAs have figures.`;
+    } catch {}
+  };
+  showSource();
+  const tpl = h('button', {}, 'Download template');
+  tpl.addEventListener('click', busy(tpl, async () => {
+    const t = await get(`/api/datasets/${ds.id}/population?year=${yearSel.value}`);
+    const { writeWorkbook } = await import('./xlsx.js');
+    const head = ['State', 'LGA', 'LGA ID', ...t.fields.map((f) => f.name)];
+    const rows = t.lgas.map((l) => [l.state, l.name, l.id, ...t.fields.map((f) => l.values[f.id] ?? '')]);
+    saveBlob(writeWorkbook([
+      { name: `Population ${t.year}`, rows: [head, ...rows], widths: [20, 28, 14, ...t.fields.map(() => 22)] },
+      { name: 'How to fill', rows: [['How to fill'], ...[
+        `One row per LGA for the year ${t.year}. Fill in the official figures (e.g. from the National Population Commission projections).`,
+        'Keep the State, LGA and LGA ID columns as they are — they link each row to the right LGA.',
+        'Numbers only, without decimals or text (commas are fine). Leave a cell empty to keep what is already stored.',
+        'You can delete rows you do not have figures for.',
+        'Then use “Import Excel” on the Population & denominators page, choose the same year and say where the figures come from.',
+      ].map((x) => [x])], widths: [110] },
+    ]), `Population_${t.year}_template.xlsx`);
+  }));
+  const fileIn = h('input', { type: 'file', accept: '.xlsx,.csv', hidden: true });
+  fileIn.addEventListener('change', async () => {
+    const f = fileIn.files[0]; fileIn.value = '';
+    if (f) try { await populationImportDialog(ds, fields, f, yearSel.value, showSource); } catch (e) { toast(e.message, true); }
+  });
+  return h('div', { class: 'panel' }, h('h2', {}, 'Official figures from Excel'),
+    h('p', { class: 'muted small' }, 'Download the template (one row per LGA, one column per number, filled with what is already stored), add the official figures, then import it. Imported figures are saved as accepted for that year.'),
+    h('div', { class: 'bar' }, field('Year', yearSel), tpl, h('button', { class: 'primary', onclick: () => fileIn.click() }, 'Import Excel'), fileIn), info);
+}
+
+async function populationImportDialog(ds, fields, file, year, after) {
+  const { readSheet } = await import('./xlsx.js');
+  const rows = await readSheet(file);
+  const norm = (x) => String(x || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+  const hi = rows.findIndex((r) => r.some((c) => ['lgaid', 'lga'].includes(norm(c))));
+  if (hi < 0) throw new Error('No “LGA” or “LGA ID” column found. Use the template (Download template).');
+  const head = rows[hi].map(norm);
+  const ci = { state: head.indexOf('state'), lga: head.indexOf('lga'), lgaId: head.indexOf('lgaid') };
+  const cols = fields.map((f) => ({ f, i: head.indexOf(norm(f.name)) })).filter((x) => x.i >= 0);
+  if (!cols.length) throw new Error('None of the columns match a number in this data set (e.g. “' + fields[0].name + '”). Use the template.');
+  const missingCols = fields.filter((f) => !cols.some((c) => c.f.id === f.id)).map((f) => f.name);
+  const data = rows.slice(hi + 1).map((r, i) => ({
+    row: hi + i + 2,
+    state: ci.state >= 0 ? String(r[ci.state] ?? '').trim() : '', lga: ci.lga >= 0 ? String(r[ci.lga] ?? '').trim() : '', lgaId: ci.lgaId >= 0 ? String(r[ci.lgaId] ?? '').trim() : '',
+    values: Object.fromEntries(cols.map(({ f, i: c }) => [f.id, String(r[c] ?? '').trim()])),
+  })).filter((r) => r.lga || r.lgaId);
+  if (!data.length) throw new Error('The file has no LGA rows.');
+  const { data: check } = await api('POST', `/api/datasets/${ds.id}/population`, { year, rows: data });
+  const c = check.counts;
+  const errors = check.results.filter((r) => r.status === 'error');
+  const source = h('input', { placeholder: `e.g. NPC ${year} projections`, size: 40 });
+  const go = h('button', { class: 'primary', disabled: !!c.error || !c.lgas }, `Save figures for ${c.lgas} LGA${c.lgas === 1 ? '' : 's'}`);
+  const progress = h('span', { class: 'muted small' });
+  const err = h('div', { class: 'err' });
+  const dlg = h('dialog', {}, h('h2', {}, `Population figures ${year} — check`),
+    h('p', { class: 'muted small' }, file.name, ` · ${data.length} LGA rows · columns: ${cols.map((x) => x.f.name).join(', ')}`),
+    missingCols.length ? h('div', { class: 'note warn' }, `Not in the file (kept as they are): ${missingCols.join(', ')}.`) : null,
+    h('div', { class: 'counts' }, h('span', { class: 'pill s-accepted' }, `LGAs with figures: ${c.lgas}`), h('span', { class: 'pill s-draft' }, `Values changing: ${c.changed}`), h('span', { class: 'pill s-returned' }, `Problems: ${c.error}`)),
+    errors.length ? h('div', {}, h('div', { class: 'note bad' }, 'Fix these rows in the file and import again. Nothing has been saved.'),
+      h('div', { class: 'scroll' }, h('table', {}, h('thead', {}, h('tr', {}, h('th', {}, 'Row'), h('th', {}, 'LGA'), h('th', {}, 'Problem'))),
+        h('tbody', {}, errors.slice(0, 200).map((e) => h('tr', {}, h('td', {}, e.row), h('td', {}, e.lga), h('td', {}, e.message)))))))
+      : h('div', {}, field('Source of these figures (required)', source)),
+    err, h('p'), h('div', { class: 'actions' }, go, progress, h('button', { onclick: () => dlg.close() }, 'Cancel')));
+  dlg.addEventListener('close', () => dlg.remove());
+  go.addEventListener('click', busy(go, async () => {
+    err.textContent = '';
+    if (!source.value.trim()) { err.textContent = 'Say where the figures come from.'; return; }
+    const ok = new Set(check.results.filter((r) => ['changed', 'same'].includes(r.status)).map((r) => r.row));
+    const todo = data.filter((r) => ok.has(r.row));
+    for (let i = 0; i < todo.length; i += 60) {
+      progress.textContent = `Saving ${Math.min(i + 60, todo.length)} of ${todo.length}…`;
+      await api('POST', `/api/datasets/${ds.id}/population`, { year, source: source.value.trim(), rows: todo.slice(i, i + 60), commit: true });
+    }
+    dlg.close(); toast(`Saved population figures for ${todo.length} LGAs`); after();
+  }));
+  document.body.append(dlg); dlg.showModal();
 }
 
 function datasetDialog(ds, m, makeShared = false) {

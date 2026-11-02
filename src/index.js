@@ -8,6 +8,7 @@ import * as meta from './routes/metadata.js';
 import * as entry from './routes/entry.js';
 import * as pic from './routes/picture.js';
 import * as units from './routes/units.js';
+import * as pop from './routes/popimport.js';
 
 // [method, path, handler, access]  access: 'public' | 'optional' | 'session'
 const ROUTES = [
@@ -44,6 +45,8 @@ const ROUTES = [
   ['PATCH', '/api/indicators/:id', meta.updateIndicator, 'session'],
   ['DELETE', '/api/indicators/:id', meta.deleteIndicator, 'session'],
   ['POST', '/api/datasets/:datasetId/fields', meta.createDataElement, 'session'],
+  ['GET', '/api/datasets/:id/population', pop.populationTable, 'session'],
+  ['POST', '/api/datasets/:id/population', pop.importPopulation, 'session'],
   ['PATCH', '/api/fields/:id', meta.updateDataElement, 'session'],
 
   ['GET', '/api/entry', entry.getEntry, 'session'],
