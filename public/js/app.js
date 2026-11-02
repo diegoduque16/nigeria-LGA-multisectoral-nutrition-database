@@ -471,8 +471,9 @@ async function renderExport() {
   const params = () => ({
     datasets: dsChecks.filter((c) => c.checked).map((c) => c.value).join(','), sector: sectorSel.value, ou: areaSel.value,
   });
+  const withUnits = h('input', { type: 'checkbox' });
   const metaBtn = h('button', { class: 'primary' }, 'Download metadata');
-  metaBtn.addEventListener('click', busy(metaBtn, async () => toast('Downloaded ' + await download('/api/export/metadata' + qs(params())))));
+  metaBtn.addEventListener('click', busy(metaBtn, async () => toast('Downloaded ' + await download('/api/export/metadata' + qs({ ...params(), units: withUnits.checked ? (sectorSel.value || 'all') : '' })))));
   const dataBtn = h('button', { class: 'primary' }, 'Download data values');
   dataBtn.addEventListener('click', busy(dataBtn, async () => toast('Downloaded ' + await download('/api/export/data' + qs({
     ...params(), from: from.value.trim(), to: to.value.trim(), levels: lv.filter((c) => c.checked).map((c) => c.value).join(','), provisional: prov.checked ? 1 : '',
@@ -487,6 +488,7 @@ async function renderExport() {
       h('div', { class: 'bar' }, field('Sector', sectorSel), field('Area', areaSel)),
       h('h3', {}, '1 · Metadata'),
       h('p', { class: 'muted small' }, 'organisationUnits_indicators.json — org units with their DHIS2 IDs, and the indicators (with a reporting-rate indicator per data set).'),
+      h('label', { class: 'check' }, withUnits, 'Also include org units below LGAs (schools, health facilities…) for the chosen sector'), h('p'),
       metaBtn,
       h('h3', {}, '2 · Data values'),
       h('div', { class: 'bar' }, field('Period type', typeSel), field('From', from), field('To', to),
