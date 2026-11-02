@@ -1,6 +1,10 @@
 name = "nigeria-lga-multisectoral-nutrition-database"
 workers_dev = true
 preview_urls = false
+routes = [
+  { pattern = "lganutritiondata.org", custom_domain = true },
+  { pattern = "www.lganutritiondata.org", custom_domain = true },
+]
 main = "src/index.js"
 compatibility_date = "2026-10-01"
 keep_vars = true
