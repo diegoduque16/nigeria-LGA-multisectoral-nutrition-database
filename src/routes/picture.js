@@ -40,7 +40,10 @@ export async function picture(request, env, ctx) {
   if (!ds) throw new HttpError(404, 'not_found', 'Data set not found.');
   if (!datasetAllowed(ctx, ds.id)) throw new HttpError(403, 'forbidden', 'You are not assigned to this data set.');
   let ou = await loadOu(env.DB, ctx, q.get('ou'));
-  if (ou.level === 3) ou = await one(env.DB, 'SELECT * FROM org_units WHERE id = ?', ou.parent_id);
+  const unitLevel = ds.report_level === 4;
+  if (ou.level === 4) ou = await one(env.DB, 'SELECT * FROM org_units WHERE id = ?', ou.parent_id);
+  // An LGA shows its units for unit-reported data sets; otherwise the picture starts at the state.
+  if (ou.level === 3 && !unitLevel) ou = await one(env.DB, 'SELECT * FROM org_units WHERE id = ?', ou.parent_id);
   const period = q.get('period') || lastCompletedPeriod(ds.frequency);
   if (!periodType(period)) throw new HttpError(422, 'invalid', 'Unknown period.', { field: 'period' });
   const provisional = q.get('provisional') === '1';
@@ -50,7 +53,7 @@ export async function picture(request, env, ctx) {
   const sharedIds = sharedIdsOf(inds, own.map((f) => f.id));
   const shared = sharedIds.length ? await all(env.DB, `SELECT id, name FROM data_elements WHERE id IN (${sharedIds.map(() => '?').join(',')}) ORDER BY sort, name`, ...sharedIds) : [];
   const fields = [...own, ...shared.map((f) => ({ ...f, shared: true }))];
-  const { subPeriods, lgas } = await loadLgaTotals(env.DB, ds, period, ou, statuses, sharedIds);
+  const { subPeriods, lgas, units } = await loadLgaTotals(env.DB, ds, period, ou, statuses, sharedIds, { perUnit: unitLevel && ou.level === 3 });
   const sectorNames = Object.fromEntries((await all(env.DB, 'SELECT id, name FROM sectors')).map((x) => [x.id, x.name]));
 
   const lgaList = [...lgas.values()];
@@ -58,13 +61,15 @@ export async function picture(request, env, ctx) {
   if (ou.level === 1) {
     const states = await all(env.DB, 'SELECT id, name FROM org_units WHERE level = 2 AND parent_id = ? ORDER BY name', ou.id);
     rows = states.map((s) => ({ id: s.id, name: s.name, level: 2, ...summarize(rollUp(lgaList.filter((l) => l.stateId === s.id), subPeriods.length), inds, fields) }));
+  } else if (ou.level === 3) {
+    rows = [...units.values()].map((u) => ({ id: u.id, name: u.name, level: 4, type: u.type, ward: u.ward, ...summarize(rollUp([u], subPeriods.length), inds, fields), statuses: u.statuses }));
   } else {
     rows = lgaList.map((l) => ({ id: l.id, name: l.name, level: 3, ...summarize(rollUp([l], subPeriods.length), inds, fields), statuses: l.statuses }));
   }
   const total = { id: ou.id, name: ou.name, level: ou.level, ...summarize(rollUp(lgaList, subPeriods.length), inds, fields) };
   return json({
-    dataset: { id: ds.id, name: ds.name, frequency: ds.frequency, frequencyName: FREQUENCY_NAMES[ds.frequency] },
-    ou: { id: ou.id, name: ou.name, level: ou.level },
+    dataset: { id: ds.id, name: ds.name, frequency: ds.frequency, frequencyName: FREQUENCY_NAMES[ds.frequency], reportLevel: unitLevel ? 'UNIT' : 'LGA' },
+    ou: { id: ou.id, name: ou.name, level: ou.level, parentId: ou.parent_id },
     period, periodName: periodName(period), subPeriods, provisional,
     indicators: inds.map((i) => ({ id: i.id, name: i.name, sectorId: i.sector_id, sector: sectorNames[i.sector_id] || '', source: i.source, percent: i.type_id === PERCENT_TYPE, numerator: i.numerator_description, denominator: i.denominator === '1' ? '' : i.denominator_description })),
     fields,
@@ -74,7 +79,7 @@ export async function picture(request, env, ctx) {
 
 function summarize(r, inds, fields) {
   return {
-    reportingUnits: r.reportingUnits, totalUnits: r.totalUnits,
+    reportingUnits: r.reportingUnits, totalUnits: r.totalUnits, unitsReporting: r.unitsReporting, expectedUnits: r.expectedUnits,
     reported: r.reported, expected: r.expected,
     reportingRate: r.reportingRate === null ? null : round(r.reportingRate, 1),
     indicators: Object.fromEntries(inds.map((i) => [i.id, r.reported ? cell(i, r.values) : null])),
@@ -168,7 +173,9 @@ export async function exportData(request, env, ctx) {
   if (!periods || !periods.length || periods.length > 36 || periods.some((p) => !periodType(p))) {
     throw new HttpError(422, 'invalid', 'Give one or more periods such as 202601, 2026Q1 or 2026 (up to 36).', { field: 'period' });
   }
-  const levels = (q.get('levels') || '1,2,3').split(',').map(Number).filter((n) => [1, 2, 3].includes(n));
+  const levels = (q.get('levels') || '1,2,3').split(',').map(Number).filter((n) => [1, 2, 3, 4].includes(n));
+  if (levels.includes(4) && root.level === 1) throw new HttpError(422, 'invalid', 'Unit-level rows (schools, facilities …) can be exported for one state at a time. Choose a state as the area.', { field: 'ou' });
+  const unitNames = new Map();
   const statuses = q.get('provisional') === '1' ? STATUSES_PROVISIONAL : STATUSES_FINAL;
   const factors = await factorMap(env.DB);
   const units = await exportOrgUnits(env.DB, root);
@@ -190,13 +197,15 @@ export async function exportData(request, env, ctx) {
 
     for (const pe of periods) {
       let totals;
-      try { totals = await loadLgaTotals(env.DB, ds, pe, root, statuses, sharedIds); } catch (e) {
+      const perUnit = ds.report_level === 4 && levels.includes(4);
+      try { totals = await loadLgaTotals(env.DB, ds, pe, root, statuses, sharedIds, { perUnit }); } catch (e) {
         if (e.code === 'period_mismatch') { skipped.push(`${ds.name} ${pe}`); continue; } else throw e;
       }
       const { subPeriods, lgas } = totals;
       const lgaList = [...lgas.values()];
-      // Groups: each LGA, each state, the country (whichever are within scope and requested).
+      // Groups: each unit, each LGA, each state, the country (whichever are within scope and requested).
       const groups = [];
+      if (perUnit) for (const u of totals.units.values()) { unitNames.set(u.id, u.name); groups.push([u.id, [u]]); }
       if (levels.includes(3)) for (const l of lgaList) groups.push([l.id, [l]]);
       if (levels.includes(2)) {
         for (const u of units) {
@@ -227,7 +236,7 @@ export async function exportData(request, env, ctx) {
   }
   for (const id of seenOu) {
     const u = unitById.get(id);
-    items[id] = { name: u ? u.name : id };
+    items[id] = { name: u ? u.name : unitNames.get(id) || id };
     dims.ou.push(id);
   }
   if (!rows.length) {

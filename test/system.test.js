@@ -396,3 +396,65 @@ test('sector units (schools...) below LGAs: add, Excel-style import with checks,
   await admin.post('/api/orgunits/import?closeMissing=true', ous);
   assert.equal((await admin.get(`/api/units?sector=${eduSector}`)).data.units.filter((u) => !u.closed).length, 3);
 });
+
+test('unit-level reporting: schools report, totals add up to LGA/state, rates count units', async () => {
+  const env = makeEnv();
+  const admin = await setupAdmin(env);
+  const ds = (await admin.post('/api/datasets', { name: 'Education – yearly (schools)', sector: 'Education', frequency: 'YEARLY', reportLevel: 'UNIT' })).data;
+  const pupils = (await admin.post(`/api/datasets/${ds.id}/indicators`, { name: 'Pupils enrolled', numerator: 'Pupils enrolled' })).data.indicator;
+  const ptr = (await admin.post(`/api/datasets/${ds.id}/indicators`, { name: 'Pupil-teacher ratio', numerator: 'Pupils enrolled', denominator: 'Teachers', showAs: 'number' })).data.indicator;
+  const sector = (await admin.get('/api/units')).data.sectors.find((s) => s.name === 'Education').id;
+  const add = async (lgaId, name) => (await admin.post('/api/units', { sectorId: sector, lgaId, name })).data.id;
+  const A = await add(ABA_NORTH, 'School A'); const B = await add(ABA_NORTH, 'School B'); await add(ABA_NORTH, 'School C');
+  await add(ABA_SOUTH, 'School D');
+  const year = String(Number(lastCompletedPeriod('MONTHLY').slice(0, 4)) - 1);
+  const [P, T] = [pupils.numeratorId, ptr.denominatorId];
+
+  // Unit user for School A; LGA user enters for School B.
+  const ua = await addUser(env, admin, { name: 'Head A', email: 'a@school.ng', role: 'unit', ouId: A });
+  const lg = await addUser(env, admin, { name: 'LGA EO', email: 'eo@abia.gov.ng', role: 'lga', ouId: ABA_NORTH });
+  const st = await addUser(env, admin, { name: 'S', email: 's@abia.gov.ng', role: 'state', ouId: ABIA });
+  // An LGA itself cannot report a unit-level data set; a unit user cannot report another school.
+  assert.equal((await lg.c.put('/api/entry', { dataset: ds.id, ou: ABA_NORTH, period: year, values: {} })).status, 422);
+  assert.equal((await ua.c.put('/api/entry', { dataset: ds.id, ou: B, period: year, values: {} })).status, 403);
+  await report(ua.c, ds.id, A, year, { [P]: 300, [T]: 10 });
+  await report(lg.c, ds.id, B, year, { [P]: 100, [T]: 10 });
+  const form = (await ua.c.get(`/api/entry?dataset=${ds.id}&ou=${A}&period=${year}`)).data;
+  assert.equal(form.ou.lga, 'ab Aba North LGA');
+  assert.equal(form.indicators.find((i) => i.id === ptr.id).value, 30);
+  // The LGA reviews its schools; a unit user cannot review.
+  assert.equal((await ua.c.post('/api/entry/review', { dataset: ds.id, ou: A, period: year, action: 'accept' })).status, 403);
+  assert.equal((await lg.c.post('/api/entry/review', { dataset: ds.id, ou: A, period: year, action: 'accept' })).data.report.status, 'accepted');
+  await st.c.post('/api/entry/review', { dataset: ds.id, ou: B, period: year, action: 'accept' });
+  // Status lists schools.
+  const status = (await st.c.get(`/api/status?dataset=${ds.id}&period=${year}`)).data;
+  assert.equal(status.total, 4);
+  assert.equal(status.counts.accepted, 2);
+  assert.equal(status.lgas.find((u) => u.id === A).lgaName, 'ab Aba North LGA');
+  assert.equal((await lg.c.get(`/api/status?dataset=${ds.id}&period=${year}`)).data.total, 3);
+  // State picture: Aba North = A + B; ratio recomputed from sums (400 / 20 = 20); rate counts units (2 of 4).
+  const pic = (await st.c.get(`/api/picture?dataset=${ds.id}&period=${year}`)).data;
+  const an = pic.rows.find((r) => r.id === ABA_NORTH);
+  assert.equal(an.indicators[pupils.id].value, 400);
+  assert.equal(an.indicators[ptr.id].value, 20);
+  assert.equal(an.unitsReporting, 2); assert.equal(an.expectedUnits, 3);
+  assert.equal(pic.total.reportingRate, 50);
+  assert.equal(pic.total.unitsReporting, 2); assert.equal(pic.total.expectedUnits, 4);
+  // LGA picture lists its schools.
+  const lp = (await st.c.get(`/api/picture?dataset=${ds.id}&ou=${ABA_NORTH}&period=${year}`)).data;
+  assert.equal(lp.ou.level, 3);
+  assert.deepEqual(lp.rows.map((r) => r.name), ['School A', 'School B', 'School C']);
+  assert.equal(lp.rows[0].indicators[pupils.id].value, 300);
+  assert.equal(lp.total.indicators[pupils.id].value, 400);
+  // Export: LGA/state/national values come from the schools; school rows on request, for a state.
+  const ex = (await admin.get(`/api/export/data?period=${year}&datasets=${ds.id}`)).data.dataValues[0];
+  const val = (dx, ou) => (ex.rows.find((r) => r[0] === dx && r[2] === ou) || [])[3];
+  assert.equal(val(pupils.id, NIGERIA), '400');
+  assert.equal(val(ds.reportingRateId, ABIA), '50');
+  assert.equal((await admin.get(`/api/export/data?period=${year}&datasets=${ds.id}&levels=4`)).status, 422);
+  const ex4 = (await admin.get(`/api/export/data?period=${year}&datasets=${ds.id}&levels=3,4&ou=${ABIA}`)).data.dataValues[0];
+  assert.equal((ex4.rows.find((r) => r[0] === pupils.id && r[2] === A) || [])[3], '300');
+  assert.equal(ex4.metaData.items[A].name, 'School A');
+  // Who reports can no longer change once there are reports.
+  assert.equal((await admin.patch(`/api/datasets/${ds.id}`, { reportLevel: 'LGA' })).status, 409);
+});

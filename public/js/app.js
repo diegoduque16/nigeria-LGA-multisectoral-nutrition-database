@@ -76,8 +76,8 @@ const role = () => state.me && state.me.user.role;
 const is = (...roles) => roles.includes(role());
 
 const PAGES = [
-  { id: 'entry', name: 'Data entry', roles: ['sysadmin', 'state', 'lga'] },
-  { id: 'review', name: 'Review', roles: ['sysadmin', 'state'] },
+  { id: 'entry', name: 'Data entry', roles: ['sysadmin', 'state', 'lga', 'unit'] },
+  { id: 'review', name: 'Review', roles: ['sysadmin', 'state', 'lga'] },
   { id: 'picture', name: 'State picture', roles: ['sysadmin', 'setupadmin', 'state', 'viewer'] },
   { id: 'export', name: 'Export', roles: ['sysadmin', 'setupadmin', 'state', 'viewer'] },
   { id: 'setup', name: 'Indicators', roles: ['sysadmin', 'setupadmin'] },
@@ -93,6 +93,8 @@ async function loadMe() {
 async function meta(force = false) { if (!state.meta || force) state.meta = await get('/api/metadata'); return state.meta; }
 async function orgs() { if (!state.orgs) state.orgs = await get('/api/orgunits'); return state.orgs; }
 const lgaCache = {};
+const unitCache = {};
+async function unitsOf(lgaId) { if (!unitCache[lgaId]) unitCache[lgaId] = (await get(`/api/orgunits?parent=${lgaId}&units=1`)).children; return unitCache[lgaId]; }
 async function lgasOf(stateId) { if (!lgaCache[stateId]) lgaCache[stateId] = (await get('/api/orgunits?parent=' + stateId)).children.filter((c) => !c.closed); return lgaCache[stateId]; }
 
 function renderChrome(page) {
@@ -203,7 +205,7 @@ function renderMe() {
 }
 
 // ---------- shared pickers ----------
-const dsLabel = (d) => (d.shared ? d.name + ' (shared)' : d.sector && !d.name.toLowerCase().startsWith(d.sector.toLowerCase()) ? `${d.sector} — ${d.name}` : d.name);
+const dsLabel = (d) => (d.shared ? d.name + ' (shared)' : (d.sector && !d.name.toLowerCase().startsWith(d.sector.toLowerCase()) ? `${d.sector} — ${d.name}` : d.name) + (d.reportLevel === 'UNIT' ? ' · by unit' : ''));
 // Shown when there is nothing to report on yet: admins get a way forward, others are told who to ask.
 function noDatasets() {
   if (is('sysadmin', 'setupadmin')) {
@@ -233,13 +235,27 @@ async function renderEntry() {
   if (!sets.length) return mount(noDatasets());
   const ds = sets.find((d) => d.id === pref('ds')) || sets[0];
   let ouId; let pickers = [];
-  if (role() === 'lga') ouId = state.me.ou.id;
+  const byUnit = ds.reportLevel === 'UNIT';
+  if (role() === 'unit') ouId = state.me.ou.id;
+  else if (role() === 'lga') ouId = state.me.ou.id;
   else {
     const stateId = role() === 'state' ? state.me.ou.id : pref('state');
     const sp = role() === 'state' ? { value: state.me.ou.id } : await pickState(stateId, (v) => { pref('state', v); pref('lga', null); renderEntry(); });
     const lgas = await lgasOf(sp.value);
     ouId = lgas.some((l) => l.id === pref('lga')) ? pref('lga') : lgas[0].id;
     pickers = [sp.el, field('LGA', select(lgas, ouId, { onchange: (e) => { pref('lga', e.target.value); renderEntry(); } }))];
+  }
+  if (byUnit && role() !== 'unit') {
+    // Unit-reported data set: choose the school / facility inside the LGA.
+    const units = (await unitsOf(ouId)).filter((u) => u.sectorId === ds.sectorId);
+    if (!units.length) {
+      return mount(h('div', {}, h('div', { class: 'bar' }, field('Data set', select(sets.map((d) => ({ id: d.id, name: dsLabel(d) })), ds.id, { onchange: (e) => { pref('ds', e.target.value); renderEntry(); } })), pickers),
+        h('div', { class: 'panel empty' }, `“${ds.name}” is reported by each ${ds.sector ? ds.sector.toLowerCase() + ' ' : ''}unit, and this LGA has none yet. Add them on the Org units page.`)));
+    }
+    ouId = units.some((u) => u.id === pref('unit')) ? pref('unit') : units[0].id;
+    pickers = [...pickers, field('Unit', select(units, ouId, { onchange: (e) => { pref('unit', e.target.value); renderEntry(); } }))];
+  } else if (!byUnit && role() === 'unit') {
+    return mount(h('div', { class: 'note info' }, `“${ds.name}” is reported by the LGA, not by each unit.`));
   }
   const period = pref('pe:' + ds.id);
   let form;
@@ -306,7 +322,7 @@ function entryView(form, sets, pickers) {
   }
   const saveBtn = h('button', {}, 'Save draft');
   saveBtn.addEventListener('click', busy(saveBtn, async () => { const d = await save(); main().replaceChildren(entryView(d, sets, pickers)); }));
-  const submitBtn = h('button', { class: 'primary' }, 'Submit to state');
+  const submitBtn = h('button', { class: 'primary' }, form.ou.level === 4 ? 'Submit' : 'Submit to state');
   submitBtn.addEventListener('click', busy(submitBtn, async () => {
     if (form.can.edit && (dirty || r.status === 'none' || r.status === 'returned')) await save(true);
     try {
@@ -318,10 +334,10 @@ function entryView(form, sets, pickers) {
   const reviewBox = form.can.review ? reviewControls(form, (d) => main().replaceChildren(entryView(d, sets, pickers))) : null;
 
   return h('div', {},
-    h('div', { class: 'head' }, h('div', {}, h('h1', {}, form.ou.name), h('div', { class: 'muted' }, `${form.dataset.name} · ${form.periodName} · ${form.dataset.frequencyName}`)), h('div', {}, pill(r.status, r.statusName), r.late ? h('span', { class: 'late' }, 'Late') : null)),
+    h('div', { class: 'head' }, h('div', {}, h('h1', {}, form.ou.name), h('div', { class: 'muted' }, form.ou.lga ? `${form.ou.type ? form.ou.type + ' · ' : ''}${form.ou.lga} · ` : '', `${form.dataset.name} · ${form.periodName} · ${form.dataset.frequencyName}`)), h('div', {}, pill(r.status, r.statusName), r.late ? h('span', { class: 'late' }, 'Late') : null)),
     h('div', { class: 'bar' }, field('Data set', dsSel), pickers, field('Period', peSel)),
     r.status === 'returned' ? h('div', { class: 'note bad' }, h('strong', {}, 'Sent back for correction: '), r.comment || '', r.reviewedBy ? ` — ${r.reviewedBy}` : '') : null,
-    r.status === 'submitted' ? h('div', { class: 'note warn' }, `Submitted ${fmtDate(r.submittedAt)}${r.submittedBy ? ' by ' + r.submittedBy : ''}. Waiting for the state to review.`) : null,
+    r.status === 'submitted' ? h('div', { class: 'note warn' }, `Submitted ${fmtDate(r.submittedAt)}${r.submittedBy ? ' by ' + r.submittedBy : ''}. Waiting for review${form.ou.level === 4 ? ' by the LGA or state' : ' by the state'}.`) : null,
     r.status === 'accepted' ? h('div', { class: 'note ok' }, `Accepted ${fmtDate(r.reviewedAt)}${r.reviewedBy ? ' by ' + r.reviewedBy : ''}.`) : null,
     form.overdue && form.can.edit ? h('div', { class: 'note warn' }, `This report was due on ${fmtDay(form.due)}.`) : null,
     h('div', { class: 'panel' },
@@ -333,7 +349,7 @@ function entryView(form, sets, pickers) {
       h('p', { class: 'muted small' }, 'From the yearly “Population & denominators” data set for this LGA.'),
       h('table', {}, h('tbody', {}, form.sharedValues.map((x) => h('tr', {}, h('td', {}, x.name),
         h('td', { class: 'n' }, x.yearValue === null ? h('span', { class: 'late' }, `Missing for ${x.year}`) : x.prorate && form.dataset.frequency !== 'YEARLY' ? `${fmtNum(x.yearValue)} for ${x.year} → ${fmtNum(x.value, 1)} for this period` : fmtNum(x.yearValue))))))) : null,
-    form.indicators.length ? h('div', { class: 'panel' }, h('h2', {}, 'Indicators for this LGA'),
+    form.indicators.length ? h('div', { class: 'panel' }, h('h2', {}, form.ou.level === 4 ? 'Indicators for this unit' : 'Indicators for this LGA'),
       h('table', {}, h('tbody', {}, form.indicators.map((i) => h('tr', {}, h('td', {}, i.name, h('span', { class: 'muted small' }, i.sector ? ` · ${i.sector}` : '')), h('td', { class: 'n' }, fmtNum(i.value, 2))))))) : null,
     reviewBox,
     r.updatedAt ? h('p', { class: 'muted small' }, `Last saved ${fmtDate(r.updatedAt)}${r.updatedBy ? ' by ' + r.updatedBy : ''}.`) : null,
@@ -357,28 +373,42 @@ function reviewControls(form, after) {
 async function renderReview() {
   const sets = myDatasets();
   if (!sets.length) return mount(noDatasets());
-  const ds = sets.find((d) => d.id === pref('ds')) || sets[0];
-  const sp = role() === 'state' ? { value: state.me.ou.id } : await pickState(pref('state'), (v) => { pref('state', v); renderReview(); });
+  // LGA reviewers only review unit-reported data sets (their schools / facilities).
+  const usable = role() === 'lga' ? sets.filter((d) => d.reportLevel === 'UNIT') : sets;
+  if (!usable.length) return mount(h('div', { class: 'note info' }, 'LGA accounts review reports from units (schools, facilities …). None of your data sets is reported by units.'));
+  const ds = usable.find((d) => d.id === pref('ds')) || usable[0];
+  const byUnit = ds.reportLevel === 'UNIT';
+  const sp = ['state', 'lga'].includes(role()) ? { value: state.me.ou.path ? state.me.ou.path.split('/')[2] : state.me.ou.id } : await pickState(pref('state'), (v) => { pref('state', v); pref('rlga', ''); renderReview(); });
   const period = pref('pe:' + ds.id);
-  const st = await get('/api/status' + qs({ dataset: ds.id, state: sp.value, period })).catch(async (e) => {
-    if (e.body && e.body.error && e.body.error.field === 'period') { pref('pe:' + ds.id, null); return get('/api/status' + qs({ dataset: ds.id, state: sp.value })); } throw e;
+  const lgaFilter = byUnit && role() !== 'lga' ? pref('rlga') || '' : '';
+  const params = { dataset: ds.id, state: sp.value, lga: lgaFilter, period };
+  const st = await get('/api/status' + qs(params)).catch(async (e) => {
+    if (e.body && e.body.error && e.body.error.field === 'period') { pref('pe:' + ds.id, null); return get('/api/status' + qs({ ...params, period: undefined })); } throw e;
   });
   await meta();
   const names = { none: 'Not started', draft: 'Draft', submitted: 'Submitted', accepted: 'Accepted', returned: 'Sent back' };
-  const open = (l) => { pref('ds', ds.id); pref('state', sp.value); pref('lga', l.id); pref('pe:' + ds.id, st.period); go('#/entry'); };
+  const open = (l) => {
+    pref('ds', ds.id); pref('state', sp.value); pref('pe:' + ds.id, st.period);
+    if (byUnit) { pref('lga', l.lgaId); pref('unit', l.id); } else pref('lga', l.id);
+    go('#/entry');
+  };
+  const what = byUnit ? 'units' : 'LGAs';
   mount(h('div', {},
-    h('div', { class: 'head' }, h('div', {}, h('h1', {}, `${st.state.name} — review`), h('div', { class: 'muted' }, `${st.dataset.name} · ${st.periodName} · due ${fmtDay(st.due)}`))),
+    h('div', { class: 'head' }, h('div', {}, h('h1', {}, `${role() === 'lga' ? state.me.ou.name : st.state.name} — review`), h('div', { class: 'muted' }, `${st.dataset.name} · ${st.periodName} · due ${fmtDay(st.due)}`))),
     h('div', { class: 'bar' },
-      field('Data set', select(sets.map((d) => ({ id: d.id, name: dsLabel(d) })), ds.id, { onchange: (e) => { pref('ds', e.target.value); renderReview(); } })),
-      sp.el,
+      field('Data set', select(usable.map((d) => ({ id: d.id, name: dsLabel(d) })), ds.id, { onchange: (e) => { pref('ds', e.target.value); renderReview(); } })),
+      role() === 'state' || role() === 'lga' ? null : sp.el,
+      byUnit && role() !== 'lga' ? field('LGA', select([{ id: '', name: 'All LGAs' }, ...st.lgaOptions], lgaFilter, { onchange: (e) => { pref('rlga', e.target.value); renderReview(); } })) : null,
       field('Period', select(st.periods, st.period, { onchange: (e) => { pref('pe:' + ds.id, e.target.value); renderReview(); } }))),
-    h('div', { class: 'counts' }, Object.entries(st.counts).map(([k, n]) => h('span', { class: 'pill s-' + k }, `${names[k]}: ${n}`)), h('span', { class: 'pill s-none' }, `Total LGAs: ${st.total}`)),
-    h('div', { class: 'scroll' }, h('table', {},
-      h('thead', {}, h('tr', {}, h('th', {}, 'LGA'), h('th', {}, 'Status'), h('th', {}, 'Submitted'), h('th', {}, 'Reviewed'), h('th', {}, 'Comment'))),
+    h('div', { class: 'counts' }, Object.entries(st.counts).map(([k, n]) => h('span', { class: 'pill s-' + k }, `${names[k]}: ${n}`)), h('span', { class: 'pill s-none' }, `Total ${what}: ${st.total}`)),
+    st.lgas.length ? h('div', { class: 'scroll' }, h('table', {},
+      h('thead', {}, h('tr', {}, byUnit ? h('th', {}, 'LGA') : null, h('th', {}, byUnit ? 'Unit' : 'LGA'), h('th', {}, 'Status'), h('th', {}, 'Submitted'), h('th', {}, 'Reviewed'), h('th', {}, 'Comment'))),
       h('tbody', {}, st.lgas.map((l) => h('tr', { class: 'click', onclick: () => open(l) },
-        h('td', {}, l.name), h('td', {}, pill(l.status, l.statusName), l.late ? h('span', { class: 'late' }, 'Late') : null),
-        h('td', {}, fmtDate(l.submittedAt)), h('td', {}, fmtDate(l.reviewedAt)), h('td', { class: 'small muted' }, l.comment || '')))))),
-    h('p', { class: 'muted small' }, 'Click an LGA to open its report, then accept it or send it back.'),
+        byUnit ? h('td', { class: 'small' }, l.lgaName) : null,
+        h('td', {}, l.name, l.type ? h('span', { class: 'muted small' }, ` · ${l.type}`) : null), h('td', {}, pill(l.status, l.statusName), l.late ? h('span', { class: 'late' }, 'Late') : null),
+        h('td', {}, fmtDate(l.submittedAt)), h('td', {}, fmtDate(l.reviewedAt)), h('td', { class: 'small muted' }, l.comment || ''))))))
+      : h('div', { class: 'panel empty' }, byUnit ? 'No units yet for this sector here. Add them on the Org units page.' : 'No LGAs.'),
+    h('p', { class: 'muted small' }, `Click a row to open its report, then accept it or send it back.`),
   ));
 }
 
@@ -400,41 +430,58 @@ async function renderPicture() {
   if (!sets.length) return mount(noDatasets());
   const ds = sets.find((d) => d.id === pref('ds')) || sets[0];
   const choices = periodChoices(ds.frequency);
-  const period = choices.some((c) => c.id === pref('ppe:' + ds.id)) ? pref('ppe:' + ds.id) : choices[0].id;
+  const period = choices.some((c) => c.id === pref('ppe:' + ds.id)) ? pref('ppe:' + ds.id) : (choices.find((c) => !c.name.includes('so far')) || choices[0]).id;
   const provisional = !!pref('prov');
   const sector = pref('sector') || '';
+  const byUnit = ds.reportLevel === 'UNIT';
   let ouOptions = [];
   let ou = state.me.ou.id;
   if (state.me.ou.level === 1) {
     const o = await orgs();
     ouOptions = [{ id: o.country.id, name: `${o.country.name} (all states)` }, ...o.states];
-    ou = ouOptions.some((x) => x.id === pref('pou')) ? pref('pou') : ouOptions[0].id;
+  } else if (state.me.ou.level === 2) {
+    ouOptions = [{ id: state.me.ou.id, name: state.me.ou.name }];
   }
+  // Unit-reported data sets can be opened down to one LGA to see its schools / facilities.
+  const topIds = ouOptions.map((x) => x.id);
+  const chosenState = state.me.ou.level === 2 ? state.me.ou.id : topIds.slice(1).includes(pref('pstate')) ? pref('pstate') : '';
+  if (byUnit && chosenState) {
+    const lgas = await lgasOf(chosenState);
+    ouOptions = [...ouOptions, ...lgas.map((l) => ({ id: l.id, name: `   ${l.name} — units` }))];
+  }
+  if (ouOptions.length) ou = ouOptions.some((x) => x.id === pref('pou')) ? pref('pou') : ouOptions[0].id;
   const p = await get('/api/picture' + qs({ dataset: ds.id, ou, period, provisional: provisional ? 1 : '', sector }));
   const sectors = m.sectors.filter((s) => s.indicators);
-  const unitLabel = p.ou.level === 1 ? 'State' : 'LGA';
+  const unitLabel = p.ou.level === 1 ? 'State' : p.ou.level === 3 ? 'Unit' : 'LGA';
+  const coverage = (r, isTotal) => (byUnit
+    ? (p.ou.level === 3 && !isTotal ? (r.reported ? 'Yes' : 'No') : `${r.unitsReporting} of ${r.expectedUnits} units`)
+    : (p.ou.level === 1 || isTotal ? `${r.reportingUnits} of ${r.totalUnits}` : r.reported ? 'Yes' : 'No'));
   const percentCell = (c) => (c ? fmtNum(c.value, 2) : '—');
   const row = (r, cls) => h('tr', { class: cls },
     h('td', {}, r.name),
-    h('td', { class: 'n' }, p.ou.level === 1 || cls ? `${r.reportingUnits} of ${r.totalUnits}` : r.reported ? 'Yes' : 'No'),
+    h('td', { class: 'n' }, coverage(r, !!cls)),
     h('td', { class: 'n' }, r.reportingRate === null ? '—' : fmtNum(r.reportingRate, 1) + '%'),
     p.indicators.map((i) => h('td', { class: 'n', title: r.indicators[i.id] ? `${fmtNum(r.indicators[i.id].numerator, 2)} / ${fmtNum(r.indicators[i.id].denominator, 2)}` : '' }, percentCell(r.indicators[i.id]))));
   const fieldRow = (r, cls) => h('tr', { class: cls }, h('td', {}, r.name), p.fields.map((f) => h('td', { class: 'n' }, fmtNum(r.values[f.id], 2))));
 
   mount(h('div', {},
-    h('div', { class: 'head' }, h('div', {}, h('h1', {}, `${p.ou.name} — ${p.periodName}`), h('div', { class: 'muted' }, `${p.dataset.name} · ${p.total.reportingUnits} of ${p.total.totalUnits} LGAs reporting · ${provisional ? 'includes reports not yet accepted' : 'accepted reports only'}`)),
+    h('div', { class: 'head' }, h('div', {}, h('h1', {}, `${p.ou.name} — ${p.periodName}`), h('div', { class: 'muted' }, `${p.dataset.name} · ${byUnit ? `${p.total.unitsReporting} of ${p.total.expectedUnits} units reporting` : `${p.total.reportingUnits} of ${p.total.totalUnits} LGAs reporting`} · ${provisional ? 'includes reports not yet accepted' : 'accepted reports only'}`)),
       h('div', { class: 'actions' }, h('button', { onclick: () => window.print() }, 'Print'))),
     h('div', { class: 'bar' },
       field('Data set', select(sets.map((d) => ({ id: d.id, name: dsLabel(d) })), ds.id, { onchange: (e) => { pref('ds', e.target.value); renderPicture(); } })),
-      ouOptions.length ? field('Area', select(ouOptions, ou, { onchange: (e) => { pref('pou', e.target.value); renderPicture(); } })) : null,
+      ouOptions.length > 1 ? field('Area', select(ouOptions, ou, { onchange: (e) => {
+        const v = e.target.value; pref('pou', v);
+        if (topIds.includes(v)) pref('pstate', v === topIds[0] && state.me.ou.level === 1 ? '' : v);
+        renderPicture();
+      } })) : null,
       field('Period', select(choices, period, { onchange: (e) => { pref('ppe:' + ds.id, e.target.value); renderPicture(); } })),
       field('Sector', select([{ id: '', name: 'All sectors' }, ...sectors], sector, { onchange: (e) => { pref('sector', e.target.value); renderPicture(); } })),
       h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: provisional, onchange: (e) => { pref('prov', e.target.checked); renderPicture(); } }), 'Include submitted (not yet accepted)')),
     p.indicators.length ? null : h('div', { class: 'note info' }, 'No indicators for this selection.'),
     h('h2', {}, 'Indicators'),
-    h('p', { class: 'muted small' }, 'Totals add up the numerators and denominators of the LGAs that reported, then recompute each rate. Hover a value to see its numerator / denominator.'),
+    h('p', { class: 'muted small' }, byUnit ? 'Each LGA adds up the numbers of its units that reported; totals then recompute each rate. The reporting rate counts units. Hover a value to see its numerator / denominator.' : 'Totals add up the numerators and denominators of the LGAs that reported, then recompute each rate. Hover a value to see its numerator / denominator.'),
     h('div', { class: 'scroll' }, h('table', {},
-      h('thead', {}, h('tr', {}, h('th', {}, unitLabel), h('th', { class: 'n' }, p.ou.level === 1 ? 'LGAs reporting' : 'Reported'), h('th', { class: 'n' }, 'Reporting rate'),
+      h('thead', {}, h('tr', {}, h('th', {}, unitLabel), h('th', { class: 'n' }, byUnit && p.ou.level !== 3 ? 'Units reporting' : p.ou.level === 1 ? 'LGAs reporting' : 'Reported'), h('th', { class: 'n' }, 'Reporting rate'),
         p.indicators.map((i) => h('th', { class: 'n', title: [i.numerator, i.denominator].filter(Boolean).join(' ÷ ') + (i.source ? ` — Source: ${i.source}` : '') }, i.name, i.percent ? ' (%)' : '', h('div', { class: 'cov' }, i.sector))))),
       h('tbody', {}, row(p.total, 'total'), p.rows.map((r) => row(r))))),
     h('h2', {}, 'Reported numbers'),
@@ -466,7 +513,7 @@ async function renderExport() {
     if (typeSel.value === 'QUARTER') { from.value = `${y - 1}Q${q}`; to.value = q === 1 ? `${y - 1}Q4` : `${y}Q${q - 1}`; }
     if (typeSel.value === 'YEAR') { from.value = String(y - 2); to.value = String(y - 1); }
   });
-  const lv = [1, 2, 3].map((n) => h('input', { type: 'checkbox', value: n, checked: true }));
+  const lv = [1, 2, 3, 4].map((n) => h('input', { type: 'checkbox', value: n, checked: n < 4 }));
   const prov = h('input', { type: 'checkbox' });
   const params = () => ({
     datasets: dsChecks.filter((c) => c.checked).map((c) => c.value).join(','), sector: sectorSel.value, ou: areaSel.value,
@@ -492,7 +539,7 @@ async function renderExport() {
       metaBtn,
       h('h3', {}, '2 · Data values'),
       h('div', { class: 'bar' }, field('Period type', typeSel), field('From', from), field('To', to),
-        h('div', { class: 'chips' }, h('span', { class: 'muted small' }, 'Levels:'), ['Country', 'State', 'LGA'].map((n, i) => h('label', { class: 'check' }, lv[i], n)))),
+        h('div', { class: 'chips' }, h('span', { class: 'muted small' }, 'Levels:'), ['Country', 'State', 'LGA', 'Units (one state)'].map((n, i) => h('label', { class: 'check' }, lv[i], n)))),
       h('label', { class: 'check' }, prov, 'Include submitted reports that are not yet accepted'),
       h('p', { class: 'muted small' }, 'dataValues_<period>.json — one row per indicator, period and org unit. Periods use DHIS2 codes: 202601, 2026Q1, 2026.'),
       dataBtn),
@@ -549,7 +596,7 @@ async function renderSetup() {
   const tabs = h('div', { class: 'bar' },
     field('Data set', select(m.datasets.map((d) => ({ id: d.id, name: dsLabel(d) + (d.archived ? ' (archived)' : '') })), ds.id, { onchange: (e) => { pref('setupDs', e.target.value); renderSetup(); } })),
     h('div', { class: 'muted small' }, ds.shared ? 'Shared by all sectors · ' : `Sector: `, ds.shared ? null : h('strong', {}, ds.sector || '—'), ds.shared ? null : ' · ',
-      `Reporting frequency: `, h('strong', {}, ds.frequencyName), ds.shared ? ' · current year can be entered' : ` · due on day ${ds.dueDay} of the following month`, ' · ',
+      `Reporting frequency: `, h('strong', {}, ds.frequencyName), ds.reportLevel === 'UNIT' ? ' · reported by each unit (added up to the LGA)' : '', ds.shared ? ' · current year can be entered' : ` · due on day ${ds.dueDay} of the following month`, ' · ',
       h('button', { class: 'link', onclick: () => datasetDialog(ds, m) }, 'Edit data set')));
   if (ds.shared) return mount(h('div', {}, head, tabs, sharedPanel(ds)));
 
@@ -646,6 +693,7 @@ function datasetDialog(ds, m, makeShared = false) {
   const name = h('input', { value: ds ? ds.name : shared ? 'Population and denominators' : '' });
   const sector = h('input', { list: 'sector-list-dlg', value: ds ? ds.sector : '', placeholder: 'e.g. Health' });
   const freq = select(m.frequencies, ds ? ds.frequency : 'MONTHLY');
+  const level = select([{ id: 'LGA', name: 'Each LGA (one report per LGA)' }, { id: 'UNIT', name: 'Each unit — school, facility … (added up to the LGA)' }], ds ? ds.reportLevel : 'LGA');
   const due = h('input', { type: 'number', min: 1, max: 28, value: ds ? ds.dueDay : 15 });
   const id = h('input', { class: 'mono', placeholder: 'auto', maxlength: 11 });
   const err = h('div', { class: 'err' });
@@ -653,14 +701,14 @@ function datasetDialog(ds, m, makeShared = false) {
   const dlg = h('dialog', {}, h('h2', {}, ds ? 'Edit data set' : shared ? 'Population & denominators' : 'New sector data set'),
     h('datalist', { id: 'sector-list-dlg' }, m.sectors.map((x) => h('option', { value: x.name }))),
     shared ? h('p', { class: 'muted small' }, 'A yearly data set for numbers that every sector’s indicators divide by. It has no indicators of its own.') : null,
-    h('div', { class: 'grid2' }, field('Name', name), shared ? null : field('Sector', sector), shared ? null : field('Reporting frequency', freq),
+    h('div', { class: 'grid2' }, field('Name', name), shared ? null : field('Sector', sector), shared ? null : field('Reporting frequency', freq), shared ? null : field('Who reports', level),
       shared ? null : field('Due day (of the following month)', due), ds ? field('ID', idTag(ds.id)) : field('ID (optional)', id)),
     err, h('p'), h('div', { class: 'actions' }, save, h('button', { onclick: () => dlg.close() }, 'Cancel'),
       ds && is('sysadmin') ? h('button', { class: 'danger', onclick: async () => { await api('PATCH', '/api/datasets/' + ds.id, { archived: !ds.archived }); dlg.close(); state.meta = null; renderSetup(); } }, ds.archived ? 'Restore' : 'Archive') : null));
   dlg.addEventListener('close', () => dlg.remove());
   save.addEventListener('click', busy(save, async () => {
     err.textContent = '';
-    const body = shared ? { name: name.value.trim() } : { name: name.value.trim(), sector: sector.value.trim(), frequency: freq.value, dueDay: Number(due.value) };
+    const body = shared ? { name: name.value.trim() } : { name: name.value.trim(), sector: sector.value.trim(), frequency: freq.value, reportLevel: level.value, dueDay: Number(due.value) };
     if (shared && !ds) body.shared = true;
     try {
       if (ds) await api('PATCH', '/api/datasets/' + ds.id, body);
@@ -921,13 +969,14 @@ function assignedText(u, m) {
 }
 
 async function userDialog(u, roles, m) {
-  const allowedRoles = is('sysadmin') ? roles : roles.filter((r) => r.id === 'lga');
+  const allowedRoles = is('sysadmin') ? roles : roles.filter((r) => ['lga', 'unit'].includes(r.id));
   const name = h('input', { value: u ? u.name : '', autocomplete: 'off' });
   const email = h('input', { type: 'email', value: u ? u.email : '', autocomplete: 'off' });
   const roleSel = select(allowedRoles, u ? u.role : allowedRoles[allowedRoles.length > 2 ? 3 : 0].id);
   const o = await orgs();
   const stateSel = select(o.states, u && u.ou && u.ou.level >= 2 ? null : o.states[0].id);
   const lgaSel = h('select');
+  const unitSel = h('select');
   const where = h('div', { class: 'grid2' });
   const err = h('div', { class: 'err' });
   const out = h('div');
@@ -935,21 +984,30 @@ async function userDialog(u, roles, m) {
   // Pre-select the state of an existing LGA/state user.
   let initialState = state.me.ou.level === 2 ? state.me.ou.id : o.states[0].id;
   if (u && u.ou && u.ou.level === 2) initialState = u.ou.id;
-  if (u && u.ou && u.ou.level === 3) {
-    for (const s of o.states) { const l = await lgasOf(s.id); if (l.some((x) => x.id === u.ou.id)) { initialState = s.id; break; } }
-  }
+  const ouParts = u && u.ou && u.ou.path ? u.ou.path.split('/') : [];
+  if (u && u.ou && u.ou.level >= 3) initialState = ouParts[2] || initialState;
   stateSel.value = initialState;
+  async function fillUnits() {
+    const list = lgaSel.value ? await unitsOf(lgaSel.value) : [];
+    const sectorName = (id) => ((m.sectors.find((x) => x.id === id) || {}).name || '');
+    unitSel.replaceChildren(...(list.length ? list.map((x) => h('option', { value: x.id, selected: u && u.ou && x.id === u.ou.id }, `${x.name}${x.sectorId ? ' — ' + sectorName(x.sectorId) : ''}`))
+      : [h('option', { value: '' }, 'No units in this LGA yet')]));
+  }
   async function fillLgas() {
     const l = await lgasOf(stateSel.value);
-    lgaSel.replaceChildren(...l.map((x) => h('option', { value: x.id, selected: u && u.ou && x.id === u.ou.id }, x.name)));
+    const lgaOfUser = u && u.ou ? (u.ou.level === 3 ? u.ou.id : u.ou.level === 4 ? ouParts[3] : null) : null;
+    lgaSel.replaceChildren(...l.map((x) => h('option', { value: x.id, selected: x.id === lgaOfUser }, x.name)));
+    await fillUnits();
   }
   stateSel.addEventListener('change', fillLgas);
+  lgaSel.addEventListener('change', fillUnits);
   function layoutWhere() {
     const lvl = (roles.find((r) => r.id === roleSel.value) || {}).level;
     const showState = lvl !== 1 && state.me.ou.level === 1;
     where.replaceChildren(
       showState ? field('State', stateSel) : null,
-      lvl === 3 || lvl === null ? field(lvl === null ? 'LGA (leave state for state-wide viewer)' : 'LGA', lgaSel) : null);
+      lvl === 3 || lvl === 4 || lvl === null ? field(lvl === null ? 'LGA (leave state for state-wide viewer)' : 'LGA', lgaSel) : null,
+      lvl === 4 ? field('Unit (school, facility …)', unitSel) : null);
     if (lvl === null && !lgaSel.querySelector('option[value=""]')) lgaSel.prepend(h('option', { value: '' }, '— whole state —'));
     if (lvl === null && state.me.ou.level === 1 && !stateSel.querySelector('option[value=""]')) stateSel.prepend(h('option', { value: '' }, '— whole country —'));
   }
@@ -1002,7 +1060,7 @@ async function userDialog(u, roles, m) {
   save.addEventListener('click', busy(save, async () => {
     err.textContent = '';
     const lvl = (roles.find((r) => r.id === roleSel.value) || {}).level;
-    let ouId = lvl === 1 ? o.country.id : lvl === 2 ? (state.me.ou.level === 2 ? state.me.ou.id : stateSel.value) : lgaSel.value;
+    let ouId = lvl === 1 ? o.country.id : lvl === 2 ? (state.me.ou.level === 2 ? state.me.ou.id : stateSel.value) : lvl === 4 ? unitSel.value : lgaSel.value;
     if (lvl === null) ouId = lgaSel.value || (state.me.ou.level === 2 ? state.me.ou.id : stateSel.value) || o.country.id;
     const body = {
       name: name.value.trim(), email: email.value.trim(), role: roleSel.value, ouId,

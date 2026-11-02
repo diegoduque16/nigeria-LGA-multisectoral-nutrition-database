@@ -26,17 +26,22 @@ function checkPeriod(ds, period) {
   if (Number(period.slice(0, 4)) < 2015) throw new HttpError(422, 'invalid', 'That period is too far in the past.', { field: 'period' });
 }
 
-// The caller may enter data for this LGA: LGA users for their own LGA, state officers for LGAs in their state.
-async function loadLga(db, ctx, ouId) {
+// The org unit a report is for: an LGA, or — for unit-reported data sets — a unit (school, facility …) of the
+// data set's sector. The caller must cover it (unit users their unit, LGA users their LGA, state officers their state).
+async function loadReportingOu(db, ctx, ouId, ds) {
   const ou = await one(db, 'SELECT * FROM org_units WHERE id = ?', ouId);
   if (!ou) throw new HttpError(404, 'not_found', 'Organisation unit not found.');
-  if (ou.level !== 3) throw new HttpError(422, 'invalid', 'Data is entered for an LGA.', { field: 'ou' });
+  if (ds.report_level === 4) {
+    if (ou.level !== 4 || ou.sector_id !== ds.sector_id) throw new HttpError(422, 'invalid', `“${ds.name}” is reported by each unit (school, facility …). Choose a unit.`, { field: 'ou' });
+    if (ou.closed_at) throw new HttpError(422, 'invalid', 'This unit is closed.', { field: 'ou' });
+  } else if (ou.level !== 3) throw new HttpError(422, 'invalid', 'Data is entered for an LGA.', { field: 'ou' });
   requireScope(ctx, ou);
   return ou;
 }
 
-const canEnter = (ctx) => ['sysadmin', 'state', 'lga'].includes(ctx.role) && !ctx.apiToken;
-const canReview = (ctx, ou) => ['sysadmin', 'state'].includes(ctx.role) && inScope(ctx, ou) && !ctx.apiToken;
+const canEnter = (ctx) => ['sysadmin', 'state', 'lga', 'unit'].includes(ctx.role) && !ctx.apiToken;
+// State officers review LGA reports; unit reports can also be reviewed by the LGA.
+const canReview = (ctx, ou) => !ctx.apiToken && inScope(ctx, ou) && (['sysadmin', 'state'].includes(ctx.role) || (ctx.role === 'lga' && ou.level === 4));
 
 async function reportOf(db, dsId, ouId, period) {
   return one(db, 'SELECT * FROM reports WHERE dataset_id = ? AND ou_id = ? AND period = ?', dsId, ouId, period);
@@ -57,7 +62,7 @@ async function formFor(db, ctx, ds, ou, period) {
   const locked = !EDITABLE.includes(status);
   const inds = compileIndicators(await all(db, 'SELECT * FROM indicators WHERE dataset_id = ? AND archived_at IS NULL ORDER BY sort, name', ds.id), await factors(db));
   // Shared yearly numbers (population etc.) for this LGA, scaled to this period, so the preview matches the state picture.
-  const sharedIds = sharedIdsOf(inds, fields.map((f) => f.id));
+  const sharedIds = ds.report_level === 4 ? [] : sharedIdsOf(inds, fields.map((f) => f.id)); // population is per LGA, not per unit
   const preview = { ...byDe };
   const sharedOut = [];
   if (sharedIds.length) {
@@ -78,8 +83,8 @@ async function formFor(db, ctx, ds, ou, period) {
   const users = rep ? await all(db, 'SELECT id, name FROM users WHERE id IN (?, ?, ?)', rep.updated_by || '', rep.submitted_by || '', rep.reviewed_by || '') : [];
   const nameOf = (id) => (users.find((u) => u.id === id) || {}).name || null;
   return {
-    dataset: { id: ds.id, name: ds.name, shared: !!ds.shared, frequency: ds.frequency, frequencyName: FREQUENCY_NAMES[ds.frequency] },
-    ou: { id: ou.id, name: ou.name },
+    dataset: { id: ds.id, name: ds.name, shared: !!ds.shared, reportLevel: ds.report_level === 4 ? 'UNIT' : 'LGA', frequency: ds.frequency, frequencyName: FREQUENCY_NAMES[ds.frequency] },
+    ou: { id: ou.id, name: ou.name, level: ou.level, type: ou.unit_type || '', lga: ou.level === 4 ? (await one(db, 'SELECT name FROM org_units WHERE id = ?', ou.parent_id) || {}).name : null },
     period, periodName: periodName(period),
     sharedValues: sharedOut,
     periods: (ds.shared ? [String(Number(lastCompletedPeriod('YEARLY')) + 1), ...recentPeriods('YEARLY', 6)] : recentPeriods(ds.frequency, 12)).map((p) => ({ id: p, name: periodName(p) })),
@@ -114,7 +119,7 @@ export async function getEntry(request, env, ctx) {
   const q = new URL(request.url).searchParams;
   const ds = await loadDataset(env.DB, q.get('dataset') || '');
   requireDataset(ctx, ds.id);
-  const ou = await loadLga(env.DB, ctx, q.get('ou') || '');
+  const ou = await loadReportingOu(env.DB, ctx, q.get('ou') || '', ds);
   const period = q.get('period') || (ds.shared ? String(Number(lastCompletedPeriod('YEARLY')) + 1) : lastCompletedPeriod(ds.frequency));
   checkPeriod(ds, period);
   return json(await formFor(env.DB, ctx, ds, ou, period));
@@ -126,7 +131,7 @@ async function prepare(env, ctx, body) {
   if (!canEnter(ctx)) throw new HttpError(403, 'forbidden', 'Your account cannot enter data.');
   const ds = await loadDataset(env.DB, body.dataset);
   requireDataset(ctx, ds.id);
-  const ou = await loadLga(env.DB, ctx, body.ou);
+  const ou = await loadReportingOu(env.DB, ctx, body.ou, ds);
   checkPeriod(ds, body.period);
   const rep = await reportOf(env.DB, ds.id, ou.id, body.period);
   return { ds, ou, rep, status: rep ? rep.status : 'none' };
@@ -141,8 +146,8 @@ export async function saveEntry(request, env, ctx) {
   const { ds, ou, rep, status } = await prepare(env, ctx, body);
   if (!EDITABLE.includes(status)) {
     throw new HttpError(409, 'locked', status === 'accepted'
-      ? 'This report has been accepted. Ask your state officer to send it back if it needs a correction.'
-      : 'This report has been submitted and is waiting for review. Ask your state officer to send it back if it needs a correction.');
+      ? 'This report has been accepted. Ask your reviewer to send it back if it needs a correction.'
+      : 'This report has been submitted and is waiting for review. Ask your reviewer to send it back if it needs a correction.');
   }
   const fields = new Map((await all(env.DB, 'SELECT * FROM data_elements WHERE dataset_id = ? AND archived_at IS NULL', ds.id)).map((f) => [f.id, f]));
   const old = Object.fromEntries((await all(env.DB, 'SELECT de_id, value FROM data_values WHERE ou_id = ? AND period = ?', ou.id, body.period)).map((x) => [x.de_id, x.value]));
@@ -210,7 +215,7 @@ export async function submitEntry(request, env, ctx) {
 
 // POST /api/entry/review  { dataset, ou, period, action: accept | return, comment }
 export async function reviewEntry(request, env, ctx) {
-  requireRole(ctx, ['sysadmin', 'state']);
+  requireRole(ctx, ['sysadmin', 'state', 'lga']);
   const body = validate(v.object({
     ...keySchema,
     action: v.string({ oneOf: ['accept', 'return'] }),
@@ -218,7 +223,8 @@ export async function reviewEntry(request, env, ctx) {
   }), await readJson(request));
   const ds = await loadDataset(env.DB, body.dataset);
   requireDataset(ctx, ds.id);
-  const ou = await loadLga(env.DB, ctx, body.ou);
+  const ou = await loadReportingOu(env.DB, ctx, body.ou, ds);
+  if (!canReview(ctx, ou)) throw new HttpError(403, 'forbidden', 'You cannot review this report.');
   const rep = await reportOf(env.DB, ds.id, ou.id, body.period);
   const status = rep ? rep.status : 'none';
   if (body.action === 'accept' && status !== 'submitted') throw new HttpError(409, 'bad_status', 'Only a submitted report can be accepted.');
@@ -232,33 +238,51 @@ export async function reviewEntry(request, env, ctx) {
   return json(await formFor(env.DB, ctx, ds, ou, body.period));
 }
 
-// GET /api/status?dataset=&state=&period=  — every LGA in the state with its report status.
+// GET /api/status?dataset=&state=&lga=&period=  — every LGA (or, for unit-reported data sets, every unit) with its report status.
 export async function reportStatus(request, env, ctx) {
   const q = new URL(request.url).searchParams;
   const ds = await loadDataset(env.DB, q.get('dataset') || '');
   if (!datasetAllowed(ctx, ds.id)) throw new HttpError(403, 'forbidden', 'You are not assigned to this data set.');
   const period = q.get('period') || lastCompletedPeriod(ds.frequency);
   checkPeriod(ds, period);
-  const stateId = q.get('state') || (ctx.ou.level === 2 ? ctx.ou.id : ctx.ou.level === 3 ? ctx.ou.path.split('/')[2] : '');
+  const parts = ctx.ou.path.split('/');
+  const stateId = q.get('state') || (ctx.ou.level >= 2 ? parts[2] : '');
   const state = await one(env.DB, 'SELECT * FROM org_units WHERE id = ? AND level = 2', stateId);
   if (!state) throw new HttpError(422, 'invalid', 'Choose a state.', { field: 'state' });
   if (!inScope(ctx, state) && !inScope({ ou: state }, ctx.ou)) throw new HttpError(403, 'out_of_scope', 'That state is outside your area.');
-  const rows = await all(env.DB,
-    `SELECT o.id, o.name, r.status, r.submitted_at, r.reviewed_at, r.updated_at, r.review_comment
-       FROM org_units o LEFT JOIN reports r ON r.ou_id = o.id AND r.dataset_id = ? AND r.period = ?
-      WHERE o.parent_id = ? AND o.level = 3 AND o.closed_at IS NULL ORDER BY o.name`, ds.id, period, state.id);
+  const unitLevel = ds.report_level === 4;
+  const lgaId = q.get('lga') || (ctx.ou.level >= 3 ? parts[3] : '');
+  let rows;
+  if (unitLevel) {
+    const lga = lgaId ? await one(env.DB, 'SELECT * FROM org_units WHERE id = ? AND level = 3 AND parent_id = ?', lgaId, state.id) : null;
+    rows = await all(env.DB,
+      `SELECT o.id, o.name, l.id AS lga_id, l.name AS lga_name, o.unit_type, o.path, r.status, r.submitted_at, r.reviewed_at, r.updated_at, r.review_comment
+         FROM org_units o JOIN org_units l ON l.id = o.parent_id
+         LEFT JOIN reports r ON r.ou_id = o.id AND r.dataset_id = ? AND r.period = ?
+        WHERE o.level = 4 AND o.sector_id = ? AND o.closed_at IS NULL AND o.path LIKE ? ORDER BY l.name, o.name LIMIT 5000`,
+      ds.id, period, ds.sector_id, (lga ? lga.path : state.path) + '/%');
+  } else {
+    rows = await all(env.DB,
+      `SELECT o.id, o.name, o.path, r.status, r.submitted_at, r.reviewed_at, r.updated_at, r.review_comment
+         FROM org_units o LEFT JOIN reports r ON r.ou_id = o.id AND r.dataset_id = ? AND r.period = ?
+        WHERE o.parent_id = ? AND o.level = 3 AND o.closed_at IS NULL ORDER BY o.name`, ds.id, period, state.id);
+  }
   const due = dueAt(period, ds.due_day);
-  const visible = ctx.ou.level === 3 ? rows.filter((r) => r.id === ctx.ou.id) : rows;
+  const visible = rows.filter((r) => inScope(ctx, r));
   const counts = { none: 0, draft: 0, submitted: 0, accepted: 0, returned: 0 };
-  for (const r of rows) counts[r.status || 'none']++;
+  for (const r of visible) counts[r.status || 'none']++;
+  const lgas = unitLevel ? await all(env.DB, 'SELECT id, name, path FROM org_units WHERE parent_id = ? AND level = 3 AND closed_at IS NULL ORDER BY name', state.id) : [];
   return json({
-    dataset: { id: ds.id, name: ds.name, frequency: ds.frequency },
+    dataset: { id: ds.id, name: ds.name, frequency: ds.frequency, reportLevel: unitLevel ? 'UNIT' : 'LGA' },
     state: { id: state.id, name: state.name },
+    lgaId: unitLevel ? lgaId || '' : '',
+    lgaOptions: lgas.filter((l) => inScope(ctx, l) || inScope({ ou: l }, ctx.ou)).map((l) => ({ id: l.id, name: l.name })),
     period, periodName: periodName(period), due,
     periods: recentPeriods(ds.frequency, 12).map((p) => ({ id: p, name: periodName(p) })),
-    counts, total: rows.length,
+    counts, total: visible.length,
     lgas: visible.map((r) => ({
-      id: r.id, name: r.name, status: r.status || 'none', statusName: STATUS_NAMES[r.status || 'none'],
+      id: r.id, name: r.name, lgaId: r.lga_id || null, lgaName: r.lga_name || null, type: r.unit_type || '',
+      status: r.status || 'none', statusName: STATUS_NAMES[r.status || 'none'],
       submittedAt: r.submitted_at, late: !!(r.submitted_at && r.submitted_at > due), reviewedAt: r.reviewed_at,
       updatedAt: r.updated_at, comment: r.review_comment,
     })),

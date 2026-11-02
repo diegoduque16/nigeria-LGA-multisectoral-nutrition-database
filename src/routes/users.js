@@ -77,9 +77,9 @@ export async function logout(request, env, ctx) {
 }
 
 export async function me(request, env, ctx) {
-  const datasets = await all(env.DB, `SELECT d.id, d.name, d.frequency, d.shared, s.name AS sector
+  const datasets = await all(env.DB, `SELECT d.id, d.name, d.frequency, d.shared, d.report_level, d.sector_id AS sectorId, s.name AS sector
     FROM datasets d LEFT JOIN sectors s ON s.id = d.sector_id WHERE d.archived_at IS NULL ORDER BY d.shared, s.name, d.name`);
-  for (const d of datasets) d.shared = !!d.shared;
+  for (const d of datasets) { d.shared = !!d.shared; d.reportLevel = d.report_level === 4 ? 'UNIT' : 'LGA'; delete d.report_level; }
   const mine = ctx.datasets.length && ctx.role !== 'sysadmin' ? datasets.filter((s) => ctx.datasets.includes(s.id)) : datasets;
   return json({
     user: { ...ctx.user, roleName: ROLE_NAMES[ctx.role] },
@@ -144,7 +144,7 @@ export async function setPassword(request, env, ctx, { token }) {
 // limited to their own data sets.
 function canManage(ctx, target) {
   if (ctx.role === 'sysadmin') return true;
-  if (ctx.role === 'state') return target.role === 'lga' && inScope(ctx, target.ou);
+  if (ctx.role === 'state') return ['lga', 'unit'].includes(target.role) && inScope(ctx, target.ou);
   return false;
 }
 
@@ -154,7 +154,7 @@ async function userOut(db, u) {
   const ou = await one(db, 'SELECT id, name, level, path FROM org_units WHERE id = ?', u.ou_id);
   return {
     id: u.id, email: u.email, name: u.name, role: u.role, roleName: ROLE_NAMES[u.role],
-    ou: ou ? { id: ou.id, name: ou.name, level: ou.level } : null,
+    ou: ou ? { id: ou.id, name: ou.name, level: ou.level, path: ou.path } : null,
     datasets, dataElements, active: !!u.active, passwordSet: !!u.pw_hash,
     locked: !!(u.locked_until && u.locked_until > now()),
     lastLoginAt: u.last_login_at, createdAt: u.created_at,
@@ -168,7 +168,7 @@ export async function listUsers(request, env, ctx) {
       WHERE (o.path || '/') LIKE ? ORDER BY u.name LIMIT 2000`, ctx.ou.path + '/%');
   const out = [];
   for (const u of rows) {
-    if (ctx.role === 'state' && u.role !== 'lga' && u.id !== ctx.user.id) continue;
+    if (ctx.role === 'state' && !['lga', 'unit'].includes(u.role) && u.id !== ctx.user.id) continue;
     out.push(await userOut(env.DB, u));
   }
   return json({ users: out, roles: ROLES.map((r) => ({ id: r, name: ROLE_NAMES[r], level: ROLE_LEVEL[r] })) });
@@ -189,7 +189,7 @@ async function checkAssignment(db, ctx, role, ouId, datasets, dataElements) {
   if (!ou) throw new HttpError(422, 'invalid', 'Organisation unit not found.', { field: 'ouId' });
   const lvl = ROLE_LEVEL[role];
   if (lvl && ou.level !== lvl) {
-    const where = { 1: 'the country', 2: 'a state', 3: 'an LGA' }[lvl];
+    const where = { 1: 'the country', 2: 'a state', 3: 'an LGA', 4: 'a unit (school, facility …)' }[lvl];
     throw new HttpError(422, 'invalid', `A ${ROLE_NAMES[role]} must be attached to ${where}.`, { field: 'ouId' });
   }
   requireScope(ctx, ou);
@@ -225,7 +225,7 @@ async function setAssignments(db, userId, datasets, dataElements) {
 export async function createUser(request, env, ctx) {
   requireRole(ctx, ['sysadmin', 'state']);
   const body = validate(userSchema(false), await readJson(request));
-  if (ctx.role === 'state' && body.role !== 'lga') throw new HttpError(403, 'forbidden', 'State officers can only create LGA data-entry users.');
+  if (ctx.role === 'state' && !['lga', 'unit'].includes(body.role)) throw new HttpError(403, 'forbidden', 'State officers can only create LGA or unit data-entry users.');
   const ou = await checkAssignment(env.DB, ctx, body.role, body.ouId, body.datasets, body.dataElements);
   let datasets = body.datasets || [];
   if (ctx.role === 'state' && !datasets.length) datasets = ctx.datasets;
@@ -257,7 +257,7 @@ export async function updateUser(request, env, ctx, { id }) {
     throw new HttpError(409, 'self', 'You cannot deactivate yourself or change your own role.');
   }
   const role = body.role || u.role;
-  if (ctx.role === 'state' && role !== 'lga') throw new HttpError(403, 'forbidden', 'State officers can only manage LGA data-entry users.');
+  if (ctx.role === 'state' && !['lga', 'unit'].includes(role)) throw new HttpError(403, 'forbidden', 'State officers can only manage LGA or unit data-entry users.');
   const ouId = body.ouId || u.ou_id;
   if (body.role || body.ouId || body.datasets || body.dataElements) await checkAssignment(env.DB, ctx, role, ouId, body.datasets, body.dataElements);
   if (body.email && body.email.toLowerCase() !== u.email) {

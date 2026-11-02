@@ -72,7 +72,7 @@ export async function getMetadata(request, env, ctx) {
     showAs: [{ id: 'percent', name: 'Percentage' }, { id: 'per1000', name: 'Per 1,000' }, { id: 'number', name: 'Number' }],
     sectors: sectors.map((s) => ({ id: s.id, name: s.name, indicators: inds.filter((i) => i.sector_id === s.id && !i.archived_at).length })),
     datasets: datasets.map((s) => ({
-      id: s.id, name: s.name, sectorId: s.sector_id, sector: sectorNames[s.sector_id] || '', shared: !!s.shared, frequency: s.frequency, frequencyName: FREQUENCY_NAMES[s.frequency], dueDay: s.due_day,
+      id: s.id, name: s.name, sectorId: s.sector_id, sector: sectorNames[s.sector_id] || '', shared: !!s.shared, reportLevel: s.report_level === 4 ? 'UNIT' : 'LGA', frequency: s.frequency, frequencyName: FREQUENCY_NAMES[s.frequency], dueDay: s.due_day,
       groupId: s.group_id, reportingRateId: s.reporting_rate_id, archived: !!s.archived_at,
       dataElements: des.filter((d) => d.dataset_id === s.id).map(deOut),
       indicators: inds.filter((i) => i.dataset_id === s.id).map((i) => indOut(i, names, sectorNames)),
@@ -111,19 +111,20 @@ export async function createDataset(request, env, ctx) {
     name: v.string({ min: 1, max: 100 }),
     sector: v.string({ min: 1, max: 100 }).optional(),
     shared: v.boolean().default(false),
+    reportLevel: v.string({ oneOf: ['LGA', 'UNIT'] }).default('LGA'),
     frequency: v.string({ oneOf: Object.keys(FREQUENCIES) }).default('MONTHLY'),
     dueDay: v.number({ min: 1, max: 28, int: true }).default(15),
     id: idField, groupId: idField, reportingRateId: idField,
   }), await readJson(request));
-  if (body.shared) body.frequency = 'YEARLY';
+  if (body.shared) { body.frequency = 'YEARLY'; body.reportLevel = 'LGA'; }
   else if (!body.sector) throw new HttpError(422, 'invalid', 'Choose the sector this data set belongs to.', { field: 'sector' });
   const sectorId = body.sector ? await sectorFor(env.DB, body.sector) : null;
   if (await one(env.DB, 'SELECT id FROM datasets WHERE name = ?', body.name)) throw new HttpError(409, 'name_taken', 'A data set with this name already exists.');
   const id = await pickId(env.DB, body.id);
   const groupId = await pickId(env.DB, body.groupId, [id]);
   const rrId = await pickId(env.DB, body.reportingRateId, [id, groupId]);
-  await run(env.DB, 'INSERT INTO datasets (id, name, sector_id, shared, frequency, group_id, reporting_rate_id, due_day, created_at) VALUES (?,?,?,?,?,?,?,?,?)',
-    id, body.name, sectorId, body.shared ? 1 : 0, body.frequency, groupId, rrId, body.dueDay, now());
+  await run(env.DB, 'INSERT INTO datasets (id, name, sector_id, shared, report_level, frequency, group_id, reporting_rate_id, due_day, created_at) VALUES (?,?,?,?,?,?,?,?,?,?)',
+    id, body.name, sectorId, body.shared ? 1 : 0, body.reportLevel === 'UNIT' ? 4 : 3, body.frequency, groupId, rrId, body.dueDay, now());
   await audit(env.DB, ctx, 'dataset_created', 'dataset', id, { name: body.name, frequency: body.frequency });
   return json({ id, groupId, reportingRateId: rrId }, 201);
 }
@@ -134,19 +135,25 @@ export async function updateDataset(request, env, ctx, { id }) {
   const body = validate(v.object({
     name: v.string({ min: 1, max: 100 }).optional(),
     sector: v.string({ min: 1, max: 100 }).optional(),
+    reportLevel: v.string({ oneOf: ['LGA', 'UNIT'] }).optional(),
     frequency: v.string({ oneOf: Object.keys(FREQUENCIES) }).optional(),
     dueDay: v.number({ min: 1, max: 28, int: true }).optional(),
     archived: v.boolean().optional(),
   }), await readJson(request));
   if (s.shared && body.frequency && body.frequency !== 'YEARLY') throw new HttpError(422, 'invalid', 'The shared denominators data set is yearly.', { field: 'frequency' });
   const sectorId = body.sector ? await sectorFor(env.DB, body.sector) : s.sector_id;
+  const level = body.reportLevel ? (body.reportLevel === 'UNIT' ? 4 : 3) : s.report_level;
+  if (s.shared && level === 4) throw new HttpError(422, 'invalid', 'Population figures are entered per LGA.');
+  if ((level !== s.report_level || sectorId !== s.sector_id) && await one(env.DB, 'SELECT 1 AS x FROM reports WHERE dataset_id = ? LIMIT 1', id)) {
+    throw new HttpError(409, 'has_reports', 'Reports already exist for this data set, so who reports it (and its sector) can no longer change. Create a new data set instead.');
+  }
   if (body.archived !== undefined && ctx.role !== 'sysadmin') throw new HttpError(403, 'forbidden', 'Only a system administrator can archive a data set.');
   if (body.name && body.name !== s.name && await one(env.DB, 'SELECT id FROM datasets WHERE name = ?', body.name)) throw new HttpError(409, 'name_taken', 'A data set with this name already exists.');
   if (body.frequency && body.frequency !== s.frequency && await one(env.DB, 'SELECT 1 AS x FROM reports WHERE dataset_id = ? LIMIT 1', id)) {
     throw new HttpError(409, 'has_reports', 'Reports already exist for this data set, so its frequency can no longer change. Create a new data set instead.');
   }
-  await run(env.DB, 'UPDATE datasets SET name = ?, sector_id = ?, frequency = ?, due_day = ?, archived_at = ? WHERE id = ?',
-    body.name ?? s.name, sectorId, body.frequency ?? s.frequency, body.dueDay ?? s.due_day,
+  await run(env.DB, 'UPDATE datasets SET name = ?, sector_id = ?, report_level = ?, frequency = ?, due_day = ?, archived_at = ? WHERE id = ?',
+    body.name ?? s.name, sectorId, level, body.frequency ?? s.frequency, body.dueDay ?? s.due_day,
     body.archived === undefined ? s.archived_at : body.archived ? now() : null, id);
   await audit(env.DB, ctx, 'dataset_updated', 'dataset', id, body);
   return json({ ok: true });
