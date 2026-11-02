@@ -9,7 +9,7 @@ Runs on Cloudflare Workers + D1.
 
 ## Deploy (Cloudflare Workers Builds)
 1. Create a D1 database named `lga-reporting` and put its ID in `wrangler.toml` (`database_id`).
-2. Connect this repository to a Worker named `nigeria-lga-reporting`; deploy command:
+2. Connect this repository to a Worker named `nigeria-lga-multisectoral-nutrition-database`; deploy command:
    `npx wrangler d1 migrations apply DB --remote && npx wrangler deploy`
 3. Add a **Secret** `SETUP_KEY` (any long phrase). Open the site and use it once to create the first system administrator.
 
