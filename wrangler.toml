@@ -12,7 +12,7 @@ run_worker_first = ["/api/*"]
 [[d1_databases]]
 binding = "DB"
 database_name = "lga-reporting"
-database_id = "REPLACE_WITH_D1_DATABASE_ID"
+database_id = "3fb23d47-99fc-4cd7-a902-ecc91f5d8e44"
 migrations_dir = "migrations"
 
 [triggers]
