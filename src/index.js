@@ -49,6 +49,10 @@ const ROUTES = [
   ['POST', '/api/units', units.createUnit, 'session'],
   ['POST', '/api/units/import', units.importUnits, 'session'],
   ['PATCH', '/api/units/:id', units.updateUnit, 'session'],
+  ['GET', '/api/unit-types', units.listTypes, 'session'],
+  ['POST', '/api/unit-types', units.createType, 'session'],
+  ['PATCH', '/api/unit-types/:id', units.updateType, 'session'],
+  ['DELETE', '/api/unit-types/:id', units.deleteType, 'session'],
 
   ['GET', '/api/metadata', meta.getMetadata, 'session'],
   ['POST', '/api/sectors', meta.createSector, 'session'],

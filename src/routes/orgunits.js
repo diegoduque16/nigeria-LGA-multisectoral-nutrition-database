@@ -96,10 +96,14 @@ export async function listOrgUnits(request, env, ctx) {
     if (!p) throw new HttpError(404, 'not_found', 'Organisation unit not found.');
     if (!inScope(ctx, p) && !inScope({ ou: p }, ctx.ou)) throw new HttpError(403, 'out_of_scope', 'That organisation unit is outside your area.');
     const withUnits = url.searchParams.get('units') === '1';
-    const rows = await all(env.DB, `SELECT * FROM org_units WHERE parent_id = ? AND ${withUnits ? 'level = 4' : 'level <= 3'} ORDER BY name`, parent);
+    // units=1 under an LGA: every unit below it (wards, and facilities / schools under their ward or the LGA).
+    const rows = withUnits
+      ? await all(env.DB, `SELECT o.*, t.name AS type_name, w.name AS ward_name FROM org_units o LEFT JOIN unit_types t ON t.id = o.unit_type_id
+          LEFT JOIN org_units w ON w.id = o.parent_id AND o.level = 5 WHERE o.lga_id = ? AND o.level >= 4 ORDER BY ward_name, o.name`, parent)
+      : await all(env.DB, 'SELECT * FROM org_units WHERE parent_id = ? AND level <= 3 ORDER BY name', parent);
     if (withUnits) {
       return json({ parent: ouOut(p), children: rows.filter((r) => !r.closed_at && (inScope(ctx, r) || inScope({ ou: r }, ctx.ou)))
-        .map((r) => ({ ...ouOut(r), sectorId: r.sector_id, type: r.unit_type || '', ward: r.ward || '' })) });
+        .map((r) => ({ ...ouOut(r), sectorId: r.sector_id, typeId: r.unit_type_id || null, type: r.type_name || r.unit_type || '', ward: r.ward_name || r.ward || '' })) });
     }
     return json({ parent: ouOut(p), children: rows.filter((r) => inScope(ctx, r) || inScope({ ou: r }, ctx.ou)).map(ouOut) });
   }

@@ -59,6 +59,19 @@ function indOut(i, deNames, sectorNames = {}) {
   };
 }
 
+// The unit types a schedule reported by unit uses: they must exist, and wards are not mixed with other types
+// (a ward's value already contains its facilities, so adding both would count twice).
+async function checkUnitTypes(db, typeIds) {
+  const ids = [...new Set(typeIds || [])];
+  for (const t of ids) if (!(await one(db, 'SELECT id FROM unit_types WHERE id = ?', t))) throw new HttpError(422, 'invalid', 'Unknown unit type.', { field: 'unitTypes' });
+  if (ids.includes('ut_ward') && ids.length > 1) throw new HttpError(422, 'invalid', 'Report by wards, or by other units (facilities, schools …) — not both in one schedule: a ward already includes its facilities.', { field: 'unitTypes' });
+  return ids;
+}
+async function setUnitTypes(db, dsId, ids) {
+  await run(db, 'DELETE FROM dataset_unit_types WHERE dataset_id = ?', dsId);
+  for (const t of ids) await run(db, 'INSERT INTO dataset_unit_types (dataset_id, type_id) VALUES (?, ?)', dsId, t);
+}
+
 // ---------- read ----------
 export async function getMetadata(request, env, ctx) {
   const sectors = await all(env.DB, 'SELECT * FROM sectors ORDER BY sort, name');
@@ -67,13 +80,17 @@ export async function getMetadata(request, env, ctx) {
   const inds = await all(env.DB, 'SELECT * FROM indicators ORDER BY dataset_id, sort, name');
   const names = Object.fromEntries(des.map((d) => [d.id, d.name]));
   const sectorNames = Object.fromEntries(sectors.map((s) => [s.id, s.name]));
+  const unitTypes = await all(env.DB, 'SELECT id, name, is_ward FROM unit_types ORDER BY is_ward DESC, sort, name');
+  const dsTypes = await all(env.DB, 'SELECT dataset_id, type_id FROM dataset_unit_types');
   return json({
+    unitTypes: unitTypes.map((t) => ({ id: t.id, name: t.name, isWard: !!t.is_ward })),
     frequencies: Object.entries(FREQUENCY_NAMES).map(([id, name]) => ({ id, name })),
     showAs: [{ id: 'percent', name: 'Percentage' }, { id: 'per1000', name: 'Per 1,000' }, { id: 'number', name: 'Number' }],
     sectors: sectors.map((s) => ({ id: s.id, name: s.name, indicators: inds.filter((i) => i.sector_id === s.id && !i.archived_at).length })),
     datasets: datasets.map((s) => ({
       id: s.id, name: s.name, sectorId: s.sector_id, sector: sectorNames[s.sector_id] || '', shared: !!s.shared, reportLevel: s.report_level === 4 ? 'UNIT' : 'LGA', frequency: s.frequency, frequencyName: FREQUENCY_NAMES[s.frequency], dueDay: s.due_day,
       groupId: s.group_id, reportingRateId: s.reporting_rate_id, archived: !!s.archived_at,
+      unitTypes: dsTypes.filter((x) => x.dataset_id === s.id).map((x) => x.type_id),
       dataElements: des.filter((d) => d.dataset_id === s.id).map(deOut),
       indicators: inds.filter((i) => i.dataset_id === s.id).map((i) => indOut(i, names, sectorNames)),
     })),
@@ -132,6 +149,7 @@ export async function deleteDataset(request, env, ctx, { id }) {
     env.DB.prepare('DELETE FROM data_value_history WHERE de_id IN (SELECT id FROM data_elements WHERE dataset_id = ?)').bind(id),
     env.DB.prepare('DELETE FROM data_elements WHERE dataset_id = ?').bind(id),
     env.DB.prepare('DELETE FROM user_datasets WHERE dataset_id = ?').bind(id),
+    env.DB.prepare('DELETE FROM dataset_unit_types WHERE dataset_id = ?').bind(id),
     env.DB.prepare('DELETE FROM datasets WHERE id = ?').bind(id),
   ]);
   await audit(env.DB, ctx, 'dataset_deleted', 'dataset', id, { name: ds.name });
@@ -161,10 +179,12 @@ export async function createDataset(request, env, ctx) {
     reportLevel: v.string({ oneOf: ['LGA', 'UNIT'] }).default('LGA'),
     frequency: v.string({ oneOf: Object.keys(FREQUENCIES) }).default('MONTHLY'),
     dueDay: v.number({ min: 1, max: 28, int: true }).default(15),
+    unitTypes: v.array(v.string({ min: 1, max: 40 }), { max: 30 }).optional(),
     id: idField, groupId: idField, reportingRateId: idField,
   }), await readJson(request));
   if (body.shared) { body.frequency = 'YEARLY'; body.reportLevel = 'LGA'; }
   else if (!body.sector) throw new HttpError(422, 'invalid', 'Choose the sector this data set belongs to.', { field: 'sector' });
+  const unitTypes = body.reportLevel === 'UNIT' ? await checkUnitTypes(env.DB, body.unitTypes) : [];
   const sectorId = body.sector ? await sectorFor(env.DB, body.sector) : null;
   if (await one(env.DB, 'SELECT id FROM datasets WHERE name = ?', body.name)) throw new HttpError(409, 'name_taken', 'A data set with this name already exists.');
   const id = await pickId(env.DB, body.id);
@@ -172,6 +192,7 @@ export async function createDataset(request, env, ctx) {
   const rrId = await pickId(env.DB, body.reportingRateId, [id, groupId]);
   await run(env.DB, 'INSERT INTO datasets (id, name, sector_id, shared, report_level, frequency, group_id, reporting_rate_id, due_day, created_at) VALUES (?,?,?,?,?,?,?,?,?,?)',
     id, body.name, sectorId, body.shared ? 1 : 0, body.reportLevel === 'UNIT' ? 4 : 3, body.frequency, groupId, rrId, body.dueDay, now());
+  await setUnitTypes(env.DB, id, unitTypes);
   await audit(env.DB, ctx, 'dataset_created', 'dataset', id, { name: body.name, frequency: body.frequency });
   return json({ id, groupId, reportingRateId: rrId }, 201);
 }
@@ -185,6 +206,7 @@ export async function updateDataset(request, env, ctx, { id }) {
     reportLevel: v.string({ oneOf: ['LGA', 'UNIT'] }).optional(),
     frequency: v.string({ oneOf: Object.keys(FREQUENCIES) }).optional(),
     dueDay: v.number({ min: 1, max: 28, int: true }).optional(),
+    unitTypes: v.array(v.string({ min: 1, max: 40 }), { max: 30 }).optional(),
     archived: v.boolean().optional(),
   }), await readJson(request));
   if (s.shared && body.frequency && body.frequency !== 'YEARLY') throw new HttpError(422, 'invalid', 'The shared denominators data set is yearly.', { field: 'frequency' });
@@ -201,9 +223,13 @@ export async function updateDataset(request, env, ctx, { id }) {
   if (body.frequency && body.frequency !== s.frequency && await one(env.DB, 'SELECT 1 AS x FROM reports WHERE dataset_id = ? LIMIT 1', id)) {
     throw new HttpError(409, 'has_reports', 'Reports already exist for this data set, so its frequency can no longer change. Create a new data set instead.');
   }
+  // Which unit types report can change at any time (units of a removed type simply stop being expected).
+  const unitTypes = body.unitTypes !== undefined && level === 4 ? await checkUnitTypes(env.DB, body.unitTypes) : null;
   await run(env.DB, 'UPDATE datasets SET name = ?, sector_id = ?, report_level = ?, frequency = ?, due_day = ?, archived_at = ? WHERE id = ?',
     body.name ?? s.name, sectorId, level, body.frequency ?? s.frequency, body.dueDay ?? s.due_day,
     body.archived === undefined ? s.archived_at : body.archived ? now() : null, id);
+  if (unitTypes) await setUnitTypes(env.DB, id, unitTypes);
+  if (level === 3) await run(env.DB, 'DELETE FROM dataset_unit_types WHERE dataset_id = ?', id);
   await audit(env.DB, ctx, 'dataset_updated', 'dataset', id, body);
   return json({ ok: true });
 }

@@ -91,7 +91,8 @@ export async function logout(request, env, ctx) {
 export async function me(request, env, ctx) {
   const datasets = await all(env.DB, `SELECT d.id, d.name, d.frequency, d.due_day AS dueDay, d.shared, d.report_level, d.sector_id AS sectorId, s.name AS sector
     FROM datasets d LEFT JOIN sectors s ON s.id = d.sector_id WHERE d.archived_at IS NULL ORDER BY d.shared, s.name, d.name`);
-  for (const d of datasets) { d.shared = !!d.shared; d.reportLevel = d.report_level === 4 ? 'UNIT' : 'LGA'; d.frequencyName = FREQUENCY_NAMES[d.frequency]; delete d.report_level; }
+  const dsTypes = await all(env.DB, 'SELECT dataset_id, type_id FROM dataset_unit_types');
+  for (const d of datasets) { d.shared = !!d.shared; d.reportLevel = d.report_level === 4 ? 'UNIT' : 'LGA'; d.frequencyName = FREQUENCY_NAMES[d.frequency]; d.unitTypes = dsTypes.filter((x) => x.dataset_id === d.id).map((x) => x.type_id); delete d.report_level; }
   const mine = ctx.datasets.length && ctx.role !== 'sysadmin' ? datasets.filter((s) => ctx.datasets.includes(s.id)) : datasets;
   return json({
     user: { ...ctx.user, roleName: ROLE_NAMES[ctx.role] },
@@ -200,7 +201,7 @@ async function checkAssignment(db, ctx, role, ouId, datasets, dataElements) {
   const ou = await one(db, 'SELECT id, name, level, path FROM org_units WHERE id = ?', ouId);
   if (!ou) throw new HttpError(422, 'invalid', 'Organisation unit not found.', { field: 'ouId' });
   const lvl = ROLE_LEVEL[role];
-  if (lvl && ou.level !== lvl) {
+  if (lvl && (lvl === 4 ? ou.level < 4 : ou.level !== lvl)) {
     const where = { 1: 'the country', 2: 'a state', 3: 'an LGA', 4: 'a unit (school, facility …)' }[lvl];
     throw new HttpError(422, 'invalid', `A ${ROLE_NAMES[role]} must be attached to ${where}.`, { field: 'ouId' });
   }

@@ -87,6 +87,7 @@ export async function registrationInfo(request, env, ctx, { token }) {
   const datasets = await all(env.DB, `SELECT d.id, d.name, d.report_level, d.sector_id, s.name AS sector FROM datasets d LEFT JOIN sectors s ON s.id = d.sector_id
     WHERE d.archived_at IS NULL AND d.shared = 0 ORDER BY s.name, d.name`);
   const suggested = JSON.parse(link.datasets || '[]');
+  const dsTypes = await all(env.DB, 'SELECT dataset_id, type_id FROM dataset_unit_types');
   return json({
     name: link.name,
     area: { id: area.id, name: area.name, level: area.level, parentId: area.parent_id },
@@ -94,7 +95,7 @@ export async function registrationInfo(request, env, ctx, { token }) {
     role: link.role,
     sector: link.sector_id,
     sectors: (await all(env.DB, `SELECT id, name FROM sectors WHERE id IN (SELECT sector_id FROM datasets WHERE archived_at IS NULL AND shared = 0) ORDER BY sort, name`)),
-    datasets: datasets.map((d) => ({ id: d.id, name: d.name, sectorId: d.sector_id, sector: d.sector || '', byUnit: d.report_level === 4, suggested: suggested.includes(d.id) })),
+    datasets: datasets.map((d) => ({ id: d.id, name: d.name, sectorId: d.sector_id, sector: d.sector || '', byUnit: d.report_level === 4, unitTypes: dsTypes.filter((x) => x.dataset_id === d.id).map((x) => x.type_id), suggested: suggested.includes(d.id) })),
   });
 }
 
@@ -109,9 +110,12 @@ export async function registrationPlaces(request, env, ctx, { token }) {
     throw new HttpError(403, 'out_of_scope', 'Outside the area of this link.');
   }
   const units = q.get('units') === '1';
-  const rows = await all(env.DB, `SELECT o.id, o.name, o.level, o.unit_type, o.sector_id, s.name AS sector FROM org_units o LEFT JOIN sectors s ON s.id = o.sector_id
-     WHERE o.parent_id = ? AND o.closed_at IS NULL AND o.inactive = 0 AND ${units ? 'o.level = 4' : 'o.level <= 3'} ORDER BY o.name LIMIT 3000`, parent.id);
-  return json({ parent: { id: parent.id, name: parent.name, level: parent.level }, children: rows.map((r) => ({ id: r.id, name: r.name, type: r.unit_type || '', sectorId: r.sector_id, sector: r.sector || '' })) });
+  // units=1 under an LGA: every unit below it (wards and the units under them).
+  const rows = await all(env.DB, `SELECT o.id, o.name, o.level, COALESCE(t.name, o.unit_type) AS unit_type, o.unit_type_id, o.sector_id, s.name AS sector, w.name AS ward
+       FROM org_units o LEFT JOIN sectors s ON s.id = o.sector_id LEFT JOIN unit_types t ON t.id = o.unit_type_id
+       LEFT JOIN org_units w ON w.id = o.parent_id AND o.level = 5
+     WHERE ${units ? 'o.lga_id = ? AND o.level >= 4' : 'o.parent_id = ? AND o.level <= 3'} AND o.closed_at IS NULL AND o.inactive = 0 ORDER BY w.name, o.name LIMIT 5000`, parent.id);
+  return json({ parent: { id: parent.id, name: parent.name, level: parent.level }, children: rows.map((r) => ({ id: r.id, name: r.name, type: r.unit_type || '', typeId: r.unit_type_id || null, ward: r.ward || '', sectorId: r.sector_id, sector: r.sector || '' })) });
 }
 
 // POST /api/register/:token — submit a request.
@@ -137,14 +141,18 @@ export async function submitRegistration(request, env, ctx, { token }) {
   const ouState = ou.level >= 2 ? await one(env.DB, 'SELECT inactive FROM org_units WHERE id = ?', ou.path.split('/')[2]) : null;
   if (ouState && ouState.inactive) throw new HttpError(422, 'invalid', 'This state is not using the system yet.', { field: 'ouId' });
   const lvl = ROLE_LEVEL[body.role];
-  if (lvl && ou.level !== lvl) {
+  if (lvl && (lvl === 4 ? ou.level < 4 : ou.level !== lvl)) {
     const where = { 2: 'a state', 3: 'an LGA', 4: 'a unit (school, facility …)' }[lvl];
     throw new HttpError(422, 'invalid', `For “${ROLE_NAMES[body.role]}” choose ${where}.`, { field: 'ouId' });
   }
   const sector = await one(env.DB, 'SELECT id, name FROM sectors WHERE id = ?', body.sectorId);
   if (!sector) throw new HttpError(422, 'invalid', 'Choose your sector.', { field: 'sectorId' });
   if (link.sector_id && link.sector_id !== sector.id) throw new HttpError(422, 'invalid', 'This link is for another sector.', { field: 'sectorId' });
-  if (ou.level === 4 && ou.sector_id !== sector.id) throw new HttpError(422, 'invalid', `That unit belongs to another sector, not ${sector.name}.`, { field: 'ouId' });
+  if (ou.level >= 4 && ou.sector_id !== sector.id) {
+    const unitOfSector = await one(env.DB, `SELECT 1 AS x FROM dataset_unit_types x JOIN datasets d ON d.id = x.dataset_id
+      WHERE d.sector_id = ? AND d.archived_at IS NULL AND x.type_id = (SELECT unit_type_id FROM org_units WHERE id = ?) LIMIT 1`, sector.id, ou.id);
+    if (!unitOfSector) throw new HttpError(422, 'invalid', `${sector.name} does not report on that unit.`, { field: 'ouId' });
+  }
   for (const d of body.datasets || []) {
     const ds = await one(env.DB, 'SELECT id, sector_id FROM datasets WHERE id = ? AND archived_at IS NULL', d);
     if (!ds) throw new HttpError(422, 'invalid', 'Unknown data set.', { field: 'datasets' });
@@ -181,8 +189,8 @@ export async function listRequests(request, env, ctx) {
   const rows = await requestsInScope(env.DB, ctx, status);
   const lgaNames = {};
   for (const r of rows) {
-    if (r.ou_level === 4) {
-      const p = await one(env.DB, 'SELECT name FROM org_units WHERE id = (SELECT parent_id FROM org_units WHERE id = ?)', r.ou_id);
+    if (r.ou_level >= 4) {
+      const p = await one(env.DB, 'SELECT name FROM org_units WHERE id = (SELECT COALESCE(lga_id, parent_id) FROM org_units WHERE id = ?)', r.ou_id);
       lgaNames[r.id] = p ? p.name : '';
     }
   }
@@ -215,7 +223,7 @@ export async function approveRequest(request, env, ctx, { id }) {
   const role = body.role || r.role;
   if (ctx.role === 'state' && !['lga', 'unit'].includes(role)) throw new HttpError(403, 'forbidden', 'State officers can approve LGA and unit data-entry accounts.');
   const ou = await ouById(env.DB, r.ou_id);
-  if (ROLE_LEVEL[role] && ou.level !== ROLE_LEVEL[role]) throw new HttpError(422, 'invalid', `“${ROLE_NAMES[role]}” does not match where this person works (${ou.name}). Reject it and ask them to register again, or keep the requested role.`);
+  if (ROLE_LEVEL[role] && (ROLE_LEVEL[role] === 4 ? ou.level < 4 : ou.level !== ROLE_LEVEL[role])) throw new HttpError(422, 'invalid', `“${ROLE_NAMES[role]}” does not match where this person works (${ou.name}). Reject it and ask them to register again, or keep the requested role.`);
   if (await one(env.DB, 'SELECT id FROM users WHERE email = ?', r.email)) throw new HttpError(409, 'email_taken', 'An account with this email already exists.');
   let datasets = body.datasets || JSON.parse(r.datasets || '[]');
   // Nothing ticked: give them every data set of their sector (rather than all sectors).

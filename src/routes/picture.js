@@ -41,7 +41,7 @@ export async function picture(request, env, ctx) {
   if (!datasetAllowed(ctx, ds.id)) throw new HttpError(403, 'forbidden', 'You are not assigned to this data set.');
   let ou = await loadOu(env.DB, ctx, q.get('ou'));
   const unitLevel = ds.report_level === 4;
-  if (ou.level === 4) ou = await one(env.DB, 'SELECT * FROM org_units WHERE id = ?', ou.parent_id);
+  if (ou.level >= 4) ou = await one(env.DB, 'SELECT * FROM org_units WHERE id = ?', ou.lga_id || ou.parent_id);
   // An LGA shows its units for unit-reported data sets; otherwise the picture starts at the state.
   if (ou.level === 3 && !unitLevel) ou = await one(env.DB, 'SELECT * FROM org_units WHERE id = ?', ou.parent_id);
   const period = q.get('period') || lastCompletedPeriod(ds.frequency);
@@ -98,12 +98,19 @@ async function exportDatasets(db, ctx, param) {
 }
 
 // Org units the export covers: the caller's scope plus the units above it (so parents resolve).
-// Sector units (level 4: schools, facilities ...) are included only when asked for, optionally for one sector.
+// Units below the LGA (wards, facilities, schools ...) are included only when asked for: all of them, or those of one
+// sector (its units, and the unit types its reporting schedules use). Wards above included units come along so
+// every parent resolves, as in DHIS2.
 async function exportOrgUnits(db, root, units = null) {
   const ancestors = root.path.split('/').filter(Boolean).slice(0, -1);
   const inactiveStates = new Set((await all(db, 'SELECT id FROM org_units WHERE level = 2 AND inactive = 1')).map((r) => r.id));
-  const below = (await all(db, 'SELECT id, name, level, parent_id, closed_at, sector_id, path FROM org_units WHERE (id = ? OR path LIKE ?) AND closed_at IS NULL ORDER BY level, name', root.id, root.path + '/%'))
-    .filter((o) => o.level <= 3 || (units && (units === 'all' || o.sector_id === units)))
+  const sectorTypes = units && units !== 'all'
+    ? new Set((await all(db, 'SELECT DISTINCT x.type_id FROM dataset_unit_types x JOIN datasets d ON d.id = x.dataset_id WHERE d.sector_id = ?', units)).map((r) => r.type_id))
+    : null;
+  const rows = await all(db, 'SELECT id, name, level, parent_id, closed_at, sector_id, unit_type_id, path FROM org_units WHERE (id = ? OR path LIKE ?) AND closed_at IS NULL ORDER BY level, name', root.id, root.path + '/%');
+  const keep = new Set(rows.filter((o) => o.level <= 3 || (units && (units === 'all' || o.sector_id === units || (sectorTypes && sectorTypes.has(o.unit_type_id))))).map((o) => o.id));
+  for (const o of rows) if (keep.has(o.id) && o.level === 5) keep.add(o.parent_id);
+  const below = rows.filter((o) => keep.has(o.id))
     .filter((o) => !o.path || o.level < 2 || !inactiveStates.has(o.path.split('/')[2]));
   const above = ancestors.length ? await all(db, `SELECT id, name, level, parent_id, closed_at FROM org_units WHERE id IN (${ancestors.map(() => '?').join(',')}) ORDER BY level`, ...ancestors) : [];
   return [...above, ...below];

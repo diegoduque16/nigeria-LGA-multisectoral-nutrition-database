@@ -18,7 +18,7 @@ export async function pivot(request, env, ctx) {
   if (!periodType(period)) throw new HttpError(422, 'invalid', 'Choose a period such as 202601, 2026Q1 or 2026.', { field: 'period' });
   let root = q.get('ou') ? await one(env.DB, 'SELECT * FROM org_units WHERE id = ?', q.get('ou')) : ctx.ou;
   if (!root || !inScope(ctx, root)) throw new HttpError(403, 'out_of_scope', 'That area is outside your account.');
-  if (root.level === 4) root = await one(env.DB, 'SELECT * FROM org_units WHERE id = ?', root.parent_id);
+  if (root.level >= 4) root = await one(env.DB, 'SELECT * FROM org_units WHERE id = ?', root.lga_id || root.parent_id);
   const sector = q.get('sector') || '';
   const wanted = q.get('datasets') ? q.get('datasets').split(',') : null;
   const statuses = q.get('provisional') === '1' ? STATUSES_PROVISIONAL : STATUSES_FINAL;

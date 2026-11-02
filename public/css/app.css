@@ -35,7 +35,7 @@ main { max-width: 1240px; margin: 0 auto; padding: 24px 20px 80px; }
 .card-narrow { max-width: 420px; margin: 8vh auto; }
 
 .bar { display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-end; margin-bottom: 16px; }
-label.f { display: flex; flex-direction: column; gap: 4px; font-size: .82rem; color: var(--muted); font-weight: 550; }
+label.f, div.f { display: flex; flex-direction: column; gap: 4px; font-size: .82rem; color: var(--muted); font-weight: 550; }
 input, select, textarea { font: inherit; color: var(--ink); background: #fff; border: 1px solid #c9d2cd; border-radius: 6px; padding: 7px 10px; min-height: 36px; }
 input:focus, select:focus, textarea:focus, button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 input[type=number] { text-align: right; }
@@ -278,3 +278,5 @@ dialog.wide { width: min(900px, 96vw); }
 .schedhead { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 6px; }
 table.indlist td { padding: 9px 10px; }
 .schedule.archived { opacity: .6; }
+.whotypes { margin-top: 8px; padding: 10px 12px; border: 1px dashed var(--line); border-radius: 6px; background: #fafbfa; }
+.whotypes .bar { margin: 6px 0 0; }

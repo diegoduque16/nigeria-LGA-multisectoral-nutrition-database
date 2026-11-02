@@ -1,6 +1,7 @@
 // Aggregation: sum LGA values up to states and the country, then recompute indicators from the
 // summed numerators and denominators (never averaging LGA percentages).
 import { HttpError } from './util.js';
+import { unitsOf } from './units.js';
 import { all } from './db.js';
 import { periodsWithin, parseExpression, evaluate, monthsOf, FREQUENCY_NAMES } from './dhis.js';
 
@@ -54,16 +55,21 @@ export async function loadLgaTotals(db, dataset, period, rootOu, statuses, share
   const stMarks = statuses.map(() => '?').join(',');
   let units = null;
   if (unitLevel) {
+    const f = unitsOf(dataset, 'u');
     const unitRows = await all(db,
-      `SELECT id, name, parent_id, unit_type, ward FROM org_units WHERE level = 4 AND sector_id = ? AND closed_at IS NULL AND (id = ? OR path LIKE ?) ORDER BY name`,
-      dataset.sector_id, rootOu.id, like);
-    for (const u of unitRows) { const l = lgas.get(u.parent_id); if (l) l.expected++; }
-    if (perUnit) units = new Map(unitRows.map((u) => [u.id, { id: u.id, name: u.name, lgaId: u.parent_id, type: u.unit_type || '', ward: u.ward || '', values: {}, reported: 0, expected: 1, statuses: {} }]));
+      `SELECT u.id, u.name, u.lga_id, COALESCE(t.name, u.unit_type) AS unit_type, COALESCE(w.name, u.ward) AS ward
+         FROM org_units u LEFT JOIN unit_types t ON t.id = u.unit_type_id LEFT JOIN org_units w ON w.id = u.parent_id AND u.level = 5
+        WHERE ${f.sql} AND u.closed_at IS NULL AND (u.id = ? OR u.path LIKE ?) ORDER BY u.name`,
+      ...f.args, rootOu.id, like);
+    for (const u of unitRows) { const l = lgas.get(u.lga_id); if (l) l.expected++; }
+    if (perUnit) units = new Map(unitRows.map((u) => [u.id, { id: u.id, name: u.name, lgaId: u.lga_id, type: u.unit_type || '', ward: u.ward || '', values: {}, reported: 0, expected: 1, statuses: {} }]));
   }
+  // Units count towards their LGA (o.lga_id), whether they sit directly under it or under a ward.
+  const levelSql = unitLevel ? 'o.level >= 4' : 'o.level = 3';
   const reports = await all(db,
-    `SELECT r.ou_id, o.parent_id, r.period, r.status FROM reports r JOIN org_units o ON o.id = r.ou_id
-      WHERE r.dataset_id = ? AND r.period IN (${peMarks}) AND o.level = ? AND (o.id = ? OR o.path LIKE ?)`,
-    dataset.id, ...subPeriods, unitLevel ? 4 : 3, rootOu.id, like);
+    `SELECT r.ou_id, COALESCE(o.lga_id, o.parent_id) AS parent_id, r.period, r.status FROM reports r JOIN org_units o ON o.id = r.ou_id
+      WHERE r.dataset_id = ? AND r.period IN (${peMarks}) AND ${levelSql} AND (o.id = ? OR o.path LIKE ?)`,
+    dataset.id, ...subPeriods, rootOu.id, like);
   for (const r of reports) {
     const ok = statuses.includes(r.status);
     if (unitLevel) {
@@ -80,14 +86,14 @@ export async function loadLgaTotals(db, dataset, period, rootOu, statuses, share
     }
   }
   const sums = await all(db,
-    `SELECT ${unitLevel && !perUnit ? 'o.parent_id' : 'dv.ou_id'} AS ou, ${unitLevel && perUnit ? 'o.parent_id AS lga,' : ''} dv.de_id, SUM(dv.value) AS v
+    `SELECT ${unitLevel && !perUnit ? 'COALESCE(o.lga_id, o.parent_id)' : 'dv.ou_id'} AS ou, ${unitLevel && perUnit ? 'COALESCE(o.lga_id, o.parent_id) AS lga,' : ''} dv.de_id, SUM(dv.value) AS v
        FROM data_values dv
        JOIN reports r ON r.dataset_id = ? AND r.ou_id = dv.ou_id AND r.period = dv.period
        JOIN data_elements de ON de.id = dv.de_id AND de.dataset_id = ?
        JOIN org_units o ON o.id = dv.ou_id
-      WHERE dv.period IN (${peMarks}) AND r.status IN (${stMarks}) AND o.level = ? AND (o.id = ? OR o.path LIKE ?)
+      WHERE dv.period IN (${peMarks}) AND r.status IN (${stMarks}) AND ${levelSql} AND (o.id = ? OR o.path LIKE ?)
       GROUP BY 1, ${unitLevel && perUnit ? 'lga, ' : ''}dv.de_id`,
-    dataset.id, dataset.id, ...subPeriods, ...statuses, unitLevel ? 4 : 3, rootOu.id, like);
+    dataset.id, dataset.id, ...subPeriods, ...statuses, rootOu.id, like);
   for (const s of sums) {
     if (unitLevel && perUnit) {
       const u = units.get(s.ou); if (u) u.values[s.de_id] = s.v;

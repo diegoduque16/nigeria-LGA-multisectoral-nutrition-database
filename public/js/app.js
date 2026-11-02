@@ -61,6 +61,8 @@ const fmtDate = (ms) => (ms ? new Date(ms).toLocaleString('en-GB', { day: 'numer
 const fmtDay = (ms) => (ms ? new Date(ms).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'Africa/Lagos' }) : '—');
 const pill = (status, name) => h('span', { class: 'pill s-' + status }, name || status);
 const field = (label, input, hint) => h('label', { class: 'f' }, label, input, hint ? h('span', { class: 'hint' }, hint) : null);
+// The same, for a group of controls (a label element may only wrap one control).
+const fieldGroup = (label, input, hint) => h('div', { class: 'f' }, h('span', {}, label), input, hint ? h('span', { class: 'hint' }, hint) : null);
 // Page heading: title, one plain sentence on what the page is for, optional "How does this work?" steps, buttons.
 // Page heading: where you are (area), title, one plain sentence on what the page is for, the steps, buttons.
 // The steps are shown open so nobody has to guess; each person can fold them away (remembered per page).
@@ -301,6 +303,8 @@ function renderMe() {
 }
 
 // ---------- shared pickers ----------
+// Does unit u report on schedule ds? Its unit types, or (older schedules) the schedule's sector.
+const unitReports = (ds, u) => ((ds.unitTypes || []).length ? ds.unitTypes.includes(u.typeId) : u.sectorId === ds.sectorId);
 const dsLabel = (d) => (d.shared ? d.name + ' (shared)' : (d.sector && !d.name.toLowerCase().startsWith(d.sector.toLowerCase()) ? `${d.sector} — ${d.name}` : d.name) + (d.reportLevel === 'UNIT' ? ' · by unit' : ''));
 // Shown when there is nothing to report on yet: admins get a way forward, others are told who to ask.
 function noDatasets() {
@@ -470,14 +474,14 @@ async function renderEntry() {
     pickers = [sp.el, field('LGA', select(lgas, ouId, { onchange: (e) => { pref('lga', e.target.value); renderEntry(); } }))];
   }
   if (byUnit && role() !== 'unit') {
-    // Unit-reported data set: choose the school / facility inside the LGA.
-    const units = (await unitsOf(ouId)).filter((u) => u.sectorId === ds.sectorId);
+    // Unit-reported schedule: choose the ward / facility / school inside the LGA (the schedule's unit types).
+    const units = (await unitsOf(ouId)).filter((u) => unitReports(ds, u)).map((u) => ({ id: u.id, name: u.ward && u.typeId !== 'ut_ward' ? `${u.name} — ${u.ward}` : u.name }));
     if (!units.length) {
       return mount(h('div', {}, h('div', { class: 'bar' }, field('Report', select(sets.map((d) => ({ id: d.id, name: dsLabel(d) })), ds.id, { onchange: (e) => { pref('ds', e.target.value); renderEntry(); } })), pickers),
-        h('div', { class: 'panel empty' }, `“${ds.name}” is reported by each ${ds.sector ? ds.sector.toLowerCase() + ' ' : ''}school / facility, and none are listed for this LGA yet. Add them under Set-up → Units below the LGA.`)));
+        h('div', { class: 'panel empty' }, `“${ds.name}” is reported by ${whoText(ds)}, and none are listed for this LGA yet. Add them under Set-up → Units below the LGA.`)));
     }
     ouId = units.some((u) => u.id === pref('unit')) ? pref('unit') : units[0].id;
-    pickers = [...pickers, field('School / facility', select(units, ouId, { onchange: (e) => { pref('unit', e.target.value); renderEntry(); } }))];
+    pickers = [...pickers, field(whoText(ds).replace(/^each /, '').replace(/^./, (c) => c.toUpperCase()), select(units, ouId, { onchange: (e) => { pref('unit', e.target.value); renderEntry(); } }))];
   } else if (!byUnit && role() === 'unit') {
     return mount(h('div', { class: 'note info' }, `“${ds.name}” is reported by the LGA, not by each unit.`));
   }
@@ -950,11 +954,11 @@ async function renderExport() {
       h('div', { class: 'bar' }, field('Sector', sectorSel), field('Area', areaSel)),
       h('h3', {}, 'Step 1 · Places and indicators (metadata file)'),
       h('p', { class: 'muted small' }, 'organisationUnits_indicators.json — org units with their DHIS2 IDs, and the indicators (with a reporting-rate indicator per data set).'),
-      h('label', { class: 'check' }, withUnits, 'Also include the schools / facilities below each LGA (for the chosen sector)'), h('p'),
+      h('label', { class: 'check' }, withUnits, 'Also include the units below each LGA — wards, facilities, schools … (those of the chosen sector, or all)'), h('p'),
       metaBtn,
       h('h3', {}, 'Step 2 · The numbers (data values file)'),
       h('div', { class: 'bar' }, field('Period type', typeSel), field('From', from), field('To', to),
-        h('div', { class: 'chips' }, h('span', { class: 'muted small' }, 'Levels:'), ['Country', 'State', 'LGA', 'Schools / facilities (one state)'].map((n, i) => h('label', { class: 'check' }, lv[i], n)))),
+        h('div', { class: 'chips' }, h('span', { class: 'muted small' }, 'Levels:'), ['Country', 'State', 'LGA', 'Units below the LGA (one state)'].map((n, i) => h('label', { class: 'check' }, lv[i], n)))),
       h('label', { class: 'check' }, prov, 'Include reports not yet accepted'),
       h('p', { class: 'muted small' }, 'dataValues_<period>.json — one row per indicator, period and org unit. Periods use DHIS2 codes: 202601, 2026Q1, 2026.'),
       dataBtn),
@@ -1002,7 +1006,53 @@ function sectorSteps(current, ds) {
 }
 
 // A sector's reporting schedule in plain words. (Underneath, each schedule is a DHIS2-style data set.)
-const scheduleText = (d) => `${d.frequencyName} · ${d.reportLevel === 'UNIT' ? 'each unit below the LGA reports' : 'each LGA reports'} · due on day ${d.dueDay} of the next month`;
+// Who reports, in words: “each LGA”, “each ward”, “each health facility / primary school” (sector unit types).
+function whoText(d) {
+  if (d.reportLevel !== 'UNIT') return 'each LGA';
+  const types = (state.meta && state.meta.unitTypes) || [];
+  const names = (d.unitTypes || []).map((id) => (types.find((t) => t.id === id) || {}).name).filter(Boolean);
+  return names.length ? 'each ' + names.map((n) => n.toLowerCase()).join(' / ') : 'each unit below the LGA';
+}
+const scheduleText = (d) => `${d.frequencyName} · ${whoText(d)} reports · due on day ${d.dueDay} of the next month`;
+
+// “Who reports” on a schedule: each LGA, each ward, or each unit of the sector's own types (health facilities,
+// schools … set up under Units below the LGA). Returns the control and its value.
+function whoReportsPicker(m, ds) {
+  const custom = (m.unitTypes || []).filter((t) => !t.isWard);
+  const cur = ds && ds.reportLevel === 'UNIT' ? ((ds.unitTypes || []).includes('ut_ward') ? 'WARD' : 'UNIT') : 'LGA';
+  const level = select([
+    { id: 'LGA', name: 'Each LGA (default)' },
+    { id: 'WARD', name: 'Each ward' },
+    { id: 'UNIT', name: 'Each facility, school … (types you choose)' },
+  ], cur);
+  const boxes = custom.map((t) => ({ t, box: h('input', { type: 'checkbox', checked: !!(ds && (ds.unitTypes || []).includes(t.id)) }) }));
+  const newType = h('input', { placeholder: 'or a new type, e.g. Primary school', size: 28 });
+  const typesArea = h('div', { class: 'whotypes' },
+    h('div', { class: 'small muted' }, 'Which units report? Tick the unit types:'),
+    custom.length ? h('div', { class: 'chips' }, boxes.map((x) => h('label', { class: 'check' }, x.box, x.t.name))) : h('div', { class: 'small' }, 'No unit types yet — type one below.'),
+    h('div', { class: 'bar' }, newType, h('a', { class: 'small', href: '#/units' }, 'Units below the LGA →')));
+  const paint = () => { typesArea.hidden = level.value !== 'UNIT'; };
+  level.addEventListener('change', paint); paint();
+  return {
+    el: h('div', {}, level, typesArea),
+    level,
+    onChange: (fn) => { level.addEventListener('change', fn); boxes.forEach((x) => x.box.addEventListener('change', fn)); newType.addEventListener('input', fn); },
+    // Names for the schedule's name, e.g. ", by ward" / ", by health facility".
+    byText: () => (level.value === 'LGA' ? '' : level.value === 'WARD' ? ', by ward'
+      : ', by ' + [...boxes.filter((x) => x.box.checked).map((x) => x.t.name), newType.value.trim()].filter(Boolean).map((n) => n.toLowerCase()).join(' / ') || ', by unit'),
+    async value() {
+      if (level.value === 'LGA') return { reportLevel: 'LGA', unitTypes: [] };
+      if (level.value === 'WARD') return { reportLevel: 'UNIT', unitTypes: ['ut_ward'] };
+      const ids = boxes.filter((x) => x.box.checked).map((x) => x.t.id);
+      if (newType.value.trim()) {
+        const found = (m.unitTypes || []).find((t) => t.name.toLowerCase() === newType.value.trim().toLowerCase());
+        ids.push(found ? found.id : (await api('POST', '/api/unit-types', { name: newType.value.trim() })).data.id);
+      }
+      if (!ids.length) throw new Error('Tick at least one unit type that reports (or type a new one).');
+      return { reportLevel: 'UNIT', unitTypes: [...new Set(ids)] };
+    },
+  };
+}
 const calcText = (i) => (i.denominator ? `${i.numerator} ÷ ${i.denominator}` : i.numerator);
 
 // Sectors page: each sector with its indicators. Most sectors have one reporting schedule; a second one
@@ -1228,8 +1278,8 @@ function sectorSelect(m, current, attrs = {}) {
 }
 
 // Name of a reporting schedule, e.g. “Health – monthly” or “Education – quarterly, by school / facility”; unique.
-function scheduleName(m, sector, freqName, level, skipId) {
-  const base = `${sector} – ${freqName.toLowerCase()}${level === 'UNIT' ? ', by school / facility' : ''}`;
+function scheduleName(m, sector, freqName, byText, skipId) {
+  const base = `${sector} – ${freqName.toLowerCase()}${byText || ''}`;
   const taken = new Set(m.datasets.filter((d) => d.id !== skipId).map((d) => d.name.toLowerCase()));
   let n = base; let k = 2; while (taken.has(n.toLowerCase())) n = `${base} (${k++})`;
   return n;
@@ -1240,7 +1290,7 @@ function sectorDialog(m) {
   const forms = m.datasets.filter((d) => !d.shared);
   const sector = h('input', { placeholder: 'e.g. Agriculture' });
   const freq = select(m.frequencies, 'MONTHLY');
-  const level = select([{ id: 'LGA', name: 'Each LGA' }, { id: 'UNIT', name: 'Each unit below the LGA — facility, school … (added up to the LGA)' }], 'LGA');
+  const who = whoReportsPicker(m, null);
   const due = h('input', { type: 'number', min: 1, max: 28, value: 15 });
   const err = h('div', { class: 'err' });
   const save = h('button', { class: 'primary' }, 'Add sector, then its indicators');
@@ -1249,7 +1299,7 @@ function sectorDialog(m) {
     h('div', { class: 'grid2' },
       field('Sector name', sector, 'As people will see it.'),
       field('How often it reports', freq, 'Each report covers one month, quarter or year.'),
-      field('Who reports', level, 'Each LGA sends one report — or each unit below the LGA (facility, school …) sends its own. Units are set up under Units below the LGA.'),
+      fieldGroup('Who reports', who.el, 'Each LGA sends one report — or each ward, or each of the sector’s own units (facility, school …) sends its own. Values add up to the LGA.'),
       field('Due day', due, 'Day of the month after the period ends, e.g. 15.')),
     h('p', { class: 'muted small' }, 'Some indicators on another schedule (e.g. yearly, or by school)? Add them later with “+ Add indicators with a different schedule”.'),
     err, h('p'), h('div', { class: 'actions' }, save, h('button', { onclick: () => dlg.close() }, 'Cancel')));
@@ -1261,7 +1311,8 @@ function sectorDialog(m) {
     if (existing && forms.some((d) => d.sectorId === existing.id)) { err.textContent = `“${existing.name}” already exists. Add its indicators on its card instead.`; return; }
     const secName = existing ? existing.name : sector.value.trim();
     try {
-      const { data } = await api('POST', '/api/datasets', { name: scheduleName(m, secName, freq.options[freq.selectedIndex].text, level.value), sector: secName, frequency: freq.value, reportLevel: level.value, dueDay: Number(due.value) });
+      const w = await who.value();
+      const { data } = await api('POST', '/api/datasets', { name: scheduleName(m, secName, freq.options[freq.selectedIndex].text, who.byText()), sector: secName, frequency: freq.value, ...w, dueDay: Number(due.value) });
       dlg.close(); state.meta = null; await loadMe(); toast(`Sector “${secName}” added. Now add its indicators.`); pref('openAddInd', data.id); go('#/setup');
     } catch (e) { err.textContent = e.message; }
   }));
@@ -1572,13 +1623,14 @@ function datasetDialog(ds, m, makeShared = false, presetSector = '') {
   const shared = ds ? ds.shared : makeShared;
   const sector = sectorSelect(m, ds ? ds.sector : presetSector, { disabled: !!presetSector });
   const freq = select(m.frequencies, ds ? ds.frequency : presetSector && m.datasets.some((d) => d.sector === presetSector && d.frequency === 'MONTHLY') ? 'YEARLY' : 'MONTHLY');
-  const level = select([{ id: 'LGA', name: 'Each LGA' }, { id: 'UNIT', name: 'Each unit below the LGA — facility, school … (added up to the LGA)' }], ds ? ds.reportLevel : 'LGA');
+  const who = whoReportsPicker(m, ds);
   const due = h('input', { type: 'number', min: 1, max: 28, value: ds ? ds.dueDay : 15 });
-  const autoName = () => scheduleName(m, sector.value || presetSector || 'Sector', freq.options[freq.selectedIndex].text, level.value, ds && ds.id);
+  const autoName = () => scheduleName(m, sector.value || presetSector || 'Sector', freq.options[freq.selectedIndex].text, who.byText(), ds && ds.id);
   const name = h('input', { value: ds ? ds.name : shared ? 'Population and denominators' : autoName() });
   let typed = !!ds;
   name.addEventListener('input', () => { typed = true; });
-  for (const el of [sector, freq, level]) el.addEventListener('change', () => { if (!typed && !shared) name.value = autoName(); });
+  for (const el of [sector, freq]) el.addEventListener('change', () => { if (!typed && !shared) name.value = autoName(); });
+  who.onChange(() => { if (!typed && !shared) name.value = autoName(); });
   const id = h('input', { class: 'mono', placeholder: 'made automatically', maxlength: 11 });
   const err = h('div', { class: 'err' });
   const save = h('button', { class: 'primary' }, ds ? 'Save' : shared ? 'Create' : 'Create, then add its indicators');
@@ -1590,7 +1642,7 @@ function datasetDialog(ds, m, makeShared = false, presetSector = '') {
     h('div', { class: 'grid2' },
       shared ? null : field('Sector', sector),
       shared ? null : field('How often it reports', freq),
-      shared ? null : field('Who reports', level),
+      shared ? null : fieldGroup('Who reports', who.el),
       shared ? null : field('Due day', due, 'Day of the month after the period ends.'),
       field('Report name', name, shared ? null : 'What people see under “My reports”. Filled in for you.')),
     ds ? h('p', { class: 'muted small' }, 'ID ', idTag(ds.id)) : shared ? null : h('details', {}, h('summary', { class: 'small' }, 'Advanced: existing DHIS2 data set ID'), field('DHIS2 ID', id)),
@@ -1606,7 +1658,9 @@ function datasetDialog(ds, m, makeShared = false, presetSector = '') {
   save.addEventListener('click', busy(save, async () => {
     err.textContent = '';
     if (!shared && !sector.value) { err.textContent = 'Choose the sector.'; return; }
-    const body = shared ? { name: name.value.trim() } : { name: name.value.trim() || autoName(), sector: sector.value, frequency: freq.value, reportLevel: level.value, dueDay: Number(due.value) };
+    let w = {};
+    if (!shared) { try { w = await who.value(); } catch (e) { err.textContent = e.message; return; } }
+    const body = shared ? { name: name.value.trim() } : { name: name.value.trim() || autoName(), sector: sector.value, frequency: freq.value, ...w, dueDay: Number(due.value) };
     if (shared && !ds) body.shared = true;
     let newId = null;
     try {
@@ -1620,7 +1674,7 @@ function datasetDialog(ds, m, makeShared = false, presetSector = '') {
 }
 
 // ---------- sector org units (schools, facilities ...) ----------
-const UNIT_HEADERS = ['State', 'LGA', 'LGA ID', 'Name', 'Type', 'Ward (optional)', 'Code', 'DHIS2 ID (optional)'];
+const UNIT_HEADERS = ['State', 'LGA', 'LGA ID', 'Ward', 'Ward ID', 'Type', 'Name', 'Code', 'DHIS2 ID'];
 
 // Rollout: which states take part (system administrators).
 async function rolloutPanel() {
@@ -1652,102 +1706,126 @@ async function renderRollout() {
     await rolloutPanel()));
 }
 
+// Units below the LGA: the LGA's child org units (DHIS2 level 4, and level 5 under wards), by unit type.
 async function renderUnits() {
-  const rollout = null;
-  const sectorPref = pref('unitSector');
-  const first = await get('/api/units' + qs({ sector: sectorPref, state: state.me.ou.level === 1 ? pref('unitState') : undefined }));
-  if (!first.sectors.length) return mount(h('div', {}, pageHead({ title: 'Units below the LGA', text: 'The child org units of each LGA that a sector reports on.' }), h('div', { class: 'panel empty' }, 'Add a sector first (Sectors & indicators). Schools and facilities are listed per sector.')));
   const o = await orgs();
-  const sector = first.sector;
-  const sectorName = (first.sectors.find((x) => x.id === sector) || {}).name;
   const states = state.me.ou.level === 1 ? o.states : null;
-  const stateId = states ? (states.some((x) => x.id === pref('unitState')) ? pref('unitState') : '') : state.me.ou.level === 2 ? state.me.ou.id : null;
-  const lgaFilter = pref('unitLga') || '';
-  const units = first.units.filter((u) => !lgaFilter || u.lgaId === lgaFilter);
+  const stateId = states ? (states.some((x) => x.id === pref('unitState')) ? pref('unitState') : (states[0] || {}).id) : state.me.ou.level === 2 ? state.me.ou.id : (state.me.ou.path || '').split('/')[2];
+  const lgas = stateId ? await lgasOf(stateId) : [];
+  const lgaFilter = lgas.some((l) => l.id === pref('unitLga')) ? pref('unitLga') : '';
+  const typeFilter = pref('unitType') || '';
+  const data = await get('/api/units' + qs({ type: typeFilter, state: lgaFilter ? undefined : stateId, lga: lgaFilter || undefined }));
+  const types = data.types;
+  const units = data.units;
+  const admin = is('sysadmin', 'setupadmin');
+  const typeName = (id) => (types.find((t) => t.id === id) || {}).name || '';
 
-  // add one
-  const addState = states ? select(states, stateId || states[0].id) : null;
-  const addLga = h('select');
-  const fillLgas = async () => {
-    const sid = addState ? addState.value : state.me.ou.level === 2 ? state.me.ou.id : null;
-    const l = sid ? await lgasOf(sid) : [state.me.ou];
-    addLga.replaceChildren(...l.map((x) => h('option', { value: x.id, selected: x.id === lgaFilter }, x.name)));
-  };
-  if (addState) addState.addEventListener('change', fillLgas);
-  await fillLgas();
-  const typeList = h('datalist', { id: 'unit-types' }, first.types.map((t) => h('option', { value: t })));
-  const nName = h('input', { placeholder: sectorName === 'Education' ? 'e.g. Central Primary School' : 'Name' });
-  const nType = h('input', { list: 'unit-types', placeholder: sectorName === 'Education' ? 'e.g. Primary school' : 'e.g. Health facility', size: 16 });
+  // Unit types
+  const newType = h('input', { placeholder: 'e.g. Health facility, Primary school, Water point', size: 34 });
+  const addType = h('button', {}, '+ Add unit type');
+  addType.addEventListener('click', busy(addType, async () => { await api('POST', '/api/unit-types', { name: newType.value.trim() }); toast('Unit type added'); state.meta = null; renderUnits(); }));
+  const typesPanel = h('div', { class: 'panel' }, h('h2', {}, 'Unit types'),
+    h('p', { class: 'muted small' }, 'The kinds of unit below the LGA. Each reporting schedule chooses which types report (Sectors & indicators → Schedule settings). Wards are built in and keep their real DHIS2 IDs; facilities and schools can sit under their ward, as in DHIS2.'),
+    h('table', { class: 'todo' }, h('tbody', {}, types.map((t) => h('tr', {},
+      h('td', {}, h('strong', {}, t.name), t.isWard ? h('span', { class: 'muted small' }, ' · DHIS2 level 4, directly under the LGA') : null),
+      h('td', { class: 'small' }, `${t.units} unit${t.units === 1 ? '' : 's'}`),
+      h('td', { class: 'small muted' }, t.datasets.length ? 'Reports on: ' + t.datasets.map((d) => d.name).join(', ') : 'No schedule uses it yet'),
+      h('td', { class: 'n' }, admin && !t.isWard ? h('div', { class: 'actions' },
+        h('button', { class: 'link', onclick: async () => { const n = prompt('New name for this unit type:', t.name); if (!n || n.trim() === t.name) return; try { await api('PATCH', '/api/unit-types/' + t.id, { name: n.trim() }); state.meta = null; renderUnits(); } catch (e) { toast(e.message, true); } } }, 'Rename'),
+        !t.units && !t.datasets.length ? h('button', { class: 'link danger-link', onclick: async () => { try { await api('DELETE', '/api/unit-types/' + t.id); state.meta = null; renderUnits(); } catch (e) { toast(e.message, true); } } }, 'Remove') : null) : null))))),
+    admin ? h('div', { class: 'bar' }, field('New unit type', newType), addType) : null);
+
+  // Add one unit
+  const addType_ = select(types.map((t) => ({ id: t.id, name: t.name })), typeFilter || (types.find((t) => !t.isWard) || types[0] || {}).id);
+  const addLga = select(lgas, lgaFilter || (lgas[0] || {}).id);
+  const addWard = h('select');
+  const nName = h('input', { placeholder: 'Name' });
   const nCode = h('input', { placeholder: 'optional', size: 10 });
-  const nId = h('input', { class: 'mono', placeholder: 'auto-generated', maxlength: 11, size: 13 });
+  const nId = h('input', { class: 'mono', maxlength: 11, size: 13 });
+  const wardBox = field('Ward (optional)', addWard);
+  const idBox = field('DHIS2 ID', nId);
+  const fillWards = async () => {
+    const isWard = addType_.value === 'ut_ward';
+    wardBox.hidden = isWard;
+    nId.placeholder = isWard ? 'required for wards' : 'made automatically';
+    idBox.firstChild.textContent = isWard ? 'DHIS2 ID (required)' : 'DHIS2 ID (optional)';
+    const ws = addLga.value ? (await unitsOf(addLga.value)).filter((u) => u.typeId === 'ut_ward') : [];
+    addWard.replaceChildren(h('option', { value: '' }, ws.length ? '— directly under the LGA —' : 'No wards loaded for this LGA'), ...ws.map((w) => h('option', { value: w.id }, w.name)));
+  };
+  addType_.addEventListener('change', fillWards); addLga.addEventListener('change', fillWards);
+  await fillWards();
   const addBtn = h('button', { class: 'primary' }, 'Add');
   addBtn.addEventListener('click', busy(addBtn, async () => {
-    const body = { sectorId: sector, lgaId: addLga.value, name: nName.value.trim(), type: nType.value.trim(), code: nCode.value.trim() };
+    const body = { typeId: addType_.value, lgaId: addLga.value, name: nName.value.trim(), code: nCode.value.trim() };
+    if (addWard.value && addType_.value !== 'ut_ward') body.wardId = addWard.value;
     if (nId.value.trim()) body.id = nId.value.trim();
-    await api('POST', '/api/units', body); toast('Added'); pref('unitLga', addLga.value); renderUnits();
+    await api('POST', '/api/units', body); toast('Added'); delete unitCache[addLga.value]; renderUnits();
   }));
 
-  // excel
+  // Excel / DHIS2 file
   const fileIn = h('input', { type: 'file', accept: '.xlsx,.csv,.json', hidden: true });
   fileIn.addEventListener('change', async () => {
     const f = fileIn.files[0]; fileIn.value = '';
-    if (f) try { await importDialog(f, sector, sectorName); } catch (e) { toast(e.message, true); }
+    if (f) try { await importDialog(f, typeFilter); } catch (e) { toast(e.message, true); }
   });
   const tplBtn = h('button', {}, 'Download Excel template');
   tplBtn.addEventListener('click', busy(tplBtn, async () => {
-    const { lgas } = await get('/api/orgunits?lgas=all');
+    const { lgas: all_ } = await get('/api/orgunits?lgas=all');
     const { writeWorkbook } = await import('./xlsx.js');
-    const blob = writeWorkbook([
-      { name: `${sectorName} units`, rows: [UNIT_HEADERS], widths: [18, 24, 14, 36, 20, 20, 12, 20] },
-      { name: 'LGAs', rows: [['State', 'LGA', 'LGA ID'], ...lgas.map((l) => [l.state, l.name, l.id])], widths: [22, 30, 14] },
+    saveBlob(writeWorkbook([
+      { name: 'Units', rows: [UNIT_HEADERS], widths: [18, 24, 14, 22, 14, 20, 36, 12, 16] },
+      { name: 'LGAs', rows: [['State', 'LGA', 'LGA ID'], ...all_.map((l) => [l.state, l.name, l.id])], widths: [22, 30, 14] },
+      { name: 'Unit types', rows: [['Unit type'], ...types.map((t) => [t.name])], widths: [30] },
       { name: 'How to fill', rows: [['How to fill the template'], ...[
-        `One row per ${sectorName.toLowerCase()} unit (e.g. ${sectorName === 'Education' ? 'a school' : 'a facility or site'}).`,
+        'One row per unit below an LGA: a ward, health facility, school, water point …',
         'State and LGA: copy the names from the “LGAs” sheet, or put the LGA ID instead (safest).',
-        'Name is required. Type and Code are optional (Type e.g. “Primary school”).',
-        'DHIS2 ID: only if the unit already exists in DHIS2 — paste its 11-character ID to keep it. Leave empty to create a new ID.',
-        'Rows that match an existing unit (same name in the same LGA) update it instead of creating a duplicate.',
-        'Save as .xlsx (or .csv) and use “Import Excel” on the Org units page. You will see a check before anything is saved.',
-      ].map((t) => [t])], widths: [110] },
-    ]);
-    saveBlob(blob, `${sectorName.replace(/[^A-Za-z0-9]+/g, '_')}_org_units_template.xlsx`);
+        'Type: a name from the “Unit types” sheet (a new name creates a new type). “Ward” makes the row a ward.',
+        'Wards must have their real DHIS2 ID in the DHIS2 ID column. Put wards before the units under them, or load them first with “Load from DHIS2”.',
+        'Ward / Ward ID: the ward a facility or school sits in (name or ID). If the ward is not loaded yet, the name is kept as a label and the unit sits directly under the LGA.',
+        'DHIS2 ID for other units: only if the unit already exists in DHIS2 — paste its 11-character ID to keep it. Leave empty to create a new ID.',
+        'Rows that match an existing unit (same name and type in the same LGA, or the same DHIS2 ID) update it instead of creating a duplicate.',
+        'Save as .xlsx (or .csv) and use “Import Excel”. You see a check before anything is saved.',
+      ].map((t) => [t])], widths: [120] },
+    ]), 'Units_below_LGA_template.xlsx');
   }));
   const listBtn = h('button', {}, 'Download list');
   listBtn.addEventListener('click', busy(listBtn, async () => {
     const { writeWorkbook } = await import('./xlsx.js');
-    saveBlob(writeWorkbook([{ name: `${sectorName} units`, rows: [UNIT_HEADERS, ...units.map((u) => [u.stateName, u.lgaName, u.lgaId, u.name, u.type, u.ward, u.code, u.id])], widths: [18, 24, 14, 36, 20, 20, 12, 20] }]),
-      `${sectorName.replace(/[^A-Za-z0-9]+/g, '_')}_org_units.xlsx`);
+    const wardIdOf = (u) => u.wardId || '';
+    saveBlob(writeWorkbook([{ name: 'Units', rows: [UNIT_HEADERS, ...units.map((u) => [u.stateName, u.lgaName, u.lgaId, u.isWard ? '' : u.ward, u.isWard ? '' : wardIdOf(u), u.type, u.name, u.code, u.id])], widths: [18, 24, 14, 22, 14, 20, 36, 12, 16] }]), 'Units_below_LGA.xlsx');
   }));
 
-  const lgaOpts = [...new Map(first.units.map((u) => [u.lgaId, u.lgaName])).entries()].map(([id, name]) => ({ id, name }));
   mount(h('div', {},
-    rollout,
     pageHead({
       title: 'Units below the LGA',
-      sub: 'Child org units (DHIS2 level 4) of each LGA',
-      text: 'Here you customise the org units one level below each LGA: health facilities, schools, water points, markets, farms … — whatever a sector reports on. Each sector has its own list, and each unit keeps a DHIS2 ID so exports join to DHIS2. You only need them when a sector reports by each unit instead of by each LGA.',
+      sub: 'Child org units of each LGA: wards (DHIS2 level 4) and the facilities, schools … under them',
+      text: 'Here you customise the org units below each LGA that sectors report on. Wards keep their real DHIS2 IDs; health facilities, schools, water points … sit under their ward (or directly under the LGA) and keep a DHIS2 ID too, so exports join to DHIS2. Each reporting schedule chooses which unit types report.',
       how: [
-        'Choose the sector whose units you want to see or change.',
-        'Add one unit with the boxes below, or download the Excel template, fill one row per unit and press Import Excel. You see a check before anything is saved.',
-        'For Health, “Load health facilities” reads a state’s facilities (with their DHIS2 IDs) from the scorecard platform.',
-        'Click a unit to rename or close it. Units are never deleted, so past data stays.',
+        'Load the wards (and health facilities) of a state with “Load from DHIS2” — they come with their real DHIS2 IDs.',
+        'Add other unit types you need (Primary school, Water point …) under Unit types.',
+        'Add units one by one, or download the Excel template, fill one row per unit and press Import Excel. You see a check before anything is saved.',
+        'In Sectors & indicators → Schedule settings, set Who reports to “Each ward”, or to “Each facility, school …” and tick the unit types that report. Their values add up to the LGA.',
+        'Click a unit to rename it, change its type or ward, or close it. Units are never deleted, so past data stays.',
       ],
-      actions: [tplBtn, h('button', { class: 'primary', onclick: () => fileIn.click() }, 'Import Excel'), fileIn,
-        h('button', { onclick: () => scorecardDialog(sector, sectorName, states, stateId) }, 'Load health facilities')],
+      actions: [h('button', { class: 'primary', onclick: () => scorecardDialog(states, stateId, types) }, 'Load from DHIS2'), tplBtn, h('button', { onclick: () => fileIn.click() }, 'Import Excel'), fileIn],
     }),
+    typesPanel,
+    h('h2', {}, 'Units'),
     h('div', { class: 'bar' },
-      field('Sector', select(first.sectors, sector, { onchange: (e) => { pref('unitSector', e.target.value); renderUnits(); } })),
-      states ? field('State', select([{ id: '', name: 'All states' }, ...states], stateId, { onchange: (e) => { pref('unitState', e.target.value); pref('unitLga', ''); renderUnits(); } })) : null,
-      field('LGA', select([{ id: '', name: 'All LGAs' }, ...lgaOpts], lgaFilter, { onchange: (e) => { pref('unitLga', e.target.value); renderUnits(); } })),
+      states ? field('State', select(states, stateId, { onchange: (e) => { pref('unitState', e.target.value); pref('unitLga', ''); renderUnits(); } })) : null,
+      field('LGA', select([{ id: '', name: 'All LGAs' }, ...lgas], lgaFilter, { onchange: (e) => { pref('unitLga', e.target.value); renderUnits(); } })),
+      field('Type', select([{ id: '', name: 'All types' }, ...types.map((t) => ({ id: t.id, name: t.name }))], typeFilter, { onchange: (e) => { pref('unitType', e.target.value); renderUnits(); } })),
       h('div', { class: 'muted small' }, `${units.length} unit${units.length === 1 ? '' : 's'}`), listBtn),
-    h('div', { class: 'panel' }, h('h2', {}, `Add one ${sectorName} unit below an LGA`), typeList,
-      h('div', { class: 'bar' }, addState ? field('State', addState) : null, field('LGA', addLga), field('Name', nName), field('Type', nType), field('Code', nCode), field('DHIS2 ID', nId), addBtn)),
-    units.length > 2000 ? h('p', { class: 'muted small' }, `Showing the first 2,000 of ${units.length}. Choose an LGA, or use “Download list” for all.`) : null,
+    h('div', { class: 'panel' }, h('h3', {}, 'Add one unit'),
+      h('div', { class: 'bar' }, field('Type', addType_), field('LGA', addLga), wardBox, field('Name', nName), field('Code', nCode), idBox, addBtn)),
+    units.length > 2000 ? h('p', { class: 'muted small' }, `Showing the first 2,000 of ${units.length}. Choose an LGA or a type, or use “Download list” for all.`) : null,
     units.length ? h('div', { class: 'scroll' }, h('table', {},
-      h('thead', {}, h('tr', {}, h('th', {}, 'State'), h('th', {}, 'LGA'), h('th', {}, 'Ward'), h('th', {}, 'Name'), h('th', {}, 'Type'), h('th', {}, 'Code'), h('th', {}, 'ID'), h('th', {}, 'Status'))),
-      h('tbody', {}, units.slice(0, 2000).map((u) => h('tr', { class: 'click', onclick: () => unitDialog(u) },
-        h('td', {}, u.stateName), h('td', {}, u.lgaName), h('td', { class: 'small' }, u.ward), h('td', {}, u.name), h('td', {}, u.type), h('td', {}, u.code),
+      h('thead', {}, h('tr', {}, h('th', {}, 'LGA'), h('th', {}, 'Ward'), h('th', {}, 'Name'), h('th', {}, 'Type'), h('th', {}, 'Code'), h('th', {}, 'DHIS2 ID'), h('th', {}, 'Status'))),
+      h('tbody', {}, units.slice(0, 2000).map((u) => h('tr', { class: 'click', onclick: () => unitDialog(u, types) },
+        h('td', {}, u.lgaName), h('td', { class: 'small' }, u.isWard ? '' : u.wardId ? u.ward : u.ward ? h('span', { class: 'muted', title: 'Ward not loaded yet: kept as a label' }, u.ward + ' (label)') : '—'),
+        h('td', {}, u.isWard ? h('strong', {}, u.name) : u.name), h('td', {}, u.type), h('td', {}, u.code),
         h('td', {}, h('span', { class: 'id' }, u.id)), h('td', {}, u.closed ? pill('none', 'Closed') : pill('accepted', 'Open')))))))
-      : h('div', { class: 'panel empty' }, `No ${sectorName} units yet. Add one above, or download the Excel template, fill it in and import it.`),
+      : h('div', { class: 'panel empty' }, 'No units here yet. Load the wards and health facilities with “Load from DHIS2”, add one above, or import the Excel template.'),
   ));
 }
 
@@ -1757,27 +1835,33 @@ function saveBlob(blob, name) {
   setTimeout(() => URL.revokeObjectURL(a.href), 2000);
 }
 
-function unitDialog(u) {
-  const name = h('input', { value: u.name }); const type = h('input', { value: u.type, list: 'unit-types' }); const code = h('input', { value: u.code });
+function unitDialog(u, types) {
+  const name = h('input', { value: u.name }); const code = h('input', { value: u.code });
+  const type = u.isWard ? null : select(types.filter((t) => !t.isWard).map((t) => ({ id: t.id, name: t.name })), u.typeId);
+  const ward = h('select');
+  (async () => {
+    const ws = u.isWard ? [] : (await unitsOf(u.lgaId)).filter((x) => x.typeId === 'ut_ward');
+    ward.replaceChildren(h('option', { value: '' }, '— directly under the LGA —'), ...ws.map((w) => h('option', { value: w.id, selected: w.id === u.wardId }, w.name)));
+  })();
   const err = h('div', { class: 'err' });
   const save = h('button', { class: 'primary' }, 'Save');
   const close = h('button', { class: 'danger' }, u.closed ? 'Reopen' : 'Close unit');
-  const dlg = h('dialog', {}, h('h2', {}, u.name), h('p', { class: 'muted small' }, `${u.lgaName}, ${u.stateName} · ID `, idTag(u.id)),
-    h('div', { class: 'grid2' }, field('Name', name), field('Type', type), field('Code', code)), err, h('p'),
+  const dlg = h('dialog', {}, h('h2', {}, u.name), h('p', { class: 'muted small' }, `${u.type} · ${u.lgaName}, ${u.stateName} · DHIS2 ID `, idTag(u.id)),
+    h('div', { class: 'grid2' }, field('Name', name), type ? field('Type', type) : null, u.isWard ? null : field('Ward', ward), field('Code', code)), err, h('p'),
     h('div', { class: 'actions' }, save, close, h('button', { onclick: () => dlg.close() }, 'Cancel')),
-    h('p', { class: 'muted small' }, 'Closing keeps the unit and its ID but hides it from new work. Units are never deleted, so past data stays traceable.'));
+    h('p', { class: 'muted small' }, 'Closing keeps the unit and its ID but hides it from new reports. Units are never deleted, so past data stays traceable.'));
   dlg.addEventListener('close', () => dlg.remove());
   const send = (b, body) => busy(b, async () => {
-    try { await api('PATCH', '/api/units/' + u.id, body()); dlg.close(); toast('Saved'); renderUnits(); } catch (e) { err.textContent = e.message; }
+    try { await api('PATCH', '/api/units/' + u.id, body()); delete unitCache[u.lgaId]; dlg.close(); toast('Saved'); renderUnits(); } catch (e) { err.textContent = e.message; }
   });
-  save.addEventListener('click', send(save, () => ({ name: name.value.trim(), type: type.value.trim(), code: code.value.trim() })));
+  save.addEventListener('click', send(save, () => ({ name: name.value.trim(), code: code.value.trim(), ...(type ? { typeId: type.value } : {}), ...(u.isWard ? {} : { wardId: ward.value }) })));
   close.addEventListener('click', send(close, () => ({ closed: !u.closed })));
   document.body.append(dlg); dlg.showModal();
 }
 
 // Reads the file, maps its columns, asks the server to check every row, then imports on confirmation.
-async function importDialog(file, sectorId, sectorName) {
-  if (/\.json$/i.test(file.name)) return checkAndImport(await rowsFromDhis2Json(await file.text()), sectorId, sectorName, file.name);
+async function importDialog(file, defaultTypeId) {
+  if (/\.json$/i.test(file.name)) return checkAndImport(await rowsFromDhis2Json(await file.text()), defaultTypeId, file.name);
   const { readSheet } = await import('./xlsx.js');
   const rows = await readSheet(file);
   const hi = rows.findIndex((r) => r.some((c) => /^name$/i.test(String(c).trim())));
@@ -1785,19 +1869,22 @@ async function importDialog(file, sectorId, sectorName) {
   const head = rows[hi].map((c) => String(c).trim().toLowerCase());
   const col = (test) => head.findIndex(test);
   const ci = {
-    state: col((c) => c === 'state'), lga: col((c) => c === 'lga' || c === 'lga name'), lgaId: col((c) => c === 'lga id' || c === 'lga uid'), ward: col((c) => c.startsWith('ward')),
-    name: col((c) => c === 'name'), type: col((c) => c === 'type'), code: col((c) => c === 'code'), id: col((c) => c.startsWith('dhis2 id') || c === 'id' || c === 'uid'),
+    state: col((c) => c === 'state'), lga: col((c) => c === 'lga' || c === 'lga name'), lgaId: col((c) => c === 'lga id' || c === 'lga uid'),
+    ward: col((c) => c === 'ward' || c === 'ward (optional)' || c === 'ward name'), wardId: col((c) => c === 'ward id' || c === 'ward uid'),
+    name: col((c) => c === 'name'), type: col((c) => c === 'type' || c === 'unit type'), code: col((c) => c === 'code'),
+    id: col((c) => c.startsWith('dhis2 id') || c === 'id' || c === 'uid'),
   };
   if (ci.lga < 0 && ci.lgaId < 0) throw new Error('No “LGA” or “LGA ID” column found. Use the Excel template.');
   const data = rows.slice(hi + 1).map((r, i) => {
     const g = (k) => (ci[k] >= 0 ? String(r[ci[k]] ?? '').trim() : '');
-    return { row: hi + i + 2, state: g('state'), lga: g('lga'), lgaId: g('lgaId'), name: g('name'), type: g('type'), ward: g('ward'), code: g('code'), id: g('id') };
+    return { row: hi + i + 2, state: g('state'), lga: g('lga'), lgaId: g('lgaId'), ward: g('ward'), wardId: g('wardId'), name: g('name'), type: g('type'), code: g('code'), id: g('id') };
   }).filter((r) => r.name || r.lga || r.lgaId);
   if (!data.length) throw new Error('The file has no rows under the header.');
-  return checkAndImport(data, sectorId, sectorName, file.name);
+  return checkAndImport(data, defaultTypeId, file.name);
 }
 
-// DHIS2 / ALMA Export organisation units file: units below LGAs (direct, or under a ward) keep their DHIS2 IDs.
+// DHIS2 / ALMA Export organisation units file: wards (children of LGAs that have units under them) keep their DHIS2
+// IDs; units below them, or directly below an LGA, keep theirs too.
 async function rowsFromDhis2Json(text) {
   let body; try { body = JSON.parse(text); } catch { throw new Error('This JSON file could not be read.'); }
   let list = body && !Array.isArray(body) ? body.organisationUnits : body;
@@ -1806,28 +1893,38 @@ async function rowsFromDhis2Json(text) {
   const { lgas } = await get('/api/orgunits?lgas=all');
   const lgaIds = new Set(lgas.map((l) => l.id));
   const byId = new Map(list.map((o) => [o.id, o]));
-  const rows = [];
+  const hasChildren = new Set(list.filter((o) => o.parent && o.parent.id).map((o) => o.parent.id));
+  const wards = []; const units = [];
   for (const o of list) {
     const p = o.parent && o.parent.id;
     if (!p || lgaIds.has(o.id)) continue;
-    if (lgaIds.has(p)) rows.push({ row: rows.length + 1, lgaId: p, name: o.name, id: o.id });
-    else { const w = byId.get(p); const gp = w && w.parent && w.parent.id; if (gp && lgaIds.has(gp)) rows.push({ row: rows.length + 1, lgaId: gp, ward: w.name, name: o.name, id: o.id }); }
+    if (lgaIds.has(p)) {
+      if (hasChildren.has(o.id) || /\bward\b/i.test(o.name)) wards.push({ lgaId: p, name: o.name, type: 'Ward', id: o.id });
+      else units.push({ lgaId: p, name: o.name, id: o.id });
+    } else { const w = byId.get(p); const gp = w && w.parent && w.parent.id; if (gp && lgaIds.has(gp)) units.push({ lgaId: gp, wardId: w.id, name: o.name, id: o.id }); }
   }
+  const rows = [...wards, ...units].map((r, i) => ({ row: i + 1, ...r }));
   if (!rows.length) throw new Error('No units below LGAs in your area were found in this file.');
   return rows;
 }
 
-// Health facilities live from the scorecard platform (DHIS2 IDs), one state at a time.
+// Wards and health facilities live from the scorecard platform (real DHIS2 IDs), one state at a time.
 const SCORECARD = 'https://www.malariascorecard.org';
-async function scorecardDialog(sectorId, sectorName, states, stateId) {
+async function scorecardDialog(states, stateId, types) {
   const o = await orgs();
   const stList = states || o.states;
   const stSel = select(stList, stateId || stList[0].id);
+  const wantWards = h('input', { type: 'checkbox', checked: true });
+  const wantFac = h('input', { type: 'checkbox', checked: true });
+  const facType = select(types.filter((t) => !t.isWard).map((t) => ({ id: t.name, name: t.name })).concat(types.some((t) => /health facilit/i.test(t.name)) ? [] : [{ id: 'Health facility', name: 'Health facility (new type)' }]),
+    (types.find((t) => /health facilit/i.test(t.name)) || {}).name || 'Health facility');
   const status = h('p', { class: 'muted small' });
   const start = h('button', { class: 'primary' }, 'Load');
-  const dlg = h('dialog', {}, h('h2', {}, 'Load health facilities'),
-    h('p', { class: 'muted small' }, `Reads the health facility list (with DHIS2 IDs and wards) from the scorecard platform for one state, then shows the usual import check before anything is saved into “${sectorName}”.`),
-    field('State', stSel), status, h('div', { class: 'actions' }, start, h('button', { onclick: () => dlg.close() }, 'Cancel')));
+  const dlg = h('dialog', {}, h('h2', {}, 'Load wards and health facilities from DHIS2'),
+    h('p', { class: 'muted small' }, 'Reads one state’s wards and health facilities, with their real DHIS2 IDs, from the scorecard platform (which mirrors Nigeria’s DHIS2). You see the usual check before anything is saved.'),
+    h('div', { class: 'grid2' }, field('State', stSel), field('Type for the facilities', facType)),
+    h('label', { class: 'check' }, wantWards, 'Wards (DHIS2 level 4)'), h('label', { class: 'check' }, wantFac, 'Health facilities, under their wards (level 5)'),
+    status, h('div', { class: 'actions' }, start, h('button', { onclick: () => dlg.close() }, 'Cancel')));
   dlg.addEventListener('close', () => dlg.remove());
   start.addEventListener('click', busy(start, async () => {
     const j = async (path) => { const r = await fetch(SCORECARD + path); if (!r.ok) throw new Error(`Scorecard platform answered ${r.status}.`); return r.json(); };
@@ -1836,37 +1933,50 @@ async function scorecardDialog(sectorId, sectorName, states, stateId) {
     const stateRegion = (await j('/api/regions?parentId=35469&depth=1')).find((x) => x.dhisRegionId === stSel.value);
     if (!stateRegion) throw new Error('This state was not found on the scorecard platform.');
     const lgaRegions = (await j(`/api/regions?parentId=${stateRegion.id}&depth=1`)).filter((x) => x.parentId === stateRegion.id && !/cold store/i.test(x.name));
-    const rows = []; let done = 0; let next = 0;
+    const wardRows = []; const facRows = []; let done = 0; let next = 0;
+    const uid = (x) => /^[A-Za-z][A-Za-z0-9]{10}$/.test(x || '');
     async function worker() {
       while (next < lgaRegions.length) {
         const l = lgaRegions[next++];
         const items = await j(`/api/regions?parentId=${l.id}&depth=3`);
         const byId = new Map(items.map((x) => [x.id, x]));
         for (const x of items) {
+          if (/cold store/i.test(x.name)) continue;
+          if (x.parentId === l.id && uid(x.dhisRegionId) && wantWards.checked) wardRows.push({ lgaId: l.dhisRegionId, name: x.name.replace(/\s+/g, ' ').trim(), type: 'Ward', id: x.dhisRegionId });
           const w = byId.get(x.parentId);
-          if (w && w.parentId === l.id && !/cold store/i.test(x.name) && /^[A-Za-z][A-Za-z0-9]{10}$/.test(x.dhisRegionId || '')) {
-            rows.push({ row: rows.length + 1, lgaId: l.dhisRegionId, ward: w.name, name: x.name.replace(/\s+/g, ' ').trim(), type: 'Health facility', id: x.dhisRegionId });
+          if (w && w.parentId === l.id && uid(x.dhisRegionId) && wantFac.checked) {
+            facRows.push({ lgaId: l.dhisRegionId, ...(wantWards.checked && uid(w.dhisRegionId) ? { wardId: w.dhisRegionId } : { ward: w.name }), name: x.name.replace(/\s+/g, ' ').trim(), type: facType.value, id: x.dhisRegionId });
           }
         }
-        status.textContent = `Reading LGAs… ${++done} of ${lgaRegions.length} (${rows.length} facilities so far)`;
+        status.textContent = `Reading LGAs… ${++done} of ${lgaRegions.length} (${wardRows.length} wards, ${facRows.length} facilities so far)`;
       }
     }
     await Promise.all([1, 2, 3, 4].map(worker));
     dlg.close();
-    await checkAndImport(rows, sectorId, sectorName, `scorecard platform — ${stSel.options[stSel.selectedIndex].text}`);
+    await checkAndImport([...wardRows, ...facRows].map((r, i) => ({ row: i + 1, ...r })), '', `DHIS2 via the scorecard platform — ${stSel.options[stSel.selectedIndex].text}`);
   }));
   document.body.append(dlg); dlg.showModal();
 }
 
-async function checkAndImport(data, sectorId, sectorName, sourceName) {
-  const { data: check } = await api('POST', '/api/units/import', { sectorId, rows: data });
-  const c = check.counts;
-  const errors = check.results.filter((r) => r.status === 'error');
+async function checkAndImport(data, defaultTypeId, sourceName) {
+  // Wards first, so the units under them find them.
+  data = [...data.filter((r) => /^wards?$/i.test(r.type || '')), ...data.filter((r) => !/^wards?$/i.test(r.type || ''))];
+  const parts = []; for (let i = 0; i < data.length; i += 4000) parts.push(data.slice(i, i + 4000));
+  const c = { add: 0, update: 0, same: 0, error: 0, wards: 0 }; const results = []; const newTypes = new Set();
+  for (const p of parts) {
+    const { data: check } = await api('POST', '/api/units/import', { typeId: defaultTypeId || undefined, rows: p });
+    for (const k of Object.keys(c)) c[k] += check.counts[k] || 0;
+    results.push(...check.results); (check.newTypes || []).forEach((t) => newTypes.add(t));
+  }
+  const errors = results.filter((r) => r.status === 'error');
+  const notes = results.filter((r) => r.note && r.status !== 'error');
   const go = h('button', { class: 'primary', disabled: !!c.error || !(c.add + c.update) }, `Import ${c.add + c.update} unit${c.add + c.update === 1 ? '' : 's'}`);
-  const dlg = h('dialog', {}, h('h2', {}, `Import ${sectorName} units — check`),
+  const dlg = h('dialog', { class: 'wide' }, h('h2', {}, 'Import units below the LGA — check'),
     h('p', { class: 'muted small' }, sourceName, ` · ${data.length} rows`),
-    h('div', { class: 'counts' }, h('span', { class: 'pill s-accepted' }, `New: ${c.add}`), h('span', { class: 'pill s-draft' }, `Updated: ${c.update}`),
+    h('div', { class: 'counts' }, h('span', { class: 'pill s-accepted' }, `New: ${c.add}${c.wards ? ` (${c.wards} wards)` : ''}`), h('span', { class: 'pill s-draft' }, `Updated: ${c.update}`),
       h('span', { class: 'pill s-none' }, `Unchanged: ${c.same}`), h('span', { class: 'pill s-returned' }, `Problems: ${c.error}`)),
+    newTypes.size ? h('div', { class: 'note info' }, `New unit type${newTypes.size === 1 ? '' : 's'} will be added: ${[...newTypes].join(', ')}.`) : null,
+    notes.length ? h('details', {}, h('summary', { class: 'small' }, `Notes (${notes.length})`), h('ul', { class: 'small' }, notes.slice(0, 200).map((n) => h('li', {}, `Row ${n.row} · ${n.name}: ${n.note}`)))) : null,
     errors.length ? h('div', {}, h('div', { class: 'note bad' }, 'Fix these rows in the file and import it again. Nothing has been saved.'),
       h('div', { class: 'scroll' }, h('table', {}, h('thead', {}, h('tr', {}, h('th', {}, 'Row'), h('th', {}, 'Name'), h('th', {}, 'Problem'))),
         h('tbody', {}, errors.slice(0, 200).map((e) => h('tr', {}, h('td', {}, e.row), h('td', {}, e.name), h('td', {}, e.message)))))))
@@ -1876,15 +1986,17 @@ async function checkAndImport(data, sectorId, sectorName, sourceName) {
   const progress = h('span', { class: 'muted small' });
   go.after(progress);
   go.addEventListener('click', busy(go, async () => {
-    const status = new Map(check.results.map((x) => [x.row, x.status]));
+    const status = new Map(results.map((x) => [x.row, x.status]));
     const todo = data.filter((r) => ['add', 'update'].includes(status.get(r.row)));
-    const parts = []; for (let i = 0; i < todo.length; i += 300) parts.push(todo.slice(i, i + 300));
+    const chunks = []; for (let i = 0; i < todo.length; i += 300) chunks.push(todo.slice(i, i + 300));
     let added = 0; let updated = 0;
-    for (let i = 0; i < parts.length; i++) {
-      progress.textContent = `Saving part ${i + 1} of ${parts.length}…`;
-      const { data: done } = await api('POST', '/api/units/import', { sectorId, rows: parts[i], commit: true });
+    for (let i = 0; i < chunks.length; i++) {
+      progress.textContent = `Saving part ${i + 1} of ${chunks.length}…`;
+      const { data: done } = await api('POST', '/api/units/import', { typeId: defaultTypeId || undefined, rows: chunks[i], commit: true });
       added += done.counts.add; updated += done.counts.update;
     }
+    for (const k of Object.keys(unitCache)) delete unitCache[k];
+    state.meta = null;
     dlg.close(); toast(`Imported: ${added} new, ${updated} updated`); renderUnits();
   }));
   document.body.append(dlg); dlg.showModal();
@@ -2087,7 +2199,10 @@ async function renderRegister(token) {
     lgaSel.replaceChildren(...opt(sid ? await places(sid) : [], 'Choose your LGA')); await fillUnits();
   }
   async function fillUnits() {
-    const list = lgaSel.value ? (await places(lgaSel.value, true)).filter((u) => !sectorSel.value || u.sectorId === sectorSel.value) : [];
+    // Units of the chosen sector: those its unit-reported schedules use (or, for older schedules, the sector's own).
+    const sectorSets = info.datasets.filter((d) => d.sectorId === sectorSel.value && d.byUnit);
+    const fits = (u) => !sectorSel.value || u.sectorId === sectorSel.value || sectorSets.some((d) => (d.unitTypes || []).includes(u.typeId));
+    const list = lgaSel.value ? (await places(lgaSel.value, true)).filter(fits).map((u) => ({ ...u, name: u.ward && u.typeId !== 'ut_ward' ? `${u.name} — ${u.ward}` : u.name })) : [];
     unitSel.replaceChildren(...opt(list, !lgaSel.value ? '—' : list.length ? 'Choose your school / facility' : 'None listed for this sector yet'));
   }
   stateSel.addEventListener('change', fillLgas); lgaSel.addEventListener('change', fillUnits);
@@ -2096,7 +2211,7 @@ async function renderRegister(token) {
     where.replaceChildren(...[
       info.area.level === 1 && l !== 1 ? field('State', stateSel) : null,
       (l === 3 || l === 4 || l === null) && info.area.level <= 3 ? field(l === null ? 'LGA (optional)' : 'LGA', lgaSel) : null,
-      l === 4 ? field('Unit (school, facility …)', unitSel) : null].filter(Boolean));
+      l === 4 ? field('Unit (ward, facility, school …)', unitSel) : null].filter(Boolean));
   }
   roleSel.addEventListener('change', layout);
   await fillStates(); await fillLgas(); layout(); fillDatasets();
@@ -2158,7 +2273,7 @@ async function userDialog(u, roles, m, presetRole = null) {
   async function fillUnits() {
     const list = lgaSel.value ? await unitsOf(lgaSel.value) : [];
     const sectorName = (id) => ((m.sectors.find((x) => x.id === id) || {}).name || '');
-    unitSel.replaceChildren(...(list.length ? list.map((x) => h('option', { value: x.id, selected: u && u.ou && x.id === u.ou.id }, `${x.name}${x.sectorId ? ' — ' + sectorName(x.sectorId) : ''}`))
+    unitSel.replaceChildren(...(list.length ? list.map((x) => h('option', { value: x.id, selected: u && u.ou && x.id === u.ou.id }, `${x.name}${x.type ? ' — ' + x.type : ''}${x.ward && x.typeId !== 'ut_ward' ? ', ' + x.ward : ''}`))
       : [h('option', { value: '' }, 'No units in this LGA yet')]));
   }
   async function fillLgas() {
@@ -2175,7 +2290,7 @@ async function userDialog(u, roles, m, presetRole = null) {
     where.replaceChildren(
       showState ? field('State', stateSel) : null,
       lvl === 3 || lvl === 4 || lvl === null ? field(lvl === null ? 'LGA (leave state for state-wide viewer)' : 'LGA', lgaSel) : null,
-      lvl === 4 ? field('Unit (school, facility …)', unitSel) : null);
+      lvl === 4 ? field('Unit (ward, facility, school …)', unitSel) : null);
     if (lvl === null && !lgaSel.querySelector('option[value=""]')) lgaSel.prepend(h('option', { value: '' }, '— whole state —'));
     if (lvl === null && state.me.ou.level === 1 && !stateSel.querySelector('option[value=""]')) stateSel.prepend(h('option', { value: '' }, '— whole country —'));
   }

@@ -6,6 +6,7 @@ import {
   periodMatches, periodName, lastCompletedPeriod, recentPeriods, dueAt, monthsOf, FREQUENCY_NAMES,
 } from '../lib/dhis.js';
 import { compileIndicators, indicatorValue, round, sharedIdsOf } from '../lib/aggregate.js';
+import { unitsOf } from '../lib/units.js';
 
 const STATUS_NAMES = { none: 'Not started', draft: 'Draft', submitted: 'Submitted', accepted: 'Accepted', returned: 'Sent back' };
 const EDITABLE = ['none', 'draft', 'returned'];
@@ -32,7 +33,10 @@ async function loadReportingOu(db, ctx, ouId, ds) {
   const ou = await one(db, 'SELECT * FROM org_units WHERE id = ?', ouId);
   if (!ou) throw new HttpError(404, 'not_found', 'Organisation unit not found.');
   if (ds.report_level === 4) {
-    if (ou.level !== 4 || ou.sector_id !== ds.sector_id) throw new HttpError(422, 'invalid', `“${ds.name}” is reported by each unit (school, facility …). Choose a unit.`, { field: 'ou' });
+    const f = unitsOf(ds, 'o');
+    if (!(await one(db, `SELECT o.id FROM org_units o WHERE o.id = ? AND ${f.sql}`, ou.id, ...f.args))) {
+      throw new HttpError(422, 'invalid', `“${ds.name}” is reported by each unit below the LGA (ward, facility, school …). Choose one of its units.`, { field: 'ou' });
+    }
     if (ou.closed_at) throw new HttpError(422, 'invalid', 'This unit is closed.', { field: 'ou' });
   } else if (ou.level !== 3) throw new HttpError(422, 'invalid', 'Data is entered for an LGA.', { field: 'ou' });
   requireScope(ctx, ou);
@@ -41,7 +45,7 @@ async function loadReportingOu(db, ctx, ouId, ds) {
 
 const canEnter = (ctx) => ['sysadmin', 'state', 'lga', 'unit'].includes(ctx.role) && !ctx.apiToken;
 // State officers review LGA reports; unit reports can also be reviewed by the LGA.
-const canReview = (ctx, ou) => !ctx.apiToken && inScope(ctx, ou) && (['sysadmin', 'state'].includes(ctx.role) || (ctx.role === 'lga' && ou.level === 4));
+const canReview = (ctx, ou) => !ctx.apiToken && inScope(ctx, ou) && (['sysadmin', 'state'].includes(ctx.role) || (ctx.role === 'lga' && ou.level >= 4));
 
 async function reportOf(db, dsId, ouId, period) {
   return one(db, 'SELECT * FROM reports WHERE dataset_id = ? AND ou_id = ? AND period = ?', dsId, ouId, period);
@@ -84,7 +88,12 @@ async function formFor(db, ctx, ds, ou, period) {
   const nameOf = (id) => (users.find((u) => u.id === id) || {}).name || null;
   return {
     dataset: { id: ds.id, name: ds.name, shared: !!ds.shared, reportLevel: ds.report_level === 4 ? 'UNIT' : 'LGA', frequency: ds.frequency, frequencyName: FREQUENCY_NAMES[ds.frequency] },
-    ou: { id: ou.id, name: ou.name, level: ou.level, type: ou.unit_type || '', lga: ou.level === 4 ? (await one(db, 'SELECT name FROM org_units WHERE id = ?', ou.parent_id) || {}).name : null },
+    ou: {
+      id: ou.id, name: ou.name, level: ou.level,
+      type: ou.level >= 4 ? ((await one(db, 'SELECT name FROM unit_types WHERE id = ?', ou.unit_type_id || '')) || {}).name || ou.unit_type || '' : '',
+      ward: ou.level === 5 ? ((await one(db, 'SELECT name FROM org_units WHERE id = ?', ou.parent_id)) || {}).name || null : null,
+      lga: ou.level >= 4 ? ((await one(db, 'SELECT name FROM org_units WHERE id = ?', ou.lga_id || ou.parent_id)) || {}).name || null : null,
+    },
     period, periodName: periodName(period),
     sharedValues: sharedOut,
     periods: (ds.shared ? [String(Number(lastCompletedPeriod('YEARLY')) + 1), ...recentPeriods('YEARLY', 6)] : recentPeriods(ds.frequency, 12)).map((p) => ({ id: p, name: periodName(p) })),
@@ -255,12 +264,16 @@ export async function reportStatus(request, env, ctx) {
   let rows;
   if (unitLevel) {
     const lga = lgaId ? await one(env.DB, 'SELECT * FROM org_units WHERE id = ? AND level = 3 AND parent_id = ?', lgaId, state.id) : null;
+    const f = unitsOf(ds, 'o');
     rows = await all(env.DB,
-      `SELECT o.id, o.name, l.id AS lga_id, l.name AS lga_name, o.unit_type, o.path, r.status, r.submitted_at, r.reviewed_at, r.updated_at, r.review_comment
-         FROM org_units o JOIN org_units l ON l.id = o.parent_id
+      `SELECT o.id, o.name, l.id AS lga_id, l.name AS lga_name, COALESCE(t.name, o.unit_type) AS unit_type, w.name AS ward_name, o.path,
+              r.status, r.submitted_at, r.reviewed_at, r.updated_at, r.review_comment
+         FROM org_units o JOIN org_units l ON l.id = o.lga_id
+         LEFT JOIN unit_types t ON t.id = o.unit_type_id
+         LEFT JOIN org_units w ON w.id = o.parent_id AND w.level = 4 AND o.level = 5
          LEFT JOIN reports r ON r.ou_id = o.id AND r.dataset_id = ? AND r.period = ?
-        WHERE o.level = 4 AND o.sector_id = ? AND o.closed_at IS NULL AND o.path LIKE ? ORDER BY l.name, o.name LIMIT 5000`,
-      ds.id, period, ds.sector_id, (lga ? lga.path : state.path) + '/%');
+        WHERE ${f.sql} AND o.closed_at IS NULL AND o.path LIKE ? ORDER BY l.name, w.name, o.name LIMIT 5000`,
+      ds.id, period, ...f.args, (lga ? lga.path : state.path) + '/%');
   } else {
     rows = await all(env.DB,
       `SELECT o.id, o.name, o.path, r.status, r.submitted_at, r.reviewed_at, r.updated_at, r.review_comment
@@ -281,7 +294,7 @@ export async function reportStatus(request, env, ctx) {
     periods: recentPeriods(ds.frequency, 12).map((p) => ({ id: p, name: periodName(p) })),
     counts, total: visible.length,
     lgas: visible.map((r) => ({
-      id: r.id, name: r.name, lgaId: r.lga_id || null, lgaName: r.lga_name || null, type: r.unit_type || '',
+      id: r.id, name: r.name, lgaId: r.lga_id || null, lgaName: r.lga_name || null, type: r.unit_type || '', ward: r.ward_name || '',
       status: r.status || 'none', statusName: STATUS_NAMES[r.status || 'none'],
       submittedAt: r.submitted_at, late: !!(r.submitted_at && r.submitted_at > due), reviewedAt: r.reviewed_at,
       updatedAt: r.updated_at, comment: r.review_comment,

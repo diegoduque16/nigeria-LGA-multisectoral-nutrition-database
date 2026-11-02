@@ -344,57 +344,121 @@ test('per-sector data sets and a shared yearly population data set used as denom
   assert.equal(wp.total.indicators[latr.id].value, 40);
 });
 
-test('sector units (schools...) below LGAs: add, Excel-style import with checks, scoped, optional in metadata export', async () => {
+test('units below the LGA: unit types, wards with their DHIS2 IDs, import, scope, metadata export', async () => {
   const env = makeEnv();
   const admin = await setupAdmin(env);
   const edu = (await admin.post('/api/datasets', { name: 'Education – yearly', sector: 'Education', frequency: 'YEARLY' })).data;
-  await admin.post('/api/datasets', { name: 'Health – monthly', sector: 'Health', frequency: 'MONTHLY' });
-  const sectors = (await admin.get('/api/units')).data.sectors;
-  const eduSector = sectors.find((s) => s.name === 'Education').id;
-  const one = await admin.post('/api/units', { sectorId: eduSector, lgaId: ABA_NORTH, name: 'Central Primary School', type: 'Primary school', code: 'AB-001' });
+  let types = (await admin.get('/api/unit-types')).data.types;
+  assert.deepEqual(types.map((t) => [t.name, t.isWard]), [['Ward', true]]);
+  const prim = (await admin.post('/api/unit-types', { name: 'Primary school' })).data.id;
+  assert.equal((await admin.post('/api/unit-types', { name: 'primary school' })).status, 409);
+  const one = await admin.post('/api/units', { typeId: prim, lgaId: ABA_NORTH, name: 'Central Primary School', code: 'AB-001' });
   assert.equal(one.status, 201);
   assert.match(one.data.id, /^[A-Za-z][A-Za-z0-9]{10}$/);
-  assert.equal((await admin.post('/api/units', { sectorId: eduSector, lgaId: ABA_NORTH, name: 'central primary school' })).status, 409);
+  assert.equal((await admin.post('/api/units', { typeId: prim, lgaId: ABA_NORTH, name: 'central primary school' })).status, 409);
+  // Wards keep their real DHIS2 ID.
+  assert.equal((await admin.post('/api/units', { typeId: 'ut_ward', lgaId: ABA_NORTH, name: 'Ward 1' })).status, 422);
+  assert.equal((await admin.post('/api/units', { typeId: 'ut_ward', lgaId: ABA_NORTH, name: 'Ward 1', id: 'WardAbaN001' })).status, 201);
   const rows = [
-    { row: 2, state: 'Abia', lga: 'Aba North', name: 'Central Primary School', type: 'Primary school', code: 'AB-001' }, // same
-    { row: 3, state: 'ab Abia State', lga: 'ab Aba South LGA', name: 'Girls Secondary School', type: 'Secondary school' }, // add (DHIS2 names)
-    { row: 4, lgaId: AROCHUKWU, name: 'Arochukwu Model School', id: 'Sch0000001a' }, // add with existing DHIS2 id
-    { row: 5, state: 'Abia', lga: 'Nowhere', name: 'Lost School' }, // error
-    { row: 6, state: 'Abia', lga: 'Aba South', name: 'girls secondary school' }, // duplicate row
-    { row: 7, lga: 'Aba North', name: 'Central Primary School', code: 'AB-002' }, // update code (LGA name unique)
-    { row: 8 }, // blank
+    { row: 2, lgaId: ABA_NORTH, name: 'Central Primary School', type: 'Primary school', code: 'AB-001' },                         // same
+    { row: 3, lgaId: ABA_SOUTH, name: 'Ward 2', type: 'Ward', id: 'WardAbaS002' },                                                   // add ward
+    { row: 4, state: 'ab Abia State', lga: 'ab Aba South LGA', ward: 'Ward 2', name: 'Girls Secondary School', type: 'Secondary school' }, // add, new type, under the new ward
+    { row: 5, lgaId: ABA_NORTH, wardId: 'WardAbaN001', name: 'Ngwa Clinic', type: 'Health facility', id: 'Fac0000001a' },          // add under existing ward
+    { row: 6, lgaId: AROCHUKWU, ward: 'Unknown ward', name: 'Arochukwu Model School', type: 'Primary school', id: 'Sch0000001a' },  // add, ward kept as label
+    { row: 7, lgaId: AROCHUKWU, name: 'Ward 9', type: 'Ward' },                                                                     // error: ward without ID
+    { row: 8, state: 'Abia', lga: 'Nowhere', name: 'Lost School', type: 'Primary school' },                                         // error: LGA
+    { row: 9, lgaId: ABA_SOUTH, name: 'girls secondary school', type: 'Secondary school' },                                         // error: duplicate row
+    { row: 10, lgaId: ABA_NORTH, name: 'Some unit' },                                                                               // error: no type
+    { row: 11 },                                                                                                                    // blank
   ];
-  const check = (await admin.post('/api/units/import', { sectorId: eduSector, rows })).data;
+  const check = (await admin.post('/api/units/import', { rows })).data;
   assert.equal(check.committed, false);
-  assert.deepEqual(check.counts, { add: 2, update: 0, same: 1, error: 3 }); // rows 5, 6 and 7 (7 repeats row 2)
-  const blocked = await admin.post('/api/units/import', { sectorId: eduSector, rows, commit: true });
-  assert.equal(blocked.status, 422);
-  const good = rows.filter((r) => ![5, 6, 2].includes(r.row));
-  const done = (await admin.post('/api/units/import', { sectorId: eduSector, rows: good, commit: true })).data;
-  assert.deepEqual(done.counts, { add: 2, update: 1, same: 0, error: 0 });
-  const list = (await admin.get(`/api/units?sector=${eduSector}&state=${ABIA}`)).data.units;
-  assert.equal(list.length, 3);
-  assert.equal(list.find((u) => u.name === 'Central Primary School').code, 'AB-002');
-  assert.ok(list.some((u) => u.id === 'Sch0000001a'));
-  // LGA pickers and the normal metadata export are unchanged; units appear only when asked.
+  assert.deepEqual(check.counts, { add: 4, update: 0, same: 1, error: 4, wards: 1 });
+  assert.match(check.results.find((r) => r.row === 6).note, /not loaded yet/);
+  assert.equal((await admin.post('/api/units/import', { rows, commit: true })).status, 422);
+  const good = rows.filter((r) => ![7, 8, 9, 10].includes(r.row));
+  const done = (await admin.post('/api/units/import', { rows: good, commit: true })).data;
+  assert.deepEqual(done.counts, { add: 4, update: 0, same: 1, error: 0, wards: 1 });
+  types = (await admin.get('/api/unit-types')).data.types;
+  assert.deepEqual(types.map((t) => t.name).sort(), ['Health facility', 'Primary school', 'Secondary school', 'Ward']);
+  const list = (await admin.get(`/api/units?state=${ABIA}`)).data.units;
+  assert.equal(list.length, 6);
+  const girls = list.find((u) => u.name === 'Girls Secondary School');
+  assert.equal(girls.level, 5); assert.equal(girls.wardId, 'WardAbaS002'); assert.equal(girls.ward, 'Ward 2'); assert.equal(girls.lgaId, ABA_SOUTH);
+  assert.equal(list.find((u) => u.id === 'Fac0000001a').wardId, 'WardAbaN001');
+  assert.equal(list.find((u) => u.id === 'Sch0000001a').level, 4);
+  assert.equal((await admin.get(`/api/units?type=${prim}`)).data.units.length, 2);
+  // Move a unit under a ward and back.
+  const cps = list.find((u) => u.name === 'Central Primary School');
+  assert.equal((await admin.patch('/api/units/' + cps.id, { wardId: 'WardAbaN001' })).status, 200);
+  assert.equal((await admin.get(`/api/units?type=${prim}&lga=${ABA_NORTH}`)).data.units[0].wardId, 'WardAbaN001');
+  assert.equal((await admin.patch('/api/units/' + cps.id, { wardId: 'WardAbaS002' })).status, 422); // another LGA's ward
+  // Unit types in use cannot be removed.
+  assert.equal((await admin.del('/api/unit-types/' + prim)).status, 409);
+  assert.equal((await admin.del('/api/unit-types/ut_ward')).status, 422);
+  // LGA pickers and the normal metadata export are unchanged; units (and their wards) appear only when asked.
   assert.equal((await admin.get('/api/orgunits?parent=' + ABA_NORTH)).data.children.length, 0);
+  assert.equal((await admin.get('/api/orgunits?units=1&parent=' + ABA_NORTH)).data.children.length, 3);
   const m1 = (await admin.get('/api/export/metadata')).data.organisationUnits.organisationUnits;
   assert.equal(m1.length, 812);
-  const m2 = (await admin.get('/api/export/metadata?units=' + eduSector)).data.organisationUnits.organisationUnits;
-  assert.equal(m2.length, 815);
-  assert.deepEqual(m2.find((o) => o.id === 'Sch0000001a'), { id: 'Sch0000001a', parent: { id: AROCHUKWU }, name: 'Arochukwu Model School', level: 4 });
+  const m2 = (await admin.get('/api/export/metadata?units=all')).data.organisationUnits.organisationUnits;
+  assert.equal(m2.length, 818);
+  assert.deepEqual(m2.find((o) => o.id === 'Fac0000001a'), { id: 'Fac0000001a', parent: { id: 'WardAbaN001' }, name: 'Ngwa Clinic', level: 5 });
+  assert.deepEqual(m2.find((o) => o.id === 'WardAbaN001'), { id: 'WardAbaN001', parent: { id: ABA_NORTH }, name: 'Ward 1', level: 4 });
+  // A schedule reported by primary schools: exported with the sector, wards come along as parents.
+  await admin.patch('/api/datasets/' + edu.id, { reportLevel: 'UNIT', unitTypes: [prim] });
+  const m3 = (await admin.get('/api/export/metadata?units=' + (await admin.get('/api/metadata')).data.datasets.find((d) => d.id === edu.id).sectorId)).data.organisationUnits.organisationUnits;
+  assert.deepEqual(m3.filter((o) => o.level >= 4).map((o) => o.name).sort(), ['Arochukwu Model School', 'Central Primary School', 'Ward 1']);
+  // Wards cannot be mixed with other types in one schedule.
+  assert.equal((await admin.patch('/api/datasets/' + edu.id, { unitTypes: [prim, 'ut_ward'] })).status, 422);
   // A state officer only sees and imports within their state; an LGA user cannot manage units.
   const st = await addUser(env, admin, { name: 'S', email: 's@ad.gov.ng', role: 'state', ouId: ADAMAWA, datasets: [edu.id] });
-  assert.equal((await st.c.get(`/api/units?sector=${eduSector}`)).data.units.length, 0);
-  const out = (await st.c.post('/api/units/import', { sectorId: eduSector, rows: [{ state: 'Abia', lga: 'Aba North', name: 'X' }] })).data;
+  assert.equal((await st.c.get('/api/units')).data.units.length, 0);
+  const out = (await st.c.post('/api/units/import', { rows: [{ state: 'Abia', lga: 'Aba North', name: 'X', type: 'Primary school' }] })).data;
   assert.equal(out.counts.error, 1);
-  assert.equal((await st.c.get(`/api/units?sector=${eduSector}&state=${ABIA}`)).status, 403);
+  assert.equal((await st.c.get(`/api/units?state=${ABIA}`)).status, 403);
   const lga = await addUser(env, admin, { name: 'L', email: 'l@abia.gov.ng', role: 'lga', ouId: ABA_NORTH });
-  assert.equal((await lga.c.post('/api/units', { sectorId: eduSector, lgaId: ABA_NORTH, name: 'Y' })).status, 403);
-  // Re-importing DHIS2 org units (levels 1-3) with closeMissing does not close sector units.
+  assert.equal((await lga.c.post('/api/units', { typeId: prim, lgaId: ABA_NORTH, name: 'Y' })).status, 403);
+  // A unit account can sit on a facility under a ward.
+  assert.equal((await addUser(env, admin, { name: 'F', email: 'f@abia.gov.ng', role: 'unit', ouId: 'Fac0000001a' })).c ? 1 : 0, 1);
+  // Re-importing DHIS2 org units (levels 1-3) with closeMissing does not close units below the LGA.
   const ous = (await admin.get('/api/export/metadata')).data.organisationUnits;
   await admin.post('/api/orgunits/import?closeMissing=true', ous);
-  assert.equal((await admin.get(`/api/units?sector=${eduSector}`)).data.units.filter((u) => !u.closed).length, 3);
+  assert.equal((await admin.get('/api/units')).data.units.filter((u) => !u.closed).length, 6);
+});
+
+test('reporting by facilities under wards: chosen unit types report and add up to the LGA', async () => {
+  const env = makeEnv();
+  const admin = await setupAdmin(env);
+  const fac = (await admin.post('/api/unit-types', { name: 'Health facility' })).data.id;
+  const ds = (await admin.post('/api/datasets', { name: 'Health – facilities', sector: 'Health', frequency: 'YEARLY', reportLevel: 'UNIT', unitTypes: [fac] })).data;
+  await admin.post(`/api/datasets/${ds.id}/indicators`, { name: 'Children vaccinated', numerator: 'Children vaccinated' });
+  await admin.post('/api/units/import', { commit: true, rows: [
+    { lgaId: ABA_NORTH, name: 'Ward 1', type: 'Ward', id: 'WardAbaN001' },
+    { lgaId: ABA_NORTH, wardId: 'WardAbaN001', name: 'Clinic A', type: 'Health facility', id: 'FacA0000001' },
+    { lgaId: ABA_NORTH, name: 'Clinic B', type: 'Health facility', id: 'FacB0000001' },               // directly under the LGA
+    { lgaId: ABA_NORTH, name: 'School X', type: 'Primary school', id: 'SchX0000001' },               // another type: not expected
+  ] });
+  const year = String(new Date().getFullYear() - 1);
+  const form = (await admin.get(`/api/entry?dataset=${ds.id}&ou=FacA0000001&period=${year}`)).data;
+  assert.equal(form.ou.ward, 'Ward 1'); assert.equal(form.ou.lga, 'ab Aba North LGA'); assert.equal(form.ou.type, 'Health facility');
+  assert.equal((await admin.get(`/api/entry?dataset=${ds.id}&ou=SchX0000001&period=${year}`)).status, 422);
+  assert.equal((await admin.get(`/api/entry?dataset=${ds.id}&ou=WardAbaN001&period=${year}`)).status, 422);
+  const fid = form.fields[0].id;
+  for (const [ou, n] of [['FacA0000001', '30'], ['FacB0000001', '12']]) {
+    await admin.put('/api/entry', { dataset: ds.id, ou, period: year, values: { [fid]: n } });
+    await admin.post('/api/entry/submit', { dataset: ds.id, ou, period: year });
+    await admin.post('/api/entry/review', { dataset: ds.id, ou, period: year, action: 'accept' });
+  }
+  const st = (await admin.get(`/api/status?dataset=${ds.id}&state=${ABIA}&lga=${ABA_NORTH}&period=${year}`)).data;
+  assert.equal(st.total, 2);
+  assert.equal(st.lgas.find((u) => u.id === 'FacA0000001').ward, 'Ward 1');
+  const pic = (await admin.get(`/api/picture?dataset=${ds.id}&ou=${ABIA}&period=${year}`)).data;
+  const an = pic.rows.find((r) => r.id === ABA_NORTH);
+  assert.equal(an.values[fid], 42); assert.equal(an.unitsReporting, 2); assert.equal(an.expectedUnits, 2);
+  // A ward-reported schedule expects wards only.
+  const byWard = (await admin.post('/api/datasets', { name: 'Health – wards', sector: 'Health', frequency: 'YEARLY', reportLevel: 'UNIT', unitTypes: ['ut_ward'] })).data;
+  assert.equal((await admin.get(`/api/status?dataset=${byWard.id}&state=${ABIA}&lga=${ABA_NORTH}&period=${year}`)).data.total, 1);
 });
 
 test('unit-level reporting: schools report, totals add up to LGA/state, rates count units', async () => {
