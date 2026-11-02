@@ -44,7 +44,7 @@ export async function loadLgaTotals(db, dataset, period, rootOu, statuses, share
   const unitLevel = dataset.report_level === 4;
   const like = rootOu.path + '/%';
   const lgaRows = await all(db,
-    `SELECT id, name, parent_id, path FROM org_units WHERE level = 3 AND closed_at IS NULL AND (id = ? OR path LIKE ? OR ? LIKE path || '/%') ORDER BY name`,
+    `SELECT id, name, parent_id, path FROM org_units WHERE level = 3 AND closed_at IS NULL AND parent_id NOT IN (SELECT id FROM org_units WHERE level = 2 AND inactive = 1) AND (id = ? OR path LIKE ? OR ? LIKE path || '/%') ORDER BY name`,
     rootOu.id, like, rootOu.path);
   const lgas = new Map(lgaRows.map((o) => [o.id, {
     id: o.id, name: o.name, stateId: o.parent_id, values: {}, reported: 0, expected: unitLevel ? 0 : 1,

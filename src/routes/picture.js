@@ -59,7 +59,7 @@ export async function picture(request, env, ctx) {
   const lgaList = [...lgas.values()];
   let rows;
   if (ou.level === 1) {
-    const states = await all(env.DB, 'SELECT id, name FROM org_units WHERE level = 2 AND parent_id = ? ORDER BY name', ou.id);
+    const states = await all(env.DB, 'SELECT id, name FROM org_units WHERE level = 2 AND parent_id = ? AND inactive = 0 ORDER BY name', ou.id);
     rows = states.map((s) => ({ id: s.id, name: s.name, level: 2, ...summarize(rollUp(lgaList.filter((l) => l.stateId === s.id), subPeriods.length), inds, fields) }));
   } else if (ou.level === 3) {
     rows = [...units.values()].map((u) => ({ id: u.id, name: u.name, level: 4, type: u.type, ward: u.ward, ...summarize(rollUp([u], subPeriods.length), inds, fields), statuses: u.statuses }));
@@ -101,8 +101,10 @@ async function exportDatasets(db, ctx, param) {
 // Sector units (level 4: schools, facilities ...) are included only when asked for, optionally for one sector.
 async function exportOrgUnits(db, root, units = null) {
   const ancestors = root.path.split('/').filter(Boolean).slice(0, -1);
-  const below = (await all(db, 'SELECT id, name, level, parent_id, closed_at, sector_id FROM org_units WHERE (id = ? OR path LIKE ?) AND closed_at IS NULL ORDER BY level, name', root.id, root.path + '/%'))
-    .filter((o) => o.level <= 3 || (units && (units === 'all' || o.sector_id === units)));
+  const inactiveStates = new Set((await all(db, 'SELECT id FROM org_units WHERE level = 2 AND inactive = 1')).map((r) => r.id));
+  const below = (await all(db, 'SELECT id, name, level, parent_id, closed_at, sector_id, path FROM org_units WHERE (id = ? OR path LIKE ?) AND closed_at IS NULL ORDER BY level, name', root.id, root.path + '/%'))
+    .filter((o) => o.level <= 3 || (units && (units === 'all' || o.sector_id === units)))
+    .filter((o) => !o.path || o.level < 2 || !inactiveStates.has(o.path.split('/')[2]));
   const above = ancestors.length ? await all(db, `SELECT id, name, level, parent_id, closed_at FROM org_units WHERE id IN (${ancestors.map(() => '?').join(',')}) ORDER BY level`, ...ancestors) : [];
   return [...above, ...below];
 }

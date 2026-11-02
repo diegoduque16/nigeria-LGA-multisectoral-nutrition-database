@@ -23,7 +23,7 @@ export async function populationTable(request, env, ctx, { id }) {
   if (!YEAR_RE.test(year)) throw new HttpError(422, 'invalid', 'Choose a year.', { field: 'year' });
   const fields = await all(env.DB, 'SELECT id, name FROM data_elements WHERE dataset_id = ? AND archived_at IS NULL ORDER BY sort, name', ds.id);
   const lgas = (await all(env.DB, `SELECT l.id, l.name, l.path, s.name AS state FROM org_units l JOIN org_units s ON s.id = l.parent_id
-      WHERE l.level = 3 AND l.closed_at IS NULL ORDER BY s.name, l.name`)).filter((l) => inScope(ctx, l));
+      WHERE l.level = 3 AND l.closed_at IS NULL AND s.inactive = 0 ORDER BY s.name, l.name`)).filter((l) => inScope(ctx, l));
   const vals = await all(env.DB, `SELECT de_id, ou_id, value FROM data_values WHERE period = ? AND de_id IN (SELECT id FROM data_elements WHERE dataset_id = ?)`, year, ds.id);
   const byKey = new Map(vals.map((x) => [x.ou_id + '|' + x.de_id, x.value]));
   const source = await getSetting(env.DB, `popsource:${ds.id}:${year}`);
@@ -45,7 +45,7 @@ export async function importPopulation(request, env, ctx, { id }) {
   if (body.rows.length > (commit ? MAX_COMMIT : MAX_ROWS)) throw new HttpError(422, 'too_many', 'Too many rows in one request.');
 
   const fields = new Map((await all(env.DB, 'SELECT * FROM data_elements WHERE dataset_id = ? AND archived_at IS NULL', ds.id)).map((f) => [f.id, f]));
-  const lgas = (await all(env.DB, `SELECT l.id, l.name, l.path, s.name AS state_name FROM org_units l JOIN org_units s ON s.id = l.parent_id WHERE l.level = 3`)).filter((l) => inScope(ctx, l));
+  const lgas = (await all(env.DB, `SELECT l.id, l.name, l.path, s.name AS state_name FROM org_units l JOIN org_units s ON s.id = l.parent_id WHERE l.level = 3 AND s.inactive = 0`)).filter((l) => inScope(ctx, l));
   const byId = new Map(lgas.map((l) => [l.id, l]));
   const byName = new Map();
   for (const l of lgas) {

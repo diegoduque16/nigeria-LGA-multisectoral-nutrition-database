@@ -950,10 +950,33 @@ function datasetDialog(ds, m, makeShared = false) {
 // ---------- sector org units (schools, facilities ...) ----------
 const UNIT_HEADERS = ['State', 'LGA', 'LGA ID', 'Name', 'Type', 'Ward (optional)', 'Code', 'DHIS2 ID (optional)'];
 
+// Rollout: which states take part (system administrators).
+async function rolloutPanel() {
+  const { states } = await get('/api/orgunits?all=1');
+  const boxes = states.map((st) => ({ st, box: h('input', { type: 'checkbox', checked: st.active }) }));
+  const count = h('span', { class: 'muted small' });
+  const upd = () => { const n = boxes.filter((b) => b.box.checked).length; count.textContent = `${n} of ${states.length} states active`; };
+  boxes.forEach((b) => b.box.addEventListener('change', upd)); upd();
+  const save = h('button', { class: 'primary' }, 'Save rollout');
+  save.addEventListener('click', busy(save, async () => {
+    const { data } = await api('PUT', '/api/rollout', { active: boxes.filter((b) => b.box.checked).map((b) => b.st.id) });
+    state.orgs = null; for (const k of Object.keys(lgaCache)) delete lgaCache[k];
+    toast(`Rollout saved (${data.changed} state${data.changed === 1 ? '' : 's'} changed)`);
+  }));
+  const all = (on) => () => { boxes.forEach((b) => { b.box.checked = on; }); upd(); };
+  return h('details', { class: 'panel', open: states.some((st) => !st.active) || undefined },
+    h('summary', {}, 'Rollout — which states use the system'),
+    h('p', { class: 'muted small' }, 'Only active states show up: in lists, registration QR codes, the state picture, pivot table, national totals and reporting rates, and exports. Data and accounts of inactive states are kept and come back when you activate them again.'),
+    h('div', { class: 'actions' }, h('button', { class: 'link', onclick: all(true) }, 'Select all'), h('button', { class: 'link', onclick: all(false) }, 'Select none'), count),
+    h('div', { class: 'chips rollout' }, boxes.map((b) => h('label', { class: 'check' }, b.box, b.st.name))),
+    h('p'), save);
+}
+
 async function renderUnits() {
+  const rollout = is('sysadmin') ? await rolloutPanel() : null;
   const sectorPref = pref('unitSector');
   const first = await get('/api/units' + qs({ sector: sectorPref, state: state.me.ou.level === 1 ? pref('unitState') : undefined }));
-  if (!first.sectors.length) return mount(h('div', { class: 'panel empty' }, 'Create a sector data set on the Indicators page first; org units are added per sector.'));
+  if (!first.sectors.length) return mount(h('div', {}, h('h1', {}, 'Org units'), rollout, h('div', { class: 'panel empty' }, 'Create a sector data set on the Indicators page first; units below LGAs are added per sector.')));
   const o = await orgs();
   const sector = first.sector;
   const sectorName = (first.sectors.find((x) => x.id === sector) || {}).name;
@@ -1017,6 +1040,7 @@ async function renderUnits() {
 
   const lgaOpts = [...new Map(first.units.map((u) => [u.lgaId, u.lgaName])).entries()].map(([id, name]) => ({ id, name }));
   mount(h('div', {},
+    rollout,
     h('div', { class: 'head' }, h('div', {}, h('h1', {}, 'Org units'), h('div', { class: 'muted' }, 'Units below each LGA that a sector reports on — schools, health facilities, water points… Each gets a DHIS2-style ID.')),
       h('div', { class: 'actions' }, tplBtn, h('button', { class: 'primary', onclick: () => fileIn.click() }, 'Import Excel'), fileIn,
         h('button', { onclick: () => scorecardDialog(sector, sectorName, states, stateId) }, 'Load health facilities'))),

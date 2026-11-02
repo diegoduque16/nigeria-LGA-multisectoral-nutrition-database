@@ -617,3 +617,36 @@ test('registration sector: data sets and units must belong to it; empty choice g
   const head = client(env); await head.post('/api/auth/login', { email: 'head@school.ng', password: PW });
   assert.deepEqual((await head.get('/api/me')).data.datasets.map((d) => d.id), [ed.id]);
 });
+
+test('rollout: only active states show up in lists, registration, picture, pivot, totals and exports', async () => {
+  const env = makeEnv();
+  const admin = await setupAdmin(env);
+  const ds = (await admin.post('/api/datasets', { name: 'Health – yearly', sector: 'Health', frequency: 'YEARLY' })).data;
+  const ind = (await admin.post(`/api/datasets/${ds.id}/indicators`, { name: 'Visits', numerator: 'Visits' })).data.indicator;
+  const year = String(Number(lastCompletedPeriod('MONTHLY').slice(0, 4)) - 1);
+  await report(admin, ds.id, ABA_NORTH, year, { [ind.numeratorId]: 10 });
+  await admin.post('/api/entry/review', { dataset: ds.id, ou: ABA_NORTH, period: year, action: 'accept' });
+  const link = (await admin.post('/api/registration-links', { name: 'All', ouId: NIGERIA })).data.link.url.split('/register/')[1];
+  const adLink = (await admin.post('/api/registration-links', { name: 'Adamawa', ouId: ADAMAWA })).data.link.url.split('/register/')[1];
+  // Roll out to Abia only.
+  assert.equal((await admin.call('PUT', '/api/rollout', { active: [] })).status, 422);
+  const r = await admin.call('PUT', '/api/rollout', { active: [ABIA] });
+  assert.equal(r.status, 200); assert.equal(r.data.changed, 36);
+  assert.deepEqual((await admin.get('/api/orgunits')).data.states.map((s) => s.id), [ABIA]);
+  assert.equal((await admin.get('/api/orgunits?all=1')).data.states.length, 37);
+  assert.equal((await admin.get('/api/orgunits?lgas=all')).data.lgas.length, 17);
+  const anon = client(env);
+  assert.deepEqual((await anon.get(`/api/register/${link}/places`)).data.children.map((c) => c.id), [ABIA]);
+  assert.equal((await anon.get('/api/register/' + adLink)).status, 404);
+  const nat = (await admin.get(`/api/picture?dataset=${ds.id}&period=${year}`)).data;
+  assert.equal(nat.rows.length, 1); assert.equal(nat.total.totalUnits, 17);
+  assert.equal(nat.total.reportingRate, Math.round(1000 / 17) / 10);   // rate counts Abia's 17 LGAs, not 774
+  assert.equal((await admin.get(`/api/pivot?period=${year}`)).data.ous.length, 2);
+  const meta = (await admin.get('/api/export/metadata')).data.organisationUnits.organisationUnits;
+  assert.equal(meta.length, 1 + 1 + 17);
+  // Data is kept: switching every state back on restores the full picture.
+  await admin.call('PUT', '/api/rollout', { active: (await admin.get('/api/orgunits?all=1')).data.states.map((s) => s.id) });
+  assert.equal((await admin.get(`/api/picture?dataset=${ds.id}&period=${year}`)).data.total.totalUnits, 774);
+  const so = await addUser(env, admin, { name: 'S', email: 's@abia.gov.ng', role: 'state', ouId: ABIA });
+  assert.equal((await so.c.call('PUT', '/api/rollout', { active: [ABIA] })).status, 403);
+});

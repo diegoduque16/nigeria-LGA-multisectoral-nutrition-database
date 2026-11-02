@@ -130,7 +130,7 @@ export async function importUnits(request, env, ctx) {
   const commit = body.commit === true;
 
   const lgas = (await all(env.DB, `SELECT l.id, l.name, l.path, s.id AS state_id, s.name AS state_name
-      FROM org_units l JOIN org_units s ON s.id = l.parent_id WHERE l.level = 3`)).filter((l) => inScope(ctx, l));
+      FROM org_units l JOIN org_units s ON s.id = l.parent_id WHERE l.level = 3 AND s.inactive = 0`)).filter((l) => inScope(ctx, l));
   const byId = new Map(lgas.map((l) => [l.id, l]));
   const byName = new Map();
   for (const l of lgas) {

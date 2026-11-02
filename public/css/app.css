@@ -131,3 +131,4 @@ form.reg { max-width: 560px; }
   dialog.qr .linkbox, dialog.qr .actions { display: none !important; }
   dialog.qr .qrbox svg { width: 420px; height: 420px; }
 }
+.chips.rollout { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 4px 12px; }

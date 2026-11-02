@@ -73,7 +73,10 @@ async function activeLink(db, token) {
   if (!l || l.revoked_at || l.expires_at < now() || (l.max_uses !== null && l.uses >= l.max_uses)) {
     throw new HttpError(404, 'link_invalid', 'This registration link is no longer valid. Ask the person who shared it for a new one.');
   }
-  return { link: l, area: await ouById(db, l.ou_id) };
+  const area = await ouById(db, l.ou_id);
+  const st = area.level >= 2 ? await one(db, 'SELECT inactive FROM org_units WHERE id = ?', area.path.split('/')[2]) : null;
+  if (st && st.inactive) throw new HttpError(404, 'link_invalid', 'Registration for this state has not opened yet.');
+  return { link: l, area };
 }
 const allowedRoles = (area) => SELF_ROLES.filter((r) => ROLE_LEVEL[r] === null || ROLE_LEVEL[r] >= area.level);
 
@@ -107,7 +110,7 @@ export async function registrationPlaces(request, env, ctx, { token }) {
   }
   const units = q.get('units') === '1';
   const rows = await all(env.DB, `SELECT o.id, o.name, o.level, o.unit_type, o.sector_id, s.name AS sector FROM org_units o LEFT JOIN sectors s ON s.id = o.sector_id
-     WHERE o.parent_id = ? AND o.closed_at IS NULL AND ${units ? 'o.level = 4' : 'o.level <= 3'} ORDER BY o.name LIMIT 3000`, parent.id);
+     WHERE o.parent_id = ? AND o.closed_at IS NULL AND o.inactive = 0 AND ${units ? 'o.level = 4' : 'o.level <= 3'} ORDER BY o.name LIMIT 3000`, parent.id);
   return json({ parent: { id: parent.id, name: parent.name, level: parent.level }, children: rows.map((r) => ({ id: r.id, name: r.name, type: r.unit_type || '', sectorId: r.sector_id, sector: r.sector || '' })) });
 }
 
@@ -131,6 +134,8 @@ export async function submitRegistration(request, env, ctx, { token }) {
   if (!allowedRoles(area).includes(body.role)) throw new HttpError(422, 'invalid', 'This role cannot be requested with this link.', { field: 'role' });
   const ou = await ouById(env.DB, body.ouId);
   if (!ou || ou.closed_at || !(ou.path + '/').startsWith(area.path + '/')) throw new HttpError(422, 'invalid', 'Choose where you work (inside the area of this link).', { field: 'ouId' });
+  const ouState = ou.level >= 2 ? await one(env.DB, 'SELECT inactive FROM org_units WHERE id = ?', ou.path.split('/')[2]) : null;
+  if (ouState && ouState.inactive) throw new HttpError(422, 'invalid', 'This state is not using the system yet.', { field: 'ouId' });
   const lvl = ROLE_LEVEL[body.role];
   if (lvl && ou.level !== lvl) {
     const where = { 2: 'a state', 3: 'an LGA', 4: 'a unit (school, facility …)' }[lvl];
