@@ -273,3 +273,8 @@ tr.newrow td { background: var(--accent-soft); color: var(--accent); }
 }
 button.danger-link { color: var(--bad); }
 dialog.wide { width: min(900px, 96vw); }
+.schedule { border-top: 1px solid var(--line); padding-top: 10px; margin-top: 10px; }
+.schedule:first-of-type { border-top: 0; margin-top: 0; }
+.schedhead { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 6px; }
+table.indlist td { padding: 9px 10px; }
+.schedule.archived { opacity: .6; }
