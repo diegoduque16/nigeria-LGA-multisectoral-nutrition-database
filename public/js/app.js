@@ -1835,7 +1835,7 @@ function datasetDialog(ds, m, makeShared = false, presetSector = '') {
 }
 
 // ---------- sector org units (schools, facilities ...) ----------
-const UNIT_HEADERS = ['State', 'LGA', 'LGA ID', 'Ward', 'Ward ID', 'Type', 'Name', 'Code', 'ID'];
+const UNIT_HEADERS = ['State', 'LGA', 'LGA ID', 'Ward', 'Ward ID', 'Type', 'Name', 'Code', 'Latitude', 'Longitude', 'ID'];
 
 // Rollout: which states take part (system administrators).
 async function rolloutPanel() {
@@ -1884,14 +1884,16 @@ function unitTemplate(lgas, types) {
   const N = 3000;
   const lgaFormula = 'INDIRECT("S_"&SUBSTITUTE(SUBSTITUTE(SUBSTITUTE(SUBSTITUTE($A2," ","_"),"-","_"),"\'",""),"/","_"))';
   return [[
-    { name: 'Units', rows: [['State', 'LGA', 'Ward (optional)', 'Type', 'Name', 'Code (optional)']], widths: [20, 26, 24, 22, 40, 16],
+    { name: 'Units', rows: [['State', 'LGA', 'Ward (optional)', 'Type', 'Name', 'Code (optional)', 'Latitude (optional)', 'Longitude (optional)']], widths: [20, 26, 24, 22, 40, 18, 18, 18],
       lists: [{ sqref: `A2:A${N}`, formula: `Lists!$A$2:$A$${states.length + 1}` }, { sqref: `B2:B${N}`, formula: lgaFormula }, ...(typeNames.length ? [{ sqref: `D2:D${N}`, formula: `Lists!$B$2:$B$${typeNames.length + 1}` }] : [])] },
     { name: 'How to fill', rows: [['How to fill'], ...[
       'One row per unit below an LGA: a school, health facility, water point, market …',
       'State: choose from the list. LGA: choose from the list (it shows the LGAs of the state you chose).',
       'Type: choose from the list. A new type name is added automatically when you import.',
       'Name: type or paste the names — you can paste a whole column of names at once.',
-      'Ward (optional): the ward the unit is in, if the wards are loaded. Code (optional): your own reference.',
+      'Ward (optional): the ward the unit is in, if the wards are loaded.',
+      'Code (optional): the code the sector’s own system uses for this unit (e.g. the school code). Units with the same code are matched, not duplicated.',
+      'Latitude / Longitude (optional): decimal degrees, e.g. 10.3158 and 9.8442. Used to spot duplicates and for maps.',
       'Each unit gets its own ID automatically. Import the file with “Import Excel”; you see a check before anything is saved.',
     ].map((t) => [t])], widths: [110] },
     { name: 'Lists', rows: lists, hidden: true },
@@ -1919,12 +1921,13 @@ async function renderUnits() {
   const typesPanel = h('div', { class: 'panel' }, h('h2', {}, 'Unit types'),
     h('p', { class: 'muted small' }, 'The kinds of unit below the LGA. Each reporting schedule chooses which types report (Sectors & indicators → Schedule settings). Ward is built in: wards are loaded with their official IDs, and other units can sit under their ward.'),
     h('table', { class: 'todo' }, h('tbody', {}, types.map((t) => h('tr', {},
-      h('td', {}, h('strong', {}, t.name), t.isWard ? h('span', { class: 'muted small' }, ' · directly under the LGA, official IDs') : null),
+      h('td', {}, h('strong', {}, t.name), t.isWard ? h('span', { class: 'muted small' }, ' · directly under the LGA, official IDs') : null,
+        t.codeLabel ? h('div', { class: 'cov' }, 'Own-system code: ', t.codeLabel) : null),
       h('td', { class: 'small' }, `${t.units} unit${t.units === 1 ? '' : 's'}`),
       h('td', { class: 'small muted' }, t.datasets.length ? 'Reports on: ' + t.datasets.map((d) => d.name).join(', ') : 'No schedule uses it yet'),
-      h('td', { class: 'n' }, admin && !t.isWard ? h('div', { class: 'actions' },
-        h('button', { class: 'link', onclick: async () => { const n = prompt('New name for this unit type:', t.name); if (!n || n.trim() === t.name) return; try { await api('PATCH', '/api/unit-types/' + t.id, { name: n.trim() }); state.meta = null; renderUnits(); } catch (e) { toast(e.message, true); } } }, 'Rename'),
-        !t.units && !t.datasets.length ? h('button', { class: 'link danger-link', onclick: async () => { try { await api('DELETE', '/api/unit-types/' + t.id); state.meta = null; renderUnits(); } catch (e) { toast(e.message, true); } } }, 'Remove') : null) : null))))),
+      h('td', { class: 'n' }, admin ? h('div', { class: 'actions' },
+        h('button', { class: 'link', onclick: () => unitTypeDialog(t) }, 'Edit'),
+        !t.isWard && !t.units && !t.datasets.length ? h('button', { class: 'link danger-link', onclick: async () => { try { await api('DELETE', '/api/unit-types/' + t.id); state.meta = null; renderUnits(); } catch (e) { toast(e.message, true); } } }, 'Remove') : null) : null))))),
     admin ? h('div', { class: 'bar' }, field('New unit type', newType), addType) : null);
 
   // Add one unit
@@ -1932,13 +1935,18 @@ async function renderUnits() {
   const addLga = select(lgas, lgaFilter || (lgas[0] || {}).id);
   const addWard = h('select');
   const nName = h('input', { placeholder: 'Name' });
-  const nCode = h('input', { placeholder: 'optional', size: 10 });
+  const nCode = h('input', { placeholder: 'optional', size: 12 });
+  const nLat = h('input', { placeholder: 'e.g. 10.3158', size: 9, inputmode: 'decimal' });
+  const nLon = h('input', { placeholder: 'e.g. 9.8442', size: 9, inputmode: 'decimal' });
+  const codeBox = field('Code', nCode);
   const nId = h('input', { class: 'mono', maxlength: 11, size: 13 });
   const wardBox = field('Ward (optional)', addWard);
   const idBox = field('Ward ID', nId);
   const fillWards = async () => {
     const isWard = addType_.value === 'ut_ward';
     wardBox.hidden = isWard;
+    const tt = types.find((t) => t.id === addType_.value) || {};
+    codeBox.firstChild.textContent = tt.codeLabel ? `${tt.codeLabel} (optional)` : 'Code (optional)';
     nId.placeholder = 'official ward ID';
     idBox.hidden = !isWard; // other units get their ID automatically
     const ws = addLga.value ? (await unitsOf(addLga.value)).filter((u) => u.typeId === 'ut_ward') : [];
@@ -1951,7 +1959,13 @@ async function renderUnits() {
     const body = { typeId: addType_.value, lgaId: addLga.value, name: nName.value.trim(), code: nCode.value.trim() };
     if (addWard.value && addType_.value !== 'ut_ward') body.wardId = addWard.value;
     if (nId.value.trim()) body.id = nId.value.trim();
-    await api('POST', '/api/units', body); toast('Added'); delete unitCache[addLga.value]; renderUnits();
+    const num = (x) => Number(String(x).trim().replace(',', '.'));
+    if (nLat.value.trim() || nLon.value.trim()) { body.latitude = num(nLat.value); body.longitude = num(nLon.value); }
+    try { await api('POST', '/api/units', body); } catch (e) {
+      if (!(e.body && e.body.error && e.body.error.code === 'possible_duplicate') || !confirm(e.message)) throw e;
+      await api('POST', '/api/units', { ...body, force: true });
+    }
+    toast('Added'); delete unitCache[addLga.value]; renderUnits();
   }));
 
   // Excel / DHIS2 file
@@ -1970,7 +1984,7 @@ async function renderUnits() {
   listBtn.addEventListener('click', busy(listBtn, async () => {
     const { writeWorkbook } = await import('./xlsx.js');
     const wardIdOf = (u) => u.wardId || '';
-    saveBlob(writeWorkbook([{ name: 'Units', rows: [UNIT_HEADERS, ...units.map((u) => [u.stateName, u.lgaName, u.lgaId, u.isWard ? '' : u.ward, u.isWard ? '' : wardIdOf(u), u.type, u.name, u.code, u.id])], widths: [18, 24, 14, 22, 14, 20, 36, 12, 16] }]), 'Units_below_LGA.xlsx');
+    saveBlob(writeWorkbook([{ name: 'Units', rows: [UNIT_HEADERS, ...units.map((u) => [u.stateName, u.lgaName, u.lgaId, u.isWard ? '' : u.ward, u.isWard ? '' : wardIdOf(u), u.type, u.name, u.code, u.latitude ?? '', u.longitude ?? '', u.id])], widths: [18, 24, 14, 22, 14, 20, 36, 14, 11, 11, 16] }]), 'Units_below_LGA.xlsx');
   }));
 
   mount(h('div', {},
@@ -1995,13 +2009,14 @@ async function renderUnits() {
       field('Type', select([{ id: '', name: 'All types' }, ...types.map((t) => ({ id: t.id, name: t.name }))], typeFilter, { onchange: (e) => { pref('unitType', e.target.value); renderUnits(); } })),
       h('div', { class: 'muted small' }, `${units.length} unit${units.length === 1 ? '' : 's'}`), listBtn),
     h('div', { class: 'panel' }, h('h3', {}, 'Add one unit'),
-      h('div', { class: 'bar' }, field('Type', addType_), field('LGA', addLga), wardBox, field('Name', nName), field('Code', nCode), idBox, addBtn)),
+      h('div', { class: 'bar' }, field('Type', addType_), field('LGA', addLga), wardBox, field('Name', nName), codeBox, field('Latitude (optional)', nLat), field('Longitude (optional)', nLon), idBox, addBtn)),
     units.length > 2000 ? h('p', { class: 'muted small' }, `Showing the first 2,000 of ${units.length}. Choose an LGA or a type, or use “Download list” for all.`) : null,
     units.length ? h('div', { class: 'scroll' }, h('table', {},
-      h('thead', {}, h('tr', {}, h('th', {}, 'LGA'), h('th', {}, 'Ward'), h('th', {}, 'Name'), h('th', {}, 'Type'), h('th', {}, 'Code'), h('th', {}, 'ID'), h('th', {}, 'Status'))),
+      h('thead', {}, h('tr', {}, h('th', {}, 'LGA'), h('th', {}, 'Ward'), h('th', {}, 'Name'), h('th', {}, 'Type'), h('th', {}, 'Code'), h('th', {}, 'Location'), h('th', {}, 'ID'), h('th', {}, 'Status'))),
       h('tbody', {}, units.slice(0, 2000).map((u) => h('tr', { class: 'click', onclick: () => unitDialog(u, types) },
         h('td', {}, u.lgaName), h('td', { class: 'small' }, u.isWard ? '' : u.wardId ? u.ward : u.ward ? h('span', { class: 'muted', title: 'Ward not loaded yet: kept as a label' }, u.ward + ' (label)') : '—'),
         h('td', {}, u.isWard ? h('strong', {}, u.name) : u.name), h('td', {}, u.type), h('td', {}, u.code),
+        h('td', { class: 'small muted' }, u.latitude !== null ? `${u.latitude}, ${u.longitude}` : '—'),
         h('td', {}, h('span', { class: 'id' }, u.id)), h('td', {}, u.closed ? pill('none', 'Closed') : pill('accepted', 'Open')))))))
       : h('div', { class: 'panel empty' }, 'No units here yet. Download the Excel template, paste the names and import it — or add one above.'),
   ));
@@ -2013,8 +2028,25 @@ function saveBlob(blob, name) {
   setTimeout(() => URL.revokeObjectURL(a.href), 2000);
 }
 
+function unitTypeDialog(t) {
+  const name = h('input', { value: t.name, disabled: t.isWard });
+  const codeLabel = h('input', { value: t.codeLabel || '', placeholder: 'e.g. EMIS school code, Facility code (NHFR)' });
+  const err = h('div', { class: 'err' });
+  const save = h('button', { class: 'primary' }, 'Save');
+  const dlg = h('dialog', {}, h('h2', {}, t.name),
+    h('div', { class: 'grid2' }, field('Name', name), field('Code used by the sector’s own system (optional)', codeLabel, 'Shown as the name of the Code column for this type, e.g. “EMIS school code”. Units with the same code are matched, not duplicated.')),
+    err, h('p'), h('div', { class: 'actions' }, save, h('button', { onclick: () => dlg.close() }, 'Cancel')));
+  dlg.addEventListener('close', () => dlg.remove());
+  save.addEventListener('click', busy(save, async () => {
+    try { await api('PATCH', '/api/unit-types/' + t.id, { name: name.value.trim(), codeLabel: codeLabel.value.trim() }); dlg.close(); state.meta = null; renderUnits(); } catch (e) { err.textContent = e.message; }
+  }));
+  document.body.append(dlg); dlg.showModal();
+}
+
 function unitDialog(u, types) {
   const name = h('input', { value: u.name }); const code = h('input', { value: u.code });
+  const lat = h('input', { value: u.latitude ?? '', placeholder: 'e.g. 10.3158', inputmode: 'decimal' }); const lon = h('input', { value: u.longitude ?? '', placeholder: 'e.g. 9.8442', inputmode: 'decimal' });
+  const tdef = types.find((t) => t.id === u.typeId) || {};
   const type = u.isWard ? null : select(types.filter((t) => !t.isWard).map((t) => ({ id: t.id, name: t.name })), u.typeId);
   const ward = h('select');
   (async () => {
@@ -2025,14 +2057,16 @@ function unitDialog(u, types) {
   const save = h('button', { class: 'primary' }, 'Save');
   const close = h('button', { class: 'danger' }, u.closed ? 'Reopen' : 'Close unit');
   const dlg = h('dialog', {}, h('h2', {}, u.name), h('p', { class: 'muted small' }, `${u.type} · ${u.lgaName}, ${u.stateName} · DHIS2 ID `, idTag(u.id)),
-    h('div', { class: 'grid2' }, field('Name', name), type ? field('Type', type) : null, u.isWard ? null : field('Ward', ward), field('Code', code)), err, h('p'),
+    h('div', { class: 'grid2' }, field('Name', name), type ? field('Type', type) : null, u.isWard ? null : field('Ward', ward), field(tdef.codeLabel || 'Code', code),
+      field('Latitude', lat), field('Longitude', lon)), err, h('p'),
     h('div', { class: 'actions' }, save, close, h('button', { onclick: () => dlg.close() }, 'Cancel')),
     h('p', { class: 'muted small' }, 'Closing keeps the unit and its ID but hides it from new reports. Units are never deleted, so past data stays traceable.'));
   dlg.addEventListener('close', () => dlg.remove());
   const send = (b, body) => busy(b, async () => {
     try { await api('PATCH', '/api/units/' + u.id, body()); delete unitCache[u.lgaId]; dlg.close(); toast('Saved'); renderUnits(); } catch (e) { err.textContent = e.message; }
   });
-  save.addEventListener('click', send(save, () => ({ name: name.value.trim(), code: code.value.trim(), ...(type ? { typeId: type.value } : {}), ...(u.isWard ? {} : { wardId: ward.value }) })));
+  const num = (x) => (String(x).trim() === '' ? null : Number(String(x).trim().replace(',', '.')));
+  save.addEventListener('click', send(save, () => ({ name: name.value.trim(), code: code.value.trim(), latitude: num(lat.value), longitude: num(lon.value), ...(type ? { typeId: type.value } : {}), ...(u.isWard ? {} : { wardId: ward.value }) })));
   close.addEventListener('click', send(close, () => ({ closed: !u.closed })));
   document.body.append(dlg); dlg.showModal();
 }
@@ -2049,13 +2083,14 @@ async function importDialog(file, defaultTypeId) {
   const ci = {
     state: col((c) => c === 'state'), lga: col((c) => c === 'lga' || c === 'lga name'), lgaId: col((c) => c === 'lga id' || c === 'lga uid'),
     ward: col((c) => c === 'ward' || c === 'ward (optional)' || c === 'ward name'), wardId: col((c) => c === 'ward id' || c === 'ward uid'),
-    name: col((c) => c === 'name'), type: col((c) => c === 'type' || c === 'unit type'), code: col((c) => c === 'code'),
+    name: col((c) => c === 'name'), type: col((c) => c === 'type' || c === 'unit type'), code: col((c) => c === 'code' || c.startsWith('code (')),
+    latitude: col((c) => c.startsWith('latitude') || c === 'lat'), longitude: col((c) => c.startsWith('longitude') || c === 'lon' || c === 'long' || c === 'lng'),
     id: col((c) => c.startsWith('dhis2 id') || c === 'id' || c === 'uid'),
   };
   if (ci.lga < 0 && ci.lgaId < 0) throw new Error('No “LGA” or “LGA ID” column found. Use the Excel template.');
   const data = rows.slice(hi + 1).map((r, i) => {
     const g = (k) => (ci[k] >= 0 ? String(r[ci[k]] ?? '').trim() : '');
-    return { row: hi + i + 2, state: g('state'), lga: g('lga'), lgaId: g('lgaId'), ward: g('ward'), wardId: g('wardId'), name: g('name'), type: g('type'), code: g('code'), id: g('id') };
+    return { row: hi + i + 2, state: g('state'), lga: g('lga'), lgaId: g('lgaId'), ward: g('ward'), wardId: g('wardId'), name: g('name'), type: g('type'), code: g('code'), latitude: g('latitude'), longitude: g('longitude'), id: g('id') };
   }).filter((r) => r.name || r.lga || r.lgaId);
   if (!data.length) throw new Error('The file has no rows under the header.');
   return checkAndImport(data, defaultTypeId, file.name);
@@ -2140,7 +2175,7 @@ async function checkAndImport(data, defaultTypeId, sourceName) {
   // Wards first, so the units under them find them.
   data = [...data.filter((r) => /^wards?$/i.test(r.type || '')), ...data.filter((r) => !/^wards?$/i.test(r.type || ''))];
   const parts = []; for (let i = 0; i < data.length; i += 4000) parts.push(data.slice(i, i + 4000));
-  const c = { add: 0, update: 0, same: 0, error: 0, wards: 0 }; const results = []; const newTypes = new Set();
+  const c = { add: 0, update: 0, same: 0, error: 0, wards: 0, possibleDuplicates: 0 }; const results = []; const newTypes = new Set();
   for (const p of parts) {
     const { data: check } = await api('POST', '/api/units/import', { typeId: defaultTypeId || undefined, rows: p });
     for (const k of Object.keys(c)) c[k] += check.counts[k] || 0;
@@ -2152,7 +2187,8 @@ async function checkAndImport(data, defaultTypeId, sourceName) {
   const dlg = h('dialog', { class: 'wide' }, h('h2', {}, 'Import units below the LGA — check'),
     h('p', { class: 'muted small' }, sourceName, ` · ${data.length} rows`),
     h('div', { class: 'counts' }, h('span', { class: 'pill s-accepted' }, `New: ${c.add}${c.wards ? ` (${c.wards} wards)` : ''}`), h('span', { class: 'pill s-draft' }, `Updated: ${c.update}`),
-      h('span', { class: 'pill s-none' }, `Unchanged: ${c.same}`), h('span', { class: 'pill s-returned' }, `Problems: ${c.error}`)),
+      h('span', { class: 'pill s-none' }, `Unchanged: ${c.same}`), h('span', { class: 'pill s-returned' }, `Problems: ${c.error}`),
+      c.possibleDuplicates ? h('span', { class: 'pill s-submitted' }, `Possible duplicates: ${c.possibleDuplicates} — see Notes`) : null),
     newTypes.size ? h('div', { class: 'note info' }, `New unit type${newTypes.size === 1 ? '' : 's'} will be added: ${[...newTypes].join(', ')}.`) : null,
     notes.length ? h('details', {}, h('summary', { class: 'small' }, `Notes (${notes.length})`), h('ul', { class: 'small' }, notes.slice(0, 200).map((n) => h('li', {}, `Row ${n.row} · ${n.name}: ${n.note}`)))) : null,
     errors.length ? h('div', {}, h('div', { class: 'note bad' }, 'Fix these rows in the file and import it again. Nothing has been saved.'),

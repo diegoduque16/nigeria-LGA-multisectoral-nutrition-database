@@ -373,12 +373,12 @@ test('units below the LGA: unit types, wards with their DHIS2 IDs, import, scope
   ];
   const check = (await admin.post('/api/units/import', { rows })).data;
   assert.equal(check.committed, false);
-  assert.deepEqual(check.counts, { add: 4, update: 0, same: 1, error: 4, wards: 1 });
+  assert.deepEqual(check.counts, { add: 4, update: 0, same: 1, error: 4, wards: 1, possibleDuplicates: 0 });
   assert.match(check.results.find((r) => r.row === 6).note, /not loaded yet/);
   assert.equal((await admin.post('/api/units/import', { rows, commit: true })).status, 422);
   const good = rows.filter((r) => ![7, 8, 9, 10].includes(r.row));
   const done = (await admin.post('/api/units/import', { rows: good, commit: true })).data;
-  assert.deepEqual(done.counts, { add: 4, update: 0, same: 1, error: 0, wards: 1 });
+  assert.deepEqual(done.counts, { add: 4, update: 0, same: 1, error: 0, wards: 1, possibleDuplicates: 0 });
   types = (await admin.get('/api/unit-types')).data.types;
   assert.deepEqual(types.map((t) => t.name).sort(), ['Health facility', 'Primary school', 'Secondary school', 'Ward']);
   const list = (await admin.get(`/api/units?state=${ABIA}`)).data.units;
@@ -761,4 +761,35 @@ test('a form can be deleted only while nothing was reported on it', async () => 
   const meta = (await admin.get('/api/metadata')).data;
   assert.ok(!meta.datasets.some((d) => d.id === t.id));
   assert.ok(meta.datasets.some((d) => d.id === used.id));
+});
+
+test('units: own-system codes, coordinates, duplicate warnings, codes and locations in the export', async () => {
+  const env = makeEnv();
+  const admin = await setupAdmin(env);
+  await admin.post('/api/datasets', { name: 'Education – yearly', sector: 'Education', frequency: 'YEARLY' });
+  const prim = (await admin.post('/api/unit-types', { name: 'Primary school', codeLabel: 'EMIS school code' })).data.id;
+  assert.equal((await admin.get('/api/unit-types')).data.types.find((t) => t.id === prim).codeLabel, 'EMIS school code');
+  const a = await admin.post('/api/units', { typeId: prim, lgaId: ABA_NORTH, name: 'Central Primary School', code: 'AB/001', latitude: 5.12, longitude: 7.37 });
+  assert.equal(a.status, 201);
+  // Coordinates outside Nigeria (swapped) are refused.
+  assert.equal((await admin.post('/api/units', { typeId: prim, lgaId: ABA_NORTH, name: 'Other School', latitude: 7.37, longitude: 25.1 })).status, 422);
+  // A possible duplicate (similar name; within 50 m) is flagged and needs “force”; numbered names are not duplicates.
+  const dup = await admin.post('/api/units', { typeId: prim, lgaId: ABA_NORTH, name: 'Central Primary Schol', latitude: 5.1201, longitude: 7.3701 });
+  assert.equal(dup.status, 409); assert.equal(dup.data.error.code, 'possible_duplicate');
+  assert.equal((await admin.post('/api/units', { typeId: prim, lgaId: ABA_NORTH, name: 'Central Primary Schol', force: true })).status, 201);
+  assert.equal((await admin.post('/api/units', { typeId: prim, lgaId: ABA_NORTH, name: 'LEA Primary School I' })).status, 201);
+  assert.equal((await admin.post('/api/units', { typeId: prim, lgaId: ABA_NORTH, name: 'LEA Primary School II' })).status, 201);
+  // Import: a row with the same code updates that school (even under another name); a near name is noted.
+  const chk = (await admin.post('/api/units/import', { rows: [
+    { lgaId: ABA_NORTH, type: 'Primary school', name: 'Central Pry School', code: 'ab/001', latitude: '5.13', longitude: '7.38' },
+    { lgaId: ABA_NORTH, type: 'Primary school', name: 'LEA Primary Scool I' },
+  ] })).data;
+  assert.equal(chk.results[0].status, 'update'); assert.equal(chk.results[0].id, a.data.id);
+  assert.match(chk.results[1].note, /Possible duplicate/); assert.equal(chk.counts.possibleDuplicates, 1);
+  await admin.post('/api/units/import', { commit: true, rows: [{ lgaId: ABA_NORTH, type: 'Primary school', name: 'Central Pry School', code: 'ab/001', latitude: '5.13', longitude: '7.38' }] });
+  const u = (await admin.get(`/api/units?type=${prim}&lga=${ABA_NORTH}`)).data.units.find((x) => x.id === a.data.id);
+  assert.equal(u.name, 'Central Pry School'); assert.equal(u.latitude, 5.13);
+  const m = (await admin.get('/api/export/metadata?units=all')).data.organisationUnits.organisationUnits.find((o) => o.id === a.data.id);
+  assert.equal(m.code, 'ab/001');
+  assert.deepEqual(m.geometry, { type: 'Point', coordinates: [7.38, 5.13] });
 });
