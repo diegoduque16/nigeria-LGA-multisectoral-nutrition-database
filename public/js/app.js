@@ -60,7 +60,35 @@ const fmtNum = (v, d = 0) => (v === null || v === undefined ? '—' : Number(v).
 const fmtDate = (ms) => (ms ? new Date(ms).toLocaleString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', timeZone: 'Africa/Lagos' }) : '—');
 const fmtDay = (ms) => (ms ? new Date(ms).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'Africa/Lagos' }) : '—');
 const pill = (status, name) => h('span', { class: 'pill s-' + status }, name || status);
-const field = (label, input) => h('label', { class: 'f' }, label, input);
+const field = (label, input, hint) => h('label', { class: 'f' }, label, input, hint ? h('span', { class: 'hint' }, hint) : null);
+// Page heading: title, one plain sentence on what the page is for, optional "How does this work?" steps, buttons.
+// Page heading: where you are (area), title, one plain sentence on what the page is for, the steps, buttons.
+// The steps are shown open so nobody has to guess; each person can fold them away (remembered per page).
+function pageHead({ title, sub, text, how, actions, back }) {
+  const pg = PAGES.find((p) => p.id === state.page);
+  const grp = pg && GROUPS.find((g) => g.id === pg.group);
+  const showArea = grp && !is(...ENTRY_ROLES);
+  const key = 'howHidden:' + (state.page || '');
+  let steps = null;
+  if (how && how.length) {
+    const list = h('ol', { class: 'howsteps' }, how.map((x) => h('li', {}, x)));
+    const toggle = h('button', { class: 'link small' });
+    const paint = () => { const hid = !!pref(key); list.hidden = hid; toggle.textContent = hid ? 'Show how this works' : 'Hide these steps'; };
+    toggle.addEventListener('click', () => { pref(key, !pref(key)); paint(); });
+    paint();
+    steps = h('div', { class: 'how' }, h('div', { class: 'howhead' }, h('strong', {}, 'How this works'), toggle), list);
+  }
+  return h('div', { class: 'headwrap' },
+    h('div', { class: 'head' },
+      h('div', { class: 'headtext' },
+        back ? h('a', { class: 'back', href: back[0] }, '← ', back[1]) : null,
+        showArea ? h('div', { class: 'area ' + (grp.admin ? 'area-admin area-' + grp.id : '') }, grp.admin ? 'Administration · ' : '', grp.name) : null,
+        h('h1', {}, title),
+        sub ? h('div', { class: 'muted' }, sub) : null,
+        text ? h('p', { class: 'lead' }, text) : null),
+      actions && actions.filter(Boolean).length ? h('div', { class: 'actions' }, actions) : null),
+    steps);
+}
 const select = (opts, value, attrs = {}) => h('select', attrs, opts.map((o) => h('option', { value: o.id, selected: o.id === value }, o.name)));
 const idTag = (id) => h('span', { class: 'id', title: 'Click to copy this ID', onclick: () => copy(id) }, id);
 
@@ -80,17 +108,43 @@ const go = (hash) => { if (location.hash !== hash) location.hash = hash; else ro
 const role = () => state.me && state.me.user.role;
 const is = (...roles) => roles.includes(role());
 
-const PAGES = [
-  { id: 'entry', name: 'Data entry', roles: ['sysadmin', 'state', 'lga', 'unit'] },
-  { id: 'review', name: 'Review', roles: ['sysadmin', 'state', 'lga'] },
-  { id: 'picture', name: 'State picture', roles: ['sysadmin', 'setupadmin', 'state', 'viewer'] },
-  { id: 'pivot', name: 'Pivot table', roles: ['sysadmin', 'setupadmin', 'state', 'lga', 'viewer'] },
-  { id: 'export', name: 'Export', roles: ['sysadmin', 'setupadmin', 'state', 'viewer'] },
-  { id: 'setup', name: 'Indicators', roles: ['sysadmin', 'setupadmin'] },
-  { id: 'units', name: 'Org units', roles: ['sysadmin', 'setupadmin', 'state'] },
-  { id: 'accounts', name: 'Accounts', roles: ['sysadmin', 'state'] },
-  { id: 'audit', name: 'Audit log', roles: ['sysadmin'] },
+// Pages are grouped by what people do. Data entry accounts (LGA, unit) get a short, simple menu;
+// everyone else gets a side menu with Reporting / Results / Set-up / People.
+const ALL = ['sysadmin', 'setupadmin', 'state', 'lga', 'unit', 'viewer'];
+const ENTRY_ROLES = ['lga', 'unit'];
+// Day-to-day work first; the two administration areas (Set-up, Users & access) sit apart in their own shaded block.
+const GROUPS = [
+  { id: 'report', name: 'Reports', desc: 'Reports sent in by LGAs and schools / facilities' },
+  { id: 'results', name: 'Results', desc: 'What the accepted reports add up to' },
+  { id: 'setup', name: 'Set-up', admin: true, desc: 'What is reported: sectors, forms, indicators, places' },
+  { id: 'people', name: 'Users & access', admin: true, desc: 'Who can sign in, and what they can do' },
 ];
+const hasUnitSets = () => myDatasets().some((d) => d.reportLevel === 'UNIT');
+const PAGES = [
+  { id: 'home', name: () => (is(...ENTRY_ROLES) ? 'My reports' : 'Home'), short: 'What needs doing now', roles: ALL, desc: 'Start here: what needs doing and where to find everything.' },
+  { id: 'review', group: 'report', name: () => (is('lga') ? 'Check school reports' : 'Approve reports'), short: 'Accept or send back what was sent', roles: ['sysadmin', 'state', 'lga'], nav: () => !is('lga') || hasUnitSets(),
+    desc: () => (is('lga') ? 'Your schools / facilities send their reports to you. Check each one: Accept it (it then counts) or Send it back with a note.' : 'When an LGA presses Send, its report waits here. Check each one: Accept it (it then counts in the results) or Send it back with a note saying what to correct.') },
+  { id: 'entry', group: 'report', name: 'Type in a report', short: 'On behalf of an LGA', roles: ['sysadmin', 'state', 'lga', 'unit'], nav: () => !is(...ENTRY_ROLES), desc: 'Type in the numbers of a report for an LGA that cannot do it themselves, and send it.' },
+  { id: 'picture', group: 'results', name: 'Results table', short: 'One form, one period', roles: ['sysadmin', 'setupadmin', 'state', 'viewer'], desc: 'The indicators of one form for one period, with a row per state, LGA or school / facility.' },
+  { id: 'pivot', group: 'results', name: () => (is(...ENTRY_ROLES) ? 'Results' : 'Compare over time'), short: 'Places × indicators × periods', roles: ['sysadmin', 'setupadmin', 'state', 'lga', 'viewer'], desc: 'Compare indicators across places and periods (a pivot table), and download it to Excel.' },
+  { id: 'export', group: 'results', name: 'Export to scorecard', short: 'The two JSON files', roles: ['sysadmin', 'setupadmin', 'state', 'viewer'], desc: 'Download the two JSON files that the scorecard platform reads.' },
+  { id: 'setup', group: 'setup', name: 'Sectors & indicators', short: 'Add a sector and its form', roles: ['sysadmin', 'setupadmin'], desc: 'Add a sector (Health, Education …), its reporting form and the indicators on that form.' },
+  { id: 'population', group: 'setup', name: 'Population figures', short: 'Yearly denominators', roles: ['sysadmin', 'setupadmin'], desc: 'Yearly numbers per LGA that indicators divide by: population, under-5s, expected pregnancies …' },
+  { id: 'units', group: 'setup', name: 'Schools & facilities', short: 'Places below the LGA', roles: ['sysadmin', 'setupadmin', 'state'], desc: 'Places below the LGA that report on their own (schools, health facilities, water points …).' },
+  { id: 'rollout', group: 'setup', name: 'States in use', short: 'Which states take part', roles: ['sysadmin'], desc: 'Choose which states use the system. The others are hidden everywhere.' },
+  { id: 'accounts', group: 'people', name: 'Users', short: 'Accounts, sign-up requests, QR codes', roles: ['sysadmin', 'state'], desc: 'Create accounts, approve sign-up requests and share registration QR codes.' },
+  { id: 'audit', group: 'people', name: 'Activity log', short: 'Who did what, when', roles: ['sysadmin'], desc: 'Who signed in, changed, sent, approved or downloaded what, and when.' },
+];
+const pageDesc = (p) => (typeof p.desc === 'function' ? p.desc() : p.desc);
+const pageName = (p) => (typeof p.name === 'function' ? p.name() : p.name);
+const ROLE_HELP = {
+  sysadmin: 'Full control: sets up sectors, forms and indicators, chooses the states in use, manages every user, and sees everything.',
+  setupadmin: 'Sets up sectors, forms and indicators, and sees all results. Does not manage users.',
+  state: 'Approves (or sends back) the reports of the LGAs in one state, sees the state’s results, and manages LGA accounts there.',
+  lga: 'Types in and sends the reports of one LGA. Also checks the reports of its schools / facilities, if a sector reports by unit.',
+  unit: 'Types in and sends the reports of one school, health facility or other unit.',
+  viewer: 'Only looks at results and downloads them. Enters nothing.',
+};
 
 async function loadMe() {
   try { state.me = await get('/api/me'); } catch { state.me = null; }
@@ -103,21 +157,46 @@ const unitCache = {};
 async function unitsOf(lgaId) { if (!unitCache[lgaId]) unitCache[lgaId] = (await get(`/api/orgunits?parent=${lgaId}&units=1`)).children; return unitCache[lgaId]; }
 async function lgasOf(stateId) { if (!lgaCache[stateId]) lgaCache[stateId] = (await get('/api/orgunits?parent=' + stateId)).children.filter((c) => !c.closed); return lgaCache[stateId]; }
 
+const navPages = () => PAGES.filter((p) => p.roles.includes(role()) && (!p.nav || p.nav()));
 function renderChrome(page) {
   const top = $('#top');
-  if (!state.me) { top.hidden = true; return; }
+  const side = $('#side');
+  if (!state.me) { top.hidden = true; side.hidden = true; document.body.classList.remove('with-side'); return; }
   top.hidden = false;
-  $('#nav').replaceChildren(...PAGES.filter((p) => p.roles.includes(role())).map((p) => h('a', { href: '#/' + p.id, class: p.id === page ? 'on' : '', 'data-page': p.id }, p.name)));
+  const shown = navPages();
+  // Data entry pages opened from "My reports" keep "My reports" highlighted.
+  const current = page === 'entry' && is(...ENTRY_ROLES) ? (state.fromReview ? 'review' : 'home') : page === 'entry' && state.fromReview ? 'review' : page;
+  const link = (p, withShort) => h('a', { href: '#/' + p.id, class: p.id === current ? 'on' : '', 'data-page': p.id, title: pageDesc(p), onclick: () => { state.fromReview = false; } },
+    h('span', { class: 'nl' }, pageName(p)), withShort && p.short ? h('span', { class: 'ns' }, p.short) : null);
+  if (is(...ENTRY_ROLES) || is('viewer')) {
+    // Simple menu across the top.
+    side.hidden = true; document.body.classList.remove('with-side');
+    $('#nav').replaceChildren(...shown.map((p) => link(p, false)));
+  } else {
+    side.hidden = false; document.body.classList.add('with-side');
+    $('#nav').replaceChildren();
+    const group = (g) => {
+      const ps = shown.filter((p) => p.group === g.id);
+      return ps.length ? h('div', { class: 'navgroup' }, h('div', { class: 'navlabel', title: g.desc }, g.name), ps.map((p) => link(p, true))) : null;
+    };
+    const work = GROUPS.filter((g) => !g.admin).map(group).filter(Boolean);
+    const admin = GROUPS.filter((g) => g.admin).map(group).filter(Boolean);
+    side.replaceChildren(
+      link(shown[0], true),
+      work,
+      admin.length ? h('div', { class: 'adminblock' }, h('div', { class: 'admintitle' }, 'Administration'), admin) : null,
+    );
+  }
   const setTop = () => document.documentElement.style.setProperty('--toph', `${top.offsetHeight}px`);
   setTop(); if (!window.__topWatch) { window.__topWatch = true; window.addEventListener('resize', () => { const t = $('#top'); if (t && !t.hidden) document.documentElement.style.setProperty('--toph', `${t.offsetHeight}px`); }); }
   if (is('sysadmin', 'state')) {
     get('/api/account-requests').then(({ requests }) => {
-      const a = $('#nav a[data-page="accounts"]');
+      const a = $('#side a[data-page="accounts"]');
       if (a && requests.length) a.append(h('span', { class: 'badge', title: 'Account requests waiting for approval' }, String(requests.length)));
     }).catch(() => {});
   }
   $('#who').replaceChildren(
-    h('span', {}, state.me.user.name, ' · ', state.me.user.roleName, state.me.ou ? ' · ' + state.me.ou.name : ''),
+    h('span', { class: 'whoami', title: ROLE_HELP[role()] || '' }, h('strong', {}, state.me.user.name), h('span', { class: 'rolechip' }, state.me.user.roleName), h('span', { class: 'muted' }, state.me.ou ? state.me.ou.name : '')),
     h('a', { href: '#/me' }, 'Password'),
     h('button', { class: 'link', onclick: async () => { await api('POST', '/api/auth/logout', {}); state.me = null; state.meta = null; state.orgs = null; go('#/login'); } }, 'Sign out'),
   );
@@ -135,12 +214,14 @@ async function route() {
     return s.needsSetup ? renderFirstSetup(s) : renderLogin();
   }
   const allowed = PAGES.filter((p) => p.roles.includes(role()));
-  const target = page === 'me' ? 'me' : allowed.find((p) => p.id === page) ? page : allowed[0].id;
+  const target = page === 'me' ? 'me' : allowed.find((p) => p.id === page) ? page : 'home';
   if (target !== page) return go('#/' + target);
+  if (target !== 'entry') state.fromReview = target === 'review';
+  state.page = target;
   renderChrome(target);
   mount(h('p', { class: 'muted' }, 'Loading…'));
   try {
-    await ({ entry: renderEntry, review: renderReview, picture: renderPicture, pivot: renderPivot, export: renderExport, setup: renderSetup, units: renderUnits, accounts: renderAccounts, audit: renderAudit, me: renderMe })[target]();
+    await ({ home: renderHome, entry: renderEntry, review: renderReview, picture: renderPicture, pivot: renderPivot, export: renderExport, setup: renderSetup, population: renderPopulation, units: renderUnits, rollout: renderRollout, accounts: renderAccounts, audit: renderAudit, me: renderMe })[target](...parts.slice(1));
   } catch (e) {
     if (e.status !== 401) mount(h('div', { class: 'note bad' }, e.message));
   }
@@ -179,7 +260,7 @@ function renderFirstSetup(s) {
     field('Setup key', key), field('Your name', name), field('Email', email), field('Password (10+ characters)', pw), h('p'), btn, err);
   form.addEventListener('submit', busy(btn, async () => {
     err.textContent = '';
-    try { await api('POST', '/api/setup', { setupKey: key.value, name: name.value, email: email.value, password: pw.value }); await loadMe(); go('#/setup'); } catch (e) { err.textContent = e.message; }
+    try { await api('POST', '/api/setup', { setupKey: key.value, name: name.value, email: email.value, password: pw.value }); await loadMe(); go('#/home'); } catch (e) { err.textContent = e.message; }
   }));
   mount(form);
 }
@@ -243,10 +324,138 @@ async function pickState(value, onChange) {
   return { el: field('State', el), value: v };
 }
 
+// ---------- home ----------
+const STATUS_PLAIN = {
+  none: 'Not started',
+  draft: 'Started — not sent yet',
+  submitted: 'Sent — waiting to be checked',
+  accepted: 'Accepted',
+  returned: 'Sent back — please correct',
+};
+const ACTION_FOR = { none: 'Start', draft: 'Continue', returned: 'Correct and send again', submitted: 'View', accepted: 'View' };
+const periodWord = (freq) => ({ MONTHLY: 'Month', QUARTERLY: 'Quarter', YEARLY: 'Year' })[freq] || 'Period';
+
+function renderHome() {
+  return is(...ENTRY_ROLES) ? renderMyReports() : renderOverview();
+}
+
+// LGA and unit accounts: a to-do list of their reports, newest periods first.
+async function renderMyReports() {
+  await meta();
+  const ou = state.me.ou;
+  const sets = myDatasets().filter((d) => (is('unit') ? d.reportLevel === 'UNIT' : d.reportLevel !== 'UNIT'));
+  const unitSets = is('lga') ? myDatasets().filter((d) => d.reportLevel === 'UNIT') : [];
+  const head = pageHead({
+    title: 'My reports',
+    sub: `${ou.name}${ou.lga ? ' · ' + ou.lga : ''}`,
+    text: 'These are the reports you send. Click a report to type in its numbers.',
+    how: [
+      'Click Start (or Continue) next to a report.',
+      'Type each number. Put 0 when there was nothing — every box must be filled.',
+      'Press Send. If you are not finished, press Save and come back later.',
+      `The ${is('unit') ? 'LGA or state' : 'state'} checks it. If something is wrong they send it back with a note; correct it and send it again.`,
+    ],
+  });
+  if (!sets.length && !unitSets.length) return mount(head, noDatasets());
+  const cards = await Promise.all(sets.map(async (ds) => {
+    const first = await get('/api/entry' + qs({ dataset: ds.id, ou: ou.id }));
+    const recent = first.periods.slice(0, ds.shared ? 1 : 3);
+    const forms = await Promise.all(recent.map((p) => (p.id === first.period ? first : get('/api/entry' + qs({ dataset: ds.id, ou: ou.id, period: p.id })).catch(() => null))));
+    const open = (f) => { pref('ds', ds.id); pref('pe:' + ds.id, f.period); go('#/entry'); };
+    return h('div', { class: 'panel report-card' },
+      h('div', { class: 'rc-head' }, h('h2', {}, ds.shared ? 'Population figures' : ds.name),
+        h('span', { class: 'muted small' }, ds.shared ? 'Once a year' : `${ds.frequencyName} · due on day ${ds.dueDay} of the next month`)),
+      h('table', { class: 'todo' }, h('tbody', {}, forms.filter(Boolean).map((f) => {
+        const s = f.report.status;
+        return h('tr', { class: 'click', onclick: () => open(f) },
+          h('td', { class: 'pe' }, f.periodName),
+          h('td', {}, pill(s, STATUS_PLAIN[s]), f.overdue && f.can.edit ? h('span', { class: 'late' }, `Late — was due ${fmtDay(f.due)}`) : !['submitted', 'accepted'].includes(s) && f.due ? h('span', { class: 'muted small' }, ` Due ${fmtDay(f.due)}`) : null,
+            s === 'returned' && f.report.comment ? h('div', { class: 'small bad-text' }, `Note: “${f.report.comment}”`) : null),
+          h('td', { class: 'n' }, h('button', { class: ['none', 'draft', 'returned'].includes(s) ? 'primary' : '' }, ACTION_FOR[s] || 'Open')));
+      }))),
+      first.periods.length > recent.length ? h('p', { class: 'muted small' }, 'Need an older period? Open any report and change the ', periodWord(ds.frequency).toLowerCase(), ' at the top.') : null);
+  }));
+  let unitCard = null;
+  if (unitSets.length) {
+    const stateId = ou.path ? ou.path.split('/')[2] : null;
+    const rows = await Promise.all(unitSets.map((ds) => get('/api/status' + qs({ dataset: ds.id, state: stateId })).then((st) => ({ ds, st })).catch(() => null)));
+    unitCard = h('div', { class: 'panel report-card' },
+      h('div', { class: 'rc-head' }, h('h2', {}, 'Reports from your schools / facilities'), h('span', { class: 'muted small' }, 'You check these before they count')),
+      h('table', { class: 'todo' }, h('tbody', {}, rows.filter(Boolean).map(({ ds, st }) => h('tr', { class: 'click', onclick: () => { pref('ds', ds.id); go('#/review'); } },
+        h('td', {}, ds.name, h('div', { class: 'muted small' }, st.periodName)),
+        h('td', {}, st.counts.submitted ? pill('submitted', `${st.counts.submitted} waiting for you`) : pill('accepted', 'Nothing waiting'), h('span', { class: 'muted small' }, ` ${st.counts.accepted} of ${st.total} accepted`)),
+        h('td', { class: 'n' }, h('button', { class: st.counts.submitted ? 'primary' : '' }, 'Check')))))));
+  }
+  mount(h('div', {}, head, cards, unitCard));
+}
+
+// Everyone else: what is waiting, the set-up checklist (administrators) and a map of the system.
+async function renderOverview() {
+  const m = await meta();
+  const ou = state.me.ou;
+  const blocks = [];
+  // Reports waiting for approval (state officers; administrators when few states are in use).
+  if (is('state', 'sysadmin')) {
+    const o = await orgs();
+    const states = is('state') ? [{ id: ou.id, name: ou.name }] : o.states.length <= 6 ? o.states : [];
+    const sets = myDatasets().filter((d) => !d.shared && !d.archived);
+    const res = await Promise.all(states.flatMap((s) => sets.map((ds) => get('/api/status' + qs({ dataset: ds.id, state: s.id })).then((st) => ({ s, ds, st })).catch(() => null))));
+    const waiting = res.filter((x) => x && x.st.counts.submitted);
+    blocks.push(h('div', { class: 'panel' }, h('h2', {}, 'Reports waiting for approval'),
+      !states.length ? h('p', {}, 'Open ', h('a', { href: '#/review' }, 'Approve reports'), ' and choose a state.')
+        : waiting.length ? h('table', { class: 'todo' }, h('tbody', {}, waiting.map(({ s, ds, st }) => h('tr', { class: 'click', onclick: () => { pref('ds', ds.id); pref('state', s.id); pref('pe:' + ds.id, st.period); go('#/review'); } },
+          h('td', {}, ds.name, h('div', { class: 'muted small' }, `${is('state') ? '' : s.name + ' · '}${st.periodName}`)),
+          h('td', {}, pill('submitted', `${st.counts.submitted} waiting`), h('span', { class: 'muted small' }, ` ${st.counts.accepted} of ${st.total} accepted`)),
+          h('td', { class: 'n' }, h('button', { class: 'primary' }, 'Check them'))))))
+          : h('p', { class: 'muted' }, 'Nothing is waiting for you right now for the latest periods.')));
+  }
+  if (is('state', 'sysadmin')) {
+    const { requests } = await get('/api/account-requests').catch(() => ({ requests: [] }));
+    if (requests.length) blocks.push(h('div', { class: 'note warn' }, `${requests.length} ${requests.length === 1 ? 'person is' : 'people are'} waiting for you to approve their account. `, h('a', { href: '#/accounts' }, 'Open Users →')));
+  }
+  // Set-up checklist for administrators.
+  if (is('sysadmin', 'setupadmin')) {
+    const active = is('sysadmin') ? (await get('/api/orgunits?all=1')).states : null;
+    const shared = m.datasets.find((d) => d.shared && !d.archived);
+    const forms = m.datasets.filter((d) => !d.shared && !d.archived);
+    const sectors = new Set(forms.map((d) => d.sectorId));
+    const inds = forms.reduce((n, d) => n + d.indicators.filter((i) => !i.archived).length, 0);
+    const byUnit = forms.filter((d) => d.reportLevel === 'UNIT');
+    const users = is('sysadmin') ? (await get('/api/users')).users : null;
+    const step = (done, title, detail, href, btn) => h('li', { class: done ? 'done' : '' },
+      h('span', { class: 'tick' }, done ? '✓' : ''), h('div', {}, h('strong', {}, title), h('div', { class: 'muted small' }, detail)), href ? h('a', { class: 'btn', href }, btn) : null);
+    blocks.push(h('div', { class: 'panel' }, h('h2', {}, 'Getting the system ready'),
+      h('p', { class: 'muted small' }, 'Do these in order. Each step can be changed later.'),
+      h('ol', { class: 'steps' },
+        active ? step(active.some((s) => !s.active), '1. Choose the states in use', `${active.filter((s) => s.active).length} of ${active.length} states are in use.`, '#/rollout', 'States in use') : null,
+        step(!!shared && shared.dataElements.length > 0, `${active ? '2' : '1'}. Population figures`, shared ? `${shared.dataElements.filter((f) => !f.archived).length} population numbers (e.g. expected pregnancies) that indicators can divide by.` : 'The yearly numbers every sector divides by: population, under-5s, expected pregnancies …', '#/population', shared ? 'Open' : 'Create'),
+        step(inds > 0, `${active ? '3' : '2'}. Sectors, forms and indicators`, forms.length ? `${sectors.size} sector${sectors.size === 1 ? '' : 's'}, ${forms.length} form${forms.length === 1 ? '' : 's'}, ${inds} indicator${inds === 1 ? '' : 's'}.` : 'Add a sector (Health, Education, Agriculture …) with its reporting form and indicators.', '#/setup', forms.length ? 'Open' : 'Add a sector'),
+        byUnit.length ? step(false, `${active ? '4' : '3'}. Schools & facilities`, `${byUnit.map((d) => d.name).join(', ')} ${byUnit.length === 1 ? 'is' : 'are'} reported by each school / facility: load the list of them.`, '#/units', 'Open') : null,
+        users ? step(users.length > 1, `${byUnit.length ? '5' : '4'}. Users`, `${users.length} account${users.length === 1 ? '' : 's'}. Create accounts, or print a registration QR code and approve the requests.`, '#/accounts', 'Open') : null)));
+  }
+  // Map of the system: every page this account can use, with what it is for.
+  const shown = navPages().filter((p) => p.id !== 'home');
+  blocks.push(h('h2', {}, 'What you can do here'),
+    h('div', { class: 'tiles' }, GROUPS.map((g) => {
+      const ps = shown.filter((p) => p.group === g.id);
+      return ps.length ? h('div', { class: 'tile' + (g.admin ? ' tile-admin' : '') }, h('h3', {}, g.admin ? 'Administration · ' + g.name : g.name), h('p', { class: 'muted small' }, g.desc), ps.map((p) => h('a', { class: 'tile-link', href: '#/' + p.id }, h('strong', {}, pageName(p)), h('span', { class: 'muted small' }, pageDesc(p))))) : null;
+    })));
+  mount(h('div', {},
+    pageHead({ title: `Welcome, ${state.me.user.name.split(' ')[0]}`, sub: `${state.me.user.roleName}${ou ? ' · ' + ou.name : ''}`, text: ROLE_HELP[role()] }),
+    blocks));
+}
+
 // ---------- data entry ----------
 async function renderEntry() {
   await meta();
-  const sets = myDatasets();
+  let sets = myDatasets();
+  // Data entry accounts only pick among the forms they send themselves. An LGA opening one of its schools'
+  // reports (from “Check school reports”) sees just that form.
+  if (is('unit')) sets = sets.filter((d) => d.reportLevel === 'UNIT');
+  if (is('lga')) {
+    const cur = sets.find((d) => d.id === pref('ds'));
+    sets = cur && cur.reportLevel === 'UNIT' ? [cur] : sets.filter((d) => d.reportLevel !== 'UNIT');
+  }
   if (!sets.length) return mount(noDatasets());
   const ds = sets.find((d) => d.id === pref('ds')) || sets[0];
   let ouId; let pickers = [];
@@ -264,11 +473,11 @@ async function renderEntry() {
     // Unit-reported data set: choose the school / facility inside the LGA.
     const units = (await unitsOf(ouId)).filter((u) => u.sectorId === ds.sectorId);
     if (!units.length) {
-      return mount(h('div', {}, h('div', { class: 'bar' }, field('Data set', select(sets.map((d) => ({ id: d.id, name: dsLabel(d) })), ds.id, { onchange: (e) => { pref('ds', e.target.value); renderEntry(); } })), pickers),
-        h('div', { class: 'panel empty' }, `“${ds.name}” is reported by each ${ds.sector ? ds.sector.toLowerCase() + ' ' : ''}unit, and this LGA has none yet. Add them on the Org units page.`)));
+      return mount(h('div', {}, h('div', { class: 'bar' }, field('Report (form)', select(sets.map((d) => ({ id: d.id, name: dsLabel(d) })), ds.id, { onchange: (e) => { pref('ds', e.target.value); renderEntry(); } })), pickers),
+        h('div', { class: 'panel empty' }, `“${ds.name}” is reported by each ${ds.sector ? ds.sector.toLowerCase() + ' ' : ''}school / facility, and none are listed for this LGA yet. Add them on the Schools & facilities page.`)));
     }
     ouId = units.some((u) => u.id === pref('unit')) ? pref('unit') : units[0].id;
-    pickers = [...pickers, field('Unit', select(units, ouId, { onchange: (e) => { pref('unit', e.target.value); renderEntry(); } }))];
+    pickers = [...pickers, field('School / facility', select(units, ouId, { onchange: (e) => { pref('unit', e.target.value); renderEntry(); } }))];
   } else if (!byUnit && role() === 'unit') {
     return mount(h('div', { class: 'note info' }, `“${ds.name}” is reported by the LGA, not by each unit.`));
   }
@@ -305,6 +514,9 @@ function entryView(form, sets, pickers) {
   const r = form.report;
   const inputs = {};
   const err = h('div', { class: 'err' });
+  const simple = is(...ENTRY_ROLES);
+  const toUnit = form.ou.level === 4;
+  const checker = toUnit ? 'the LGA or state' : 'the state';
   const dsSel = select(sets.map((d) => ({ id: d.id, name: dsLabel(d) })), form.dataset.id, { onchange: (e) => { pref('ds', e.target.value); renderEntry(); } });
   const peSel = select(form.periods, form.period, { onchange: (e) => { pref('pe:' + form.dataset.id, e.target.value); renderEntry(); } });
 
@@ -315,10 +527,10 @@ function entryView(form, sets, pickers) {
     if (groups.length > 1 || sector) rows.push(h('tr', { class: 'sector' }, h('td', { colspan: 2 }, sector)));
     for (const id of ids) {
       const f = fieldById[id]; if (!f) continue;
-      const inp = h('input', { class: 'num', inputmode: f.valueType === 'INTEGER' ? 'numeric' : 'decimal', value: f.value === null ? '' : String(f.value), disabled: !f.editable, 'aria-label': f.name });
+      const inp = h('input', { class: 'num', inputmode: f.valueType === 'INTEGER' ? 'numeric' : 'decimal', value: f.value === null ? '' : String(f.value), disabled: !f.editable, 'aria-label': f.name, placeholder: f.editable ? '' : '' });
       inp.addEventListener('input', () => { inp.classList.remove('bad'); dirty = true; });
       inputs[f.id] = inp;
-      rows.push(h('tr', {}, h('td', {}, f.name, f.editable || r.locked ? null : h('span', { class: 'muted small' }, ' (entered by another account)')), h('td', { class: 'n' }, inp)));
+      rows.push(h('tr', {}, h('td', {}, f.name, f.editable || r.locked ? null : h('div', { class: 'muted small' }, 'Typed in by another person')), h('td', { class: 'n' }, inp)));
     }
   }
   let dirty = false;
@@ -328,60 +540,85 @@ function entryView(form, sets, pickers) {
     err.textContent = '';
     try {
       const { data } = await api('PUT', '/api/entry', { dataset: form.dataset.id, ou: form.ou.id, period: form.period, values: collect() });
-      dirty = false; if (!quiet) toast('Saved'); return data;
+      dirty = false; if (!quiet) toast('Saved. Nothing has been sent yet.'); return data;
     } catch (e) {
       const errs = (e.body && e.body.error && e.body.error.errors) || {};
       for (const id of Object.keys(errs)) if (inputs[id]) inputs[id].classList.add('bad');
       err.textContent = e.message; throw e;
     }
   }
-  const saveBtn = h('button', {}, 'Save draft');
+  const saveBtn = h('button', {}, 'Save, send later');
   saveBtn.addEventListener('click', busy(saveBtn, async () => { const d = await save(); main().replaceChildren(entryView(d, sets, pickers)); }));
-  const submitBtn = h('button', { class: 'primary' }, form.ou.level === 4 ? 'Submit' : 'Submit to state');
+  const submitBtn = h('button', { class: 'primary big' }, toUnit ? 'Send' : 'Send to the state');
   submitBtn.addEventListener('click', busy(submitBtn, async () => {
     if (form.can.edit && (dirty || r.status === 'none' || r.status === 'returned')) await save(true);
     try {
       const { data } = await api('POST', '/api/entry/submit', { dataset: form.dataset.id, ou: form.ou.id, period: form.period });
-      toast('Submitted'); main().replaceChildren(entryView(data, sets, pickers));
+      toast('Sent. Thank you!'); main().replaceChildren(entryView(data, sets, pickers));
     } catch (e) { err.textContent = e.message; }
   }));
 
   const reviewBox = form.can.review ? reviewControls(form, (d) => main().replaceChildren(entryView(d, sets, pickers))) : null;
 
-  return h('div', {},
-    h('div', { class: 'head' }, h('div', {}, h('h1', {}, form.ou.name), h('div', { class: 'muted' }, form.ou.lga ? `${form.ou.type ? form.ou.type + ' · ' : ''}${form.ou.lga} · ` : '', `${form.dataset.name} · ${form.periodName} · ${form.dataset.frequencyName}`)), h('div', {}, pill(r.status, r.statusName), r.late ? h('span', { class: 'late' }, 'Late') : null)),
-    h('div', { class: 'bar' }, field('Data set', dsSel), pickers, field('Period', peSel)),
-    r.status === 'returned' ? h('div', { class: 'note bad' }, h('strong', {}, 'Sent back for correction: '), r.comment || '', r.reviewedBy ? ` — ${r.reviewedBy}` : '') : null,
-    r.status === 'submitted' ? h('div', { class: 'note warn' }, `Submitted ${fmtDate(r.submittedAt)}${r.submittedBy ? ' by ' + r.submittedBy : ''}. Waiting for review${form.ou.level === 4 ? ' by the LGA or state' : ' by the state'}.`) : null,
-    r.status === 'accepted' ? h('div', { class: 'note ok' }, `Accepted ${fmtDate(r.reviewedAt)}${r.reviewedBy ? ' by ' + r.reviewedBy : ''}.`) : null,
-    form.overdue && form.can.edit ? h('div', { class: 'note warn' }, `This report was due on ${fmtDay(form.due)}.`) : null,
-    h('div', { class: 'panel' },
-      form.fields.length ? h('table', {}, h('thead', {}, h('tr', {}, h('th', {}, 'Value'), h('th', { class: 'n' }, 'Number'))), h('tbody', {}, rows))
-        : h('div', { class: 'empty' }, 'This data set has no indicators yet.'),
-      err,
-      form.can.edit ? h('div', { class: 'actions' }, h('p'), saveBtn, submitBtn, h('span', { class: 'muted small' }, 'Every value is needed to submit — enter 0 if there were none.')) : null),
-    form.sharedValues && form.sharedValues.length ? h('div', { class: 'panel' }, h('h2', {}, 'Population figures used'),
-      h('p', { class: 'muted small' }, 'From the yearly “Population & denominators” data set for this LGA.'),
+  // One plain sentence on where this report stands and what to do next.
+  const statusNote = {
+    none: form.can.edit ? h('div', { class: 'note info' }, h('strong', {}, 'Not started. '), 'Type the numbers below, then press ', h('strong', {}, toUnit ? 'Send' : 'Send to the state'), '.') : null,
+    draft: form.can.edit ? h('div', { class: 'note info' }, h('strong', {}, 'Saved but not sent yet. '), `Finish the numbers and press ${toUnit ? 'Send' : 'Send to the state'}.`) : null,
+    returned: h('div', { class: 'note bad' }, h('strong', {}, 'Sent back for correction. '), r.comment ? `Note from ${r.reviewedBy || 'the reviewer'}: “${r.comment}”. ` : '', form.can.edit ? 'Correct the numbers and send again.' : ''),
+    submitted: h('div', { class: 'note warn' }, h('strong', {}, 'Sent. '), `${fmtDate(r.submittedAt)}${r.submittedBy ? ' by ' + r.submittedBy : ''}. Waiting for ${checker} to check it. It can no longer be changed unless it is sent back.`),
+    accepted: h('div', { class: 'note ok' }, h('strong', {}, 'Accepted. '), `${fmtDate(r.reviewedAt)}${r.reviewedBy ? ' by ' + r.reviewedBy : ''}. These numbers now count in the results.`),
+  }[r.status];
+
+  const results = [
+    form.sharedValues && form.sharedValues.length ? h('div', {}, h('h3', {}, 'Population figures used'),
+      h('p', { class: 'muted small' }, 'Entered once a year for this LGA; not typed in here.'),
       h('table', {}, h('tbody', {}, form.sharedValues.map((x) => h('tr', {}, h('td', {}, x.name),
         h('td', { class: 'n' }, x.yearValue === null ? h('span', { class: 'late' }, `Missing for ${x.year}`) : x.prorate && form.dataset.frequency !== 'YEARLY' ? `${fmtNum(x.yearValue)} for ${x.year} → ${fmtNum(x.value, 1)} for this period` : fmtNum(x.yearValue))))))) : null,
-    form.indicators.length ? h('div', { class: 'panel' }, h('h2', {}, form.ou.level === 4 ? 'Indicators for this unit' : 'Indicators for this LGA'),
+    form.indicators.length ? h('div', {}, h('h3', {}, 'Indicators calculated from these numbers'),
       h('table', {}, h('tbody', {}, form.indicators.map((i) => h('tr', {}, h('td', {}, i.name, h('span', { class: 'muted small' }, i.sector ? ` · ${i.sector}` : '')), h('td', { class: 'n' }, fmtNum(i.value, 2))))))) : null,
+  ].filter(Boolean);
+
+  return h('div', {},
+    pageHead({
+      back: simple ? (toUnit && is('lga') ? ['#/review', 'Check school reports'] : ['#/home', 'My reports']) : form.can.review ? ['#/review', 'Approve reports'] : null,
+      title: `${form.dataset.name} — ${form.periodName}`,
+      sub: [form.ou.type, form.ou.name, form.ou.lga].filter(Boolean).join(' · '),
+      text: simple ? null : form.can.review && ['submitted', 'accepted'].includes(r.status) ? 'Check the numbers, then decide at the bottom: Accept or Send back.' : 'Type in a report on behalf of an LGA (or a school / facility).',
+      actions: [pill(r.status, STATUS_PLAIN[r.status]), r.late ? h('span', { class: 'late' }, 'Sent late') : null],
+    }),
+    h('div', { class: 'bar' + (simple ? ' bar-simple' : '') }, sets.length > 1 || !simple ? field(simple ? 'Report' : 'Report (form)', dsSel) : null, pickers, field(periodWord(form.dataset.frequency), peSel)),
+    statusNote,
+    form.overdue && form.can.edit ? h('div', { class: 'note warn' }, `This report was due on ${fmtDay(form.due)}.`) : null,
+    h('div', { class: 'panel' },
+      form.fields.length ? h('table', { class: 'entry' }, h('thead', {}, h('tr', {}, h('th', {}, 'What to count'), h('th', { class: 'n' }, 'Number'))), h('tbody', {}, rows))
+        : h('div', { class: 'empty' }, 'This form has no indicators yet.'),
+      err,
+      form.can.edit ? h('div', { class: 'sendbar' },
+        h('div', { class: 'sendbtn' }, submitBtn, h('span', { class: 'hint' }, `Sends it to ${checker} to check. Every box must have a number — put 0 if there were none.`)),
+        h('div', { class: 'sendbtn' }, saveBtn, h('span', { class: 'hint' }, 'Keeps what you typed. Nothing is sent.'))) : null),
     reviewBox,
+    results.length ? h('details', { class: 'panel', open: !simple || undefined }, h('summary', {}, 'See the results these numbers give'), results) : null,
     r.updatedAt ? h('p', { class: 'muted small' }, `Last saved ${fmtDate(r.updatedAt)}${r.updatedBy ? ' by ' + r.updatedBy : ''}.`) : null,
   );
 }
 
 function reviewControls(form, after) {
-  const comment = h('textarea', { placeholder: 'What needs to be corrected? (needed to send back)' });
+  const comment = h('textarea', { placeholder: 'If you send it back: what needs to be corrected? The person who sent it will see this.' });
   const accept = h('button', { class: 'primary' }, 'Accept');
   const back = h('button', { class: 'danger' }, 'Send back for correction');
   const act = (action, btn) => busy(btn, async () => {
+    if (action === 'return' && !comment.value.trim()) { toast('Write what needs to be corrected first.', true); comment.focus(); return; }
     const { data } = await api('POST', '/api/entry/review', { dataset: form.dataset.id, ou: form.ou.id, period: form.period, action, comment: comment.value.trim() || undefined });
-    toast(action === 'accept' ? 'Accepted' : 'Sent back'); after(data);
+    toast(action === 'accept' ? 'Accepted — it now counts in the results' : 'Sent back'); after(data);
   });
   accept.addEventListener('click', act('accept', accept));
   back.addEventListener('click', act('return', back));
-  return h('div', { class: 'panel' }, h('h2', {}, 'Review'), comment, h('p'), h('div', { class: 'actions' }, form.report.status === 'submitted' ? accept : null, back));
+  const submitted = form.report.status === 'submitted';
+  return h('div', { class: 'panel decide' }, h('h2', {}, submitted ? 'Approve or send back' : 'Found a mistake?'),
+    h('p', { class: 'muted small' }, submitted
+      ? 'Check the numbers above. Accept if they look right — the report then counts in the results. Send back if something must be fixed, and write what.'
+      : 'This report is already accepted. If you find a mistake, you can still send it back with a note.'),
+    comment, h('p'), h('div', { class: 'actions' }, submitted ? accept : null, back));
 }
 
 // ---------- review (status of every LGA) ----------
@@ -390,7 +627,7 @@ async function renderReview() {
   if (!sets.length) return mount(noDatasets());
   // LGA reviewers only review unit-reported data sets (their schools / facilities).
   const usable = role() === 'lga' ? sets.filter((d) => d.reportLevel === 'UNIT') : sets;
-  if (!usable.length) return mount(h('div', { class: 'note info' }, 'LGA accounts review reports from units (schools, facilities …). None of your data sets is reported by units.'));
+  if (!usable.length) return mount(h('div', { class: 'note info' }, 'None of your reports come from schools or facilities, so there is nothing for you to check here.'));
   const ds = usable.find((d) => d.id === pref('ds')) || usable[0];
   const byUnit = ds.reportLevel === 'UNIT';
   const sp = ['state', 'lga'].includes(role()) ? { value: state.me.ou.path ? state.me.ou.path.split('/')[2] : state.me.ou.id } : await pickState(pref('state'), (v) => { pref('state', v); pref('rlga', ''); renderReview(); });
@@ -401,29 +638,42 @@ async function renderReview() {
     if (e.body && e.body.error && e.body.error.field === 'period') { pref('pe:' + ds.id, null); return get('/api/status' + qs({ ...params, period: undefined })); } throw e;
   });
   await meta();
-  const names = { none: 'Not started', draft: 'Draft', submitted: 'Submitted', accepted: 'Accepted', returned: 'Sent back' };
   const open = (l) => {
     pref('ds', ds.id); pref('state', sp.value); pref('pe:' + ds.id, st.period);
     if (byUnit) { pref('lga', l.lgaId); pref('unit', l.id); } else pref('lga', l.id);
     go('#/entry');
   };
-  const what = byUnit ? 'units' : 'LGAs';
+  const what = byUnit ? 'schools / facilities' : 'LGAs';
+  const order = { submitted: 0, returned: 1, draft: 2, none: 3, accepted: 4 };
+  const list = [...st.lgas].sort((a, b) => order[a.status] - order[b.status] || a.name.localeCompare(b.name));
+  const todo = { submitted: 'Check it', returned: 'Waiting for the correction', draft: 'Being typed in', none: 'Not started yet', accepted: 'Done' };
+  const summary = [st.counts.submitted ? `${st.counts.submitted} waiting for you` : 'nothing waiting for you', `${st.counts.accepted} accepted`, st.counts.returned ? `${st.counts.returned} sent back` : null, `${st.counts.none + st.counts.draft} not sent yet`].filter(Boolean).join(' · ');
   mount(h('div', {},
-    h('div', { class: 'head' }, h('div', {}, h('h1', {}, `${role() === 'lga' ? state.me.ou.name : st.state.name} — review`), h('div', { class: 'muted' }, `${st.dataset.name} · ${st.periodName} · due ${fmtDay(st.due)}`))),
+    pageHead({
+      title: role() === 'lga' ? 'Check school / facility reports' : 'Approve reports',
+      sub: `${role() === 'lga' ? state.me.ou.name : st.state.name} · ${st.dataset.name} · ${st.periodName} · due ${fmtDay(st.due)}`,
+      text: `When ${byUnit ? 'a school or facility' : 'an LGA'} presses Send, its report waits here for you. Nothing counts in the results until you accept it.`,
+      how: [
+        'Choose the form and the period at the top.',
+        'Reports waiting for you are at the top of the list, marked yellow. Click one to open it.',
+        'Look at the numbers. If they look right, press Accept — they now count in the results.',
+        'If something is wrong, write what to fix and press Send back. The sender sees your note, corrects it and sends it again.',
+      ],
+    }),
     h('div', { class: 'bar' },
-      field('Data set', select(usable.map((d) => ({ id: d.id, name: dsLabel(d) })), ds.id, { onchange: (e) => { pref('ds', e.target.value); renderReview(); } })),
+      field('Report (form)', select(usable.map((d) => ({ id: d.id, name: dsLabel(d) })), ds.id, { onchange: (e) => { pref('ds', e.target.value); renderReview(); } })),
       role() === 'state' || role() === 'lga' ? null : sp.el,
       byUnit && role() !== 'lga' ? field('LGA', select([{ id: '', name: 'All LGAs' }, ...st.lgaOptions], lgaFilter, { onchange: (e) => { pref('rlga', e.target.value); renderReview(); } })) : null,
-      field('Period', select(st.periods, st.period, { onchange: (e) => { pref('pe:' + ds.id, e.target.value); renderReview(); } }))),
-    h('div', { class: 'counts' }, Object.entries(st.counts).map(([k, n]) => h('span', { class: 'pill s-' + k }, `${names[k]}: ${n}`)), h('span', { class: 'pill s-none' }, `Total ${what}: ${st.total}`)),
-    st.lgas.length ? h('div', { class: 'scroll' }, h('table', {},
-      h('thead', {}, h('tr', {}, byUnit ? h('th', {}, 'LGA') : null, h('th', {}, byUnit ? 'Unit' : 'LGA'), h('th', {}, 'Status'), h('th', {}, 'Submitted'), h('th', {}, 'Reviewed'), h('th', {}, 'Comment'))),
-      h('tbody', {}, st.lgas.map((l) => h('tr', { class: 'click', onclick: () => open(l) },
+      field(periodWord(ds.frequency), select(st.periods, st.period, { onchange: (e) => { pref('pe:' + ds.id, e.target.value); renderReview(); } }))),
+    h('div', { class: 'note ' + (st.counts.submitted ? 'warn' : 'ok') }, h('strong', {}, `${st.total} ${what}: `), summary),
+    list.length ? h('div', { class: 'scroll' }, h('table', {},
+      h('thead', {}, h('tr', {}, byUnit ? h('th', {}, 'LGA') : null, h('th', {}, byUnit ? 'School / facility' : 'LGA'), h('th', {}, 'Status'), h('th', {}, 'Sent'), h('th', {}, 'Checked'), h('th', {}, 'Note'), h('th', {}, ''))),
+      h('tbody', {}, list.map((l) => h('tr', { class: 'click' + (l.status === 'submitted' ? ' hot' : ''), onclick: () => open(l) },
         byUnit ? h('td', { class: 'small' }, l.lgaName) : null,
-        h('td', {}, l.name, l.type ? h('span', { class: 'muted small' }, ` · ${l.type}`) : null), h('td', {}, pill(l.status, l.statusName), l.late ? h('span', { class: 'late' }, 'Late') : null),
-        h('td', {}, fmtDate(l.submittedAt)), h('td', {}, fmtDate(l.reviewedAt)), h('td', { class: 'small muted' }, l.comment || ''))))))
-      : h('div', { class: 'panel empty' }, byUnit ? 'No units yet for this sector here. Add them on the Org units page.' : 'No LGAs.'),
-    h('p', { class: 'muted small' }, `Click a row to open its report, then accept it or send it back.`),
+        h('td', {}, l.name, l.type ? h('span', { class: 'muted small' }, ` · ${l.type}`) : null), h('td', {}, pill(l.status, STATUS_PLAIN[l.status]), l.late ? h('span', { class: 'late' }, 'Late') : null),
+        h('td', {}, fmtDate(l.submittedAt)), h('td', {}, fmtDate(l.reviewedAt)), h('td', { class: 'small muted' }, l.comment || ''),
+        h('td', { class: 'n' }, l.status === 'submitted' ? h('button', { class: 'primary' }, 'Open and check') : h('span', { class: 'muted small' }, todo[l.status])))))))
+      : h('div', { class: 'panel empty' }, byUnit ? 'No schools / facilities are listed for this sector here yet. Add them on the Schools & facilities page.' : 'No LGAs.'),
   ));
 }
 
@@ -480,10 +730,20 @@ async function renderPicture() {
   const fieldRow = (r, cls) => h('tr', { class: cls }, h('td', {}, r.name), p.fields.map((f) => h('td', { class: 'n' }, fmtNum(r.values[f.id], 2))));
 
   mount(h('div', {},
-    h('div', { class: 'head' }, h('div', {}, h('h1', {}, `${p.ou.name} — ${p.periodName}`), h('div', { class: 'muted' }, `${p.dataset.name} · ${byUnit ? `${p.total.unitsReporting} of ${p.total.expectedUnits} units reporting` : `${p.total.reportingUnits} of ${p.total.totalUnits} LGAs reporting`} · ${provisional ? 'includes reports not yet accepted' : 'accepted reports only'}`)),
-      h('div', { class: 'actions' }, h('button', { onclick: () => window.print() }, 'Print'))),
+    pageHead({
+      title: `Results table — ${p.ou.name}, ${p.periodName}`,
+      sub: `${p.dataset.name} · ${byUnit ? `${p.total.unitsReporting} of ${p.total.expectedUnits} schools / facilities reporting` : `${p.total.reportingUnits} of ${p.total.totalUnits} LGAs reporting`} · ${provisional ? 'includes reports not yet accepted' : 'accepted reports only'}`,
+      text: 'The indicators of one form for one period. The first row is the total for the whole area; then one row per place.',
+      how: [
+        'Choose the form, the area and the period.',
+        'Totals add up the numbers of the places that reported, then recalculate each rate. They never average percentages.',
+        'Point at a value to see the two numbers it is calculated from.',
+        'Only accepted reports count, unless you tick “Include reports not yet accepted”.',
+      ],
+      actions: [h('button', { onclick: () => window.print() }, 'Print')],
+    }),
     h('div', { class: 'bar' },
-      field('Data set', select(sets.map((d) => ({ id: d.id, name: dsLabel(d) })), ds.id, { onchange: (e) => { pref('ds', e.target.value); renderPicture(); } })),
+      field('Report (form)', select(sets.map((d) => ({ id: d.id, name: dsLabel(d) })), ds.id, { onchange: (e) => { pref('ds', e.target.value); renderPicture(); } })),
       ouOptions.length > 1 ? field('Area', select(ouOptions, ou, { onchange: (e) => {
         const v = e.target.value; pref('pou', v);
         if (topIds.includes(v)) pref('pstate', v === topIds[0] && state.me.ou.level === 1 ? '' : v);
@@ -491,7 +751,7 @@ async function renderPicture() {
       } })) : null,
       field('Period', select(choices, period, { onchange: (e) => { pref('ppe:' + ds.id, e.target.value); renderPicture(); } })),
       field('Sector', select([{ id: '', name: 'All sectors' }, ...sectors], sector, { onchange: (e) => { pref('sector', e.target.value); renderPicture(); } })),
-      h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: provisional, onchange: (e) => { pref('prov', e.target.checked); renderPicture(); } }), 'Include submitted (not yet accepted)')),
+      h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: provisional, onchange: (e) => { pref('prov', e.target.checked); renderPicture(); } }), 'Include reports not yet accepted')),
     p.indicators.length ? null : h('div', { class: 'note info' }, 'No indicators for this selection.'),
     h('h2', {}, 'Indicators'),
     h('p', { class: 'muted small' }, byUnit ? 'Each LGA adds up the numbers of its units that reported; totals then recompute each rate. The reporting rate counts units. Hover a value to see its numerator / denominator.' : 'Totals add up the numerators and denominators of the LGAs that reported, then recompute each rate. Hover a value to see its numerator / denominator.'),
@@ -553,13 +813,22 @@ async function renderPivot() {
       field('From', select([...plist].reverse(), from, { onchange: (e) => setP('from', e.target.value) })),
       field('To', select([...plist].reverse(), to, { onchange: (e) => setP('to', e.target.value) }))),
     h('div', { class: 'bar' },
-      field('Rows', select([{ id: 'ou', name: 'Org units' }, { id: 'dx', name: 'Indicators' }, { id: 'pe', name: 'Periods' }], rowsDim, { onchange: (e) => setP('rows', e.target.value) })),
-      field('Columns', select([{ id: 'ou', name: 'Org units' }, { id: 'dx', name: 'Indicators' }, { id: 'pe', name: 'Periods' }].filter((x) => x.id !== rowsDim), colsDim, { onchange: (e) => setP('cols', e.target.value) })),
+      field('Rows (down the side)', select([{ id: 'ou', name: 'Places' }, { id: 'dx', name: 'Indicators' }, { id: 'pe', name: 'Periods' }], rowsDim, { onchange: (e) => setP('rows', e.target.value) })),
+      field('Columns (across the top)', select([{ id: 'ou', name: 'Places' }, { id: 'dx', name: 'Indicators' }, { id: 'pe', name: 'Periods' }].filter((x) => x.id !== rowsDim), colsDim, { onchange: (e) => setP('cols', e.target.value) })),
       h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: shade, onchange: (e) => setP('shade', e.target.checked) }), 'Shade values'),
       h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: hideEmpty, onchange: (e) => setP('hideEmpty', e.target.checked) }), 'Hide empty rows/columns'),
-      h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: prov, onchange: (e) => setP('prov', e.target.checked) }), 'Include submitted (not yet accepted)')));
+      h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: prov, onchange: (e) => setP('prov', e.target.checked) }), 'Include reports not yet accepted')));
   mount(h('div', {},
-    h('div', { class: 'head' }, h('div', {}, h('h1', {}, 'Pivot table'), h('div', { class: 'muted' }, 'Any sector’s indicators — or all sectors together — by org unit, indicator and period. Rates are recomputed from summed numerators and denominators.'))),
+    pageHead({
+      title: is(...ENTRY_ROLES) ? 'Results' : 'Pivot table',
+      text: 'Compare indicators across places and periods — one sector, or all sectors together.',
+      how: [
+        'Choose the sector, the area and the periods (from – to).',
+        'Choose what goes down the side (Rows) and across the top (Columns): places, indicators or periods. The third one becomes a choice above the table.',
+        'Rates are recalculated from the added-up numbers, never averaged. Point at a value to see its two numbers.',
+        'Download Excel saves the table as you see it.',
+      ],
+    }),
     controls, status, holder));
 
   // Fetch one period at a time (small requests), three in parallel.
@@ -612,7 +881,7 @@ async function renderPivot() {
       const bg = shadeOf(v); if (bg && !r.total) td.style.background = bg;
       return td;
     })))));
-  const filterNames = { ou: 'Org unit', dx: 'Indicator', pe: 'Period' };
+  const filterNames = { ou: 'Place', dx: 'Indicator', pe: 'Period' };
   const xls = h('button', {}, 'Download Excel');
   xls.addEventListener('click', busy(xls, async () => {
     const { writeWorkbook } = await import('./xlsx.js');
@@ -665,19 +934,28 @@ async function renderExport() {
 
   const tokens = is('sysadmin') ? await tokenPanel(areas) : null;
   mount(h('div', {},
-    h('div', { class: 'head' }, h('div', {}, h('h1', {}, 'Export'), h('div', { class: 'muted' }, 'JSON files in the same format as the ALMA Export app, ready to upload to the scorecard platform.'))),
+    pageHead({
+      title: 'Export to scorecard',
+      text: 'Download the two files the scorecard platform needs. They are in the same format as the ALMA Export app and keep the DHIS2 IDs.',
+      how: [
+        'Tick the forms to include and choose the area.',
+        'Download the metadata file first (places and indicators). You only need it again when indicators or places change.',
+        'Choose the periods and levels, then download the data values file.',
+        'Upload both files to the scorecard platform. Only accepted reports are included unless you tick the box.',
+      ],
+    }),
     h('div', { class: 'panel' },
-      h('h3', {}, 'What'),
+      h('h3', {}, 'Which forms and which area'),
       h('div', { class: 'chips' }, sets.map((d, i) => h('label', { class: 'check' }, dsChecks[i], dsLabel(d)))),
       h('div', { class: 'bar' }, field('Sector', sectorSel), field('Area', areaSel)),
-      h('h3', {}, '1 · Metadata'),
+      h('h3', {}, 'Step 1 · Places and indicators (metadata file)'),
       h('p', { class: 'muted small' }, 'organisationUnits_indicators.json — org units with their DHIS2 IDs, and the indicators (with a reporting-rate indicator per data set).'),
-      h('label', { class: 'check' }, withUnits, 'Also include org units below LGAs (schools, health facilities…) for the chosen sector'), h('p'),
+      h('label', { class: 'check' }, withUnits, 'Also include the schools / facilities below each LGA (for the chosen sector)'), h('p'),
       metaBtn,
-      h('h3', {}, '2 · Data values'),
+      h('h3', {}, 'Step 2 · The numbers (data values file)'),
       h('div', { class: 'bar' }, field('Period type', typeSel), field('From', from), field('To', to),
-        h('div', { class: 'chips' }, h('span', { class: 'muted small' }, 'Levels:'), ['Country', 'State', 'LGA', 'Units (one state)'].map((n, i) => h('label', { class: 'check' }, lv[i], n)))),
-      h('label', { class: 'check' }, prov, 'Include submitted reports that are not yet accepted'),
+        h('div', { class: 'chips' }, h('span', { class: 'muted small' }, 'Levels:'), ['Country', 'State', 'LGA', 'Schools / facilities (one state)'].map((n, i) => h('label', { class: 'check' }, lv[i], n)))),
+      h('label', { class: 'check' }, prov, 'Include reports not yet accepted'),
       h('p', { class: 'muted small' }, 'dataValues_<period>.json — one row per indicator, period and org unit. Periods use DHIS2 codes: 202601, 2026Q1, 2026.'),
       dataBtn),
     tokens,
@@ -694,7 +972,7 @@ async function tokenPanel(areas) {
     const { data } = await api('POST', '/api/tokens', { name: name.value, ouId: area.value });
     out.replaceChildren(h('div', { class: 'note warn' }, 'Copy this token now — it will not be shown again.', h('div', { class: 'linkbox' }, h('input', { value: data.token, readonly: true }), h('button', { onclick: () => copy(data.token) }, 'Copy'))));
   }));
-  return h('div', { class: 'panel' }, h('h2', {}, 'API tokens'),
+  return h('div', { class: 'panel' }, h('h2', {}, 'Automatic downloads (API tokens)'),
     h('p', { class: 'muted small' }, 'For automated downloads: send “Authorization: Bearer <token>” to /api/export/metadata or /api/export/data. Tokens can only read exports for their area.'),
     h('div', { class: 'bar' }, field('Name', name), field('Area', area), add), out,
     list.length ? h('table', {}, h('thead', {}, h('tr', {}, h('th', {}, 'Name'), h('th', {}, 'Area'), h('th', {}, 'Created'), h('th', {}, 'Last used'), h('th'))),
@@ -703,57 +981,172 @@ async function tokenPanel(areas) {
 }
 
 // ---------- indicator setup ----------
-async function renderSetup() {
+async function renderSetup(dsId) {
   const m = await meta(true);
-  const dsId = m.datasets.some((d) => d.id === pref('setupDs')) ? pref('setupDs') : (m.datasets[0] || {}).id;
-  const ds = m.datasets.find((d) => d.id === dsId);
-  const sectorList = h('datalist', { id: 'sector-list' }, m.sectors.map((s) => h('option', { value: s.name })));
-  const sharedSets = m.datasets.filter((d) => d.shared && !d.archived);
-  const sharedFields = sharedSets.flatMap((d) => d.dataElements.filter((f) => !f.archived));
-  const fieldList = h('datalist', { id: 'field-list' },
-    ds ? ds.dataElements.filter((d) => !d.archived).map((d) => h('option', { value: d.name })) : [],
-    ds && !ds.shared ? sharedFields.map((f) => h('option', { value: f.name, label: 'Population & denominators (shared)' })) : []);
+  const ds = dsId && m.datasets.find((d) => d.id === dsId);
+  if (ds && ds.shared) return go('#/population');
+  return ds ? renderForm(ds, m) : renderSectors(m);
+}
 
-  const newDs = h('button', { onclick: () => datasetDialog(null, m) }, '+ New sector data set');
-  const newShared = sharedSets.length ? null : h('button', { onclick: () => datasetDialog(null, m, true) }, '+ Population & denominators');
-  const head = h('div', { class: 'head' },
-    h('div', {}, h('h1', {}, 'Indicators'), h('div', { class: 'muted' }, 'One data set per sector. Write each indicator with its numerator, denominator and source; IDs are created automatically.')),
-    is('sysadmin') ? h('div', { class: 'actions' }, newShared, newDs) : null);
+// The three steps of adding a sector, shown on the sectors page and on each form (with the current one marked).
+function sectorSteps(current, ds) {
+  const steps = [
+    ['Name the sector', 'Say how often it reports and who reports: each LGA, or each school / facility.'],
+    ['Add its indicators', 'One row per indicator: what is counted (numerator) and, for a rate, what it is divided by (denominator). These become the boxes on the form.'],
+    ['Give people access', 'On Users, create accounts or a registration QR code for this sector. Its people then see the form under “My reports”.'],
+  ];
+  return h('ol', { class: 'flow' }, steps.map(([t, d], i) => h('li', { class: i + 1 < current ? 'done' : i + 1 === current ? 'now' : '' },
+    h('span', { class: 'flownum' }, i + 1 < current ? '✓' : String(i + 1)),
+    h('div', {}, h('strong', {}, t), h('div', { class: 'small muted' }, d),
+      i === 2 && current >= 2 && ds ? h('a', { class: 'btn small-btn', href: '#/accounts' }, 'Go to Users →') : null))));
+}
+
+// Overview: one card per sector with its reporting forms.
+function renderSectors(m) {
+  const admin = is('sysadmin');
+  const shared = m.datasets.find((d) => d.shared && !d.archived);
+  const forms = m.datasets.filter((d) => !d.shared);
+  const freqHow = (d) => `${d.frequencyName} · ${d.reportLevel === 'UNIT' ? 'each school / facility reports' : 'each LGA reports'} · due on day ${d.dueDay} of the next month`;
+  const formRow = (d) => h('tr', { class: 'click' + (d.archived ? ' archived' : ''), onclick: () => go('#/setup/' + d.id) },
+    h('td', {}, h('strong', {}, d.name), d.archived ? h('span', { class: 'muted small' }, ' (archived)') : null, h('div', { class: 'muted small' }, freqHow(d))),
+    h('td', { class: 'n small' }, `${d.indicators.filter((i) => !i.archived).length} indicators`, h('div', { class: 'muted' }, `${d.dataElements.filter((f) => !f.archived).length} numbers to type in`)),
+    h('td', { class: 'n' }, h('button', {}, 'Open')));
+  const sectorIds = [...new Set([...m.sectors.map((s) => s.id), ...forms.map((d) => d.sectorId)])];
+  const cards = sectorIds.map((sid) => {
+    const sec = m.sectors.find((s) => s.id === sid) || { id: sid, name: 'No sector' };
+    const mine = forms.filter((d) => d.sectorId === sid).sort((a, b) => (a.archived ? 1 : 0) - (b.archived ? 1 : 0) || a.name.localeCompare(b.name));
+    if (!mine.length && !sec.indicators) return null;
+    return h('div', { class: 'panel sector-card' },
+      h('div', { class: 'rc-head' }, h('h2', {}, sec.name),
+        admin && sec.id ? h('button', { class: 'link', onclick: () => renameSector(sec) }, 'Rename sector') : null),
+      mine.length ? h('table', { class: 'todo' }, h('tbody', {}, mine.map(formRow)))
+        : h('p', { class: 'muted small' }, 'This sector has indicators on other sectors’ forms but no form of its own.'),
+      admin ? h('div', { class: 'actions' }, h('button', { class: 'link', onclick: () => datasetDialog(null, m, false, sec.name) }, `+ Add another form to ${sec.name}`)) : null);
+  }).filter(Boolean);
+
+  mount(h('div', {},
+    pageHead({
+      title: 'Sectors & indicators',
+      text: 'Each sector (Health, Education, Agriculture, WASH …) has its own reporting form. A form is a list of indicators; the boxes people fill in come from each indicator’s numerator and denominator.',
+      actions: admin ? [h('button', { class: 'primary big', onclick: () => sectorDialog(m) }, '+ Add a sector')] : null,
+    }),
+    h('div', { class: 'panel guide' }, h('h2', {}, 'Adding a sector takes three steps'), sectorSteps(admin ? 1 : 0),
+      admin ? h('div', { class: 'actions' }, h('button', { class: 'primary', onclick: () => sectorDialog(m) }, 'Start: + Add a sector')) : h('p', { class: 'muted small' }, 'Only system administrators can add a sector. You can add and change indicators on the forms of your sectors.')),
+    !shared ? h('div', { class: 'note info' }, 'Tip: indicators that divide by population (e.g. “Expected pregnancies”) need the ', h('a', { href: '#/population' }, 'Population figures'), ' set up first.') : null,
+    h('h2', {}, cards.length ? `Your sectors (${cards.length})` : ''),
+    cards.length ? cards : h('div', { class: 'panel empty' },
+      h('h2', {}, 'No sectors yet'),
+      h('p', {}, 'Start with one, for example Health with a monthly form reported by each LGA.')),
+  ));
+}
+
+// Population figures: their own page under Set-up.
+async function renderPopulation() {
+  const m = await meta(true);
+  const ds = m.datasets.find((d) => d.shared && !d.archived);
+  const admin = is('sysadmin');
+  const head = pageHead({
+    title: 'Population figures',
+    text: 'Yearly numbers for every LGA that indicators of any sector can divide by — total population, children under 5, expected pregnancies, school-age children … They are usually imported from the official projections (NPC), not typed in by LGAs.',
+    how: [
+      'Add each number you need (e.g. “Expected pregnancies”) with “Add number”.',
+      'Choose the year, press “Download template”, fill in the official figure for each LGA, then “Import Excel”.',
+      'On a form, type the same name as an indicator’s denominator. Monthly indicators automatically use one twelfth of a yearly flow.',
+    ],
+    actions: ds ? [h('button', { onclick: () => datasetDialog(ds, m) }, 'Settings')] : null,
+  });
   if (!ds) {
-    return mount(head, h('div', { class: 'panel' },
-      h('h2', {}, 'Getting started'),
-      h('ol', {},
-        h('li', {}, h('strong', {}, 'Population & denominators'), ' — one yearly data set for numbers every sector divides by (total population, under-5s, expected pregnancies, households…). Entered once a year.'),
-        h('li', {}, h('strong', {}, 'One data set per sector'), ' — e.g. “Health – monthly”, “Agriculture – quarterly”, “WASH – yearly”, each with its own frequency.'),
-        h('li', {}, 'Add indicators to each sector data set. Type a population number’s name as the denominator and it is used automatically.')),
-      is('sysadmin') ? h('div', { class: 'actions' }, h('button', { class: 'primary', onclick: () => datasetDialog(null, m, true) }, 'Create Population & denominators'),
-        h('button', { onclick: () => datasetDialog(null, m) }, '+ New sector data set')) : null));
+    return mount(h('div', {}, head, h('div', { class: 'panel empty' }, h('h2', {}, 'Not created yet'),
+      h('p', {}, 'Create the list once; then add the numbers and import the figures.'),
+      admin ? h('button', { class: 'primary', onclick: () => datasetDialog(null, m, true) }, 'Create population figures') : h('p', { class: 'muted' }, 'Ask a system administrator to create it.'))));
   }
+  mount(h('div', {}, head, sharedPanel(ds)));
+}
 
-  const tabs = h('div', { class: 'bar' },
-    field('Data set', select(m.datasets.map((d) => ({ id: d.id, name: dsLabel(d) + (d.archived ? ' (archived)' : '') })), ds.id, { onchange: (e) => { pref('setupDs', e.target.value); renderSetup(); } })),
-    h('div', { class: 'muted small' }, ds.shared ? 'Shared by all sectors · ' : `Sector: `, ds.shared ? null : h('strong', {}, ds.sector || '—'), ds.shared ? null : ' · ',
-      `Reporting frequency: `, h('strong', {}, ds.frequencyName), ds.reportLevel === 'UNIT' ? ' · reported by each unit (added up to the LGA)' : '', ds.shared ? ' · current year can be entered' : ` · due on day ${ds.dueDay} of the following month`, ' · ',
-      h('button', { class: 'link', onclick: () => datasetDialog(ds, m) }, 'Edit data set')));
-  if (ds.shared) return mount(h('div', {}, head, tabs, sharedPanel(ds)));
+async function renameSector(sec) {
+  const name = prompt(`New name for the sector “${sec.name}”:`, sec.name);
+  if (!name || name.trim() === sec.name) return;
+  try { await api('PATCH', '/api/sectors/' + sec.id, { name: name.trim() }); toast('Sector renamed'); state.meta = null; route(); } catch (e) { toast(e.message, true); }
+}
+
+// One form: its indicators (editable grid) and the numbers people type in.
+function renderForm(ds, m) {
+  const sectorList = h('datalist', { id: 'sector-list' }, m.sectors.map((s) => h('option', { value: s.name })));
+  const sharedFields = m.datasets.filter((d) => d.shared && !d.archived).flatMap((d) => d.dataElements.filter((f) => !f.archived));
+  const fieldList = h('datalist', { id: 'field-list' },
+    ds.dataElements.filter((d) => !d.archived).map((d) => h('option', { value: d.name })),
+    ds.shared ? [] : sharedFields.map((f) => h('option', { value: f.name, label: 'Population figure (shared)' })));
+  const head = pageHead({
+    back: ['#/setup', 'All sectors'],
+    title: ds.shared ? 'Population figures' : dsLabel({ ...ds, reportLevel: 'LGA' }).replace(' — ', ': '),
+    sub: ds.shared ? 'Shared by all sectors · entered once a year per LGA'
+      : `${ds.sector || 'No sector'} · ${ds.frequencyName} · ${ds.reportLevel === 'UNIT' ? 'each school / facility reports (added up to the LGA)' : 'each LGA reports'} · due on day ${ds.dueDay} of the next month${ds.archived ? ' · ARCHIVED' : ''}`,
+    text: ds.shared ? 'Add each yearly number here. Then import the official figures for every LGA from Excel.'
+      : 'Add one row per indicator, then press Add. The numerator and denominator become the boxes people fill in on this form.',
+    how: ds.shared ? null : [
+      'Indicator: the name people will see, e.g. “ANC 4+ coverage”.',
+      'Numerator: what is counted, e.g. “Women with 4+ ANC visits”. This becomes a box on the form.',
+      'Denominator (optional): what it is divided by. Leave it empty for a plain count. If it is a population figure (e.g. “Expected pregnancies”), pick it from the list — it is then taken from the yearly figures instead of being asked each time.',
+      'Typing the same name twice uses the same box. Show as: percentage, per 1,000, or number.',
+      'IDs are made automatically. Paste an existing DHIS2 ID only if the indicator already exists in DHIS2.',
+    ],
+    actions: [h('button', { onclick: () => datasetDialog(ds, m) }, 'Form settings (name, how often, who reports)')],
+  });
 
   const rows = ds.indicators.filter((i) => !i.archived);
   const bySector = new Map();
   for (const i of rows) { const k = i.sector || 'Other'; if (!bySector.has(k)) bySector.set(k, []); bySector.get(k).push(i); }
   const body = [];
   for (const [sector, list] of [...bySector.entries()].sort((a, b) => a[0].localeCompare(b[0]))) {
-    body.push(h('tr', { class: 'sector' }, h('td', { colspan: 7 }, sector)));
+    if (bySector.size > 1) body.push(h('tr', { class: 'sector' }, h('td', { colspan: 7 }, sector)));
     for (const i of list) body.push(indicatorRow(ds, i, m));
   }
+  body.push(h('tr', { class: 'sector newrow' }, h('td', { colspan: 7 }, 'Add a new indicator')));
   body.push(indicatorRow(ds, null, m));
 
-  mount(h('div', {}, head, tabs, sectorList, fieldList,
+  mount(h('div', {}, head, sectorList, fieldList,
+    h('div', { class: 'panel guide' }, sectorSteps(rows.length ? 3 : 2, ds)),
+    rows.length ? null : h('div', { class: 'note info' }, 'This form has no indicators yet. Fill in the row marked “Add a new indicator” and press Add.'),
     h('div', { class: 'scroll' }, h('table', { class: 'setup' },
       h('colgroup', {}, ['sector', 'name', 'num', 'den', 'src', 'show', 'id'].map((c) => h('col', { class: 'c-' + c }))),
-      h('thead', {}, h('tr', {}, h('th', {}, 'Sector'), h('th', {}, 'Indicator'), h('th', {}, 'Numerator'), h('th', {}, 'Denominator (optional)'), h('th', {}, 'Source'), h('th', {}, 'Show as'), h('th', {}, 'ID'))),
+      h('thead', {}, h('tr', {}, h('th', {}, 'Sector'), h('th', {}, 'Indicator'), h('th', {}, 'Numerator (counted)'), h('th', {}, 'Denominator (optional)'), h('th', {}, 'Source'), h('th', {}, 'Show as'), h('th', {}, 'ID'))),
       h('tbody', {}, body))),
-    h('p', { class: 'muted small' }, 'Numerators and denominators become the numbers LGAs enter. Typing the same name twice uses the same number. A name from Population & denominators (e.g. “Expected pregnancies”) uses that yearly figure instead of asking LGAs for it each time. Leave the denominator empty for a plain count.'),
     fieldsPanel(ds)));
+}
+
+// A new sector is created together with its first reporting form.
+function sectorDialog(m) {
+  const sector = h('input', { placeholder: 'e.g. Agriculture' });
+  const freq = select(m.frequencies, 'MONTHLY');
+  const level = select([{ id: 'LGA', name: 'Each LGA' }, { id: 'UNIT', name: 'Each school / facility (added up to the LGA)' }], 'LGA');
+  const due = h('input', { type: 'number', min: 1, max: 28, value: 15 });
+  const name = h('input', { placeholder: 'e.g. Agriculture – monthly' });
+  let typed = false;
+  name.addEventListener('input', () => { typed = true; });
+  const suggest = () => { if (!typed) name.value = sector.value.trim() ? `${sector.value.trim()} – ${freq.options[freq.selectedIndex].text.toLowerCase()}` : ''; };
+  sector.addEventListener('input', suggest); freq.addEventListener('change', suggest);
+  const err = h('div', { class: 'err' });
+  const save = h('button', { class: 'primary' }, 'Create sector and open its form');
+  const dlg = h('dialog', {}, h('div', { class: 'area area-admin area-setup' }, 'Step 1 of 3'), h('h2', {}, 'Add a sector'),
+    h('p', { class: 'muted small' }, 'A sector is a ministry or department that reports on its own form, e.g. Health, Education, Agriculture, WASH, Social Protection. You will add the indicators on the next screen.'),
+    h('div', { class: 'grid2' },
+      field('Sector name', sector, 'As people will see it.'),
+      field('How often it reports', freq, 'Each report covers one month, quarter or year.'),
+      field('Who reports', level, 'Each LGA sends one report — or each school / facility sends its own.'),
+      field('Due day', due, 'Day of the month after the period ends, e.g. 15.'),
+      field('Form name', name, 'Filled in for you; change it if you like.')),
+    err, h('p'), h('div', { class: 'actions' }, save, h('button', { onclick: () => dlg.close() }, 'Cancel')));
+  dlg.addEventListener('close', () => dlg.remove());
+  save.addEventListener('click', busy(save, async () => {
+    err.textContent = '';
+    if (!sector.value.trim()) { err.textContent = 'Give the sector a name.'; return; }
+    if (m.sectors.some((s) => s.name.toLowerCase() === sector.value.trim().toLowerCase())) { err.textContent = `“${sector.value.trim()}” already exists. Use “+ Add another form” on its card instead.`; return; }
+    try {
+      const { data } = await api('POST', '/api/datasets', { name: name.value.trim() || sector.value.trim(), sector: sector.value.trim(), frequency: freq.value, reportLevel: level.value, dueDay: Number(due.value) });
+      dlg.close(); state.meta = null; await loadMe(); toast(`Sector “${sector.value.trim()}” added. Now add its indicators.`); go('#/setup/' + data.id);
+    } catch (e) { err.textContent = e.message; }
+  }));
+  document.body.append(dlg); dlg.showModal(); sector.focus();
 }
 
 function indicatorRow(ds, i, m) {
@@ -774,11 +1167,11 @@ function indicatorRow(ds, i, m) {
       await api('POST', `/api/datasets/${ds.id}/indicators`, body);
       pref('lastSector', body.sector); toast('Indicator added');
     } else { await api('PATCH', '/api/indicators/' + i.id, vals()); toast('Saved'); }
-    state.meta = null; renderSetup();
+    state.meta = null; route();
   }));
   if (del) del.addEventListener('click', busy(del, async () => {
     if (!confirm(`Remove “${i.name}”? Values already reported are kept.`)) return;
-    await api('DELETE', '/api/indicators/' + i.id); toast('Removed'); state.meta = null; renderSetup();
+    await api('DELETE', '/api/indicators/' + i.id); toast('Removed'); state.meta = null; route();
   }));
   return h('tr', {}, h('td', {}, sector), h('td', {}, name), h('td', {}, num), h('td', {}, den), h('td', {}, source), h('td', {}, showAs),
     h('td', {}, isNew ? id : idTag(i.id), h('div', { class: 'actions' }, btn, del)));
@@ -787,8 +1180,8 @@ function indicatorRow(ds, i, m) {
 function fieldsPanel(ds) {
   const list = ds.dataElements.filter((d) => !d.archived);
   if (!list.length) return null;
-  return h('details', { class: 'panel' }, h('summary', {}, `Numbers LGAs enter (${list.length})`),
-    h('p', { class: 'muted small' }, 'Rename a number here to fix a typo everywhere; reported values are kept.'),
+  return h('details', { class: 'panel' }, h('summary', {}, `Boxes on the form — the numbers people type in (${list.length})`),
+    h('p', { class: 'muted small' }, 'Made from the numerators and denominators above. Rename one here to fix a typo everywhere; numbers already reported are kept. “Whole numbers” refuses decimals; “Max” refuses anything larger.'),
     h('table', {}, h('thead', {}, h('tr', {}, h('th', {}, 'Name'), h('th', {}, 'Whole numbers'), h('th', {}, 'Max'), h('th', {}, 'ID'), h('th'))),
       h('tbody', {}, list.map((d) => {
         const name = h('input', { value: d.name, size: 40 });
@@ -797,7 +1190,7 @@ function fieldsPanel(ds) {
         const b = h('button', {}, 'Save');
         b.addEventListener('click', busy(b, async () => {
           await api('PATCH', '/api/fields/' + d.id, { name: name.value.trim(), valueType: whole.checked ? 'INTEGER' : 'NUMBER', max: max.value === '' ? null : Number(max.value) });
-          toast('Saved'); state.meta = null; renderSetup();
+          toast('Saved'); state.meta = null; route();
         }));
         return h('tr', {}, h('td', {}, name), h('td', {}, whole), h('td', {}, max), h('td', {}, idTag(d.id)), h('td', {}, b));
       }))));
@@ -810,20 +1203,22 @@ function sharedPanel(ds) {
   const add = h('button', { class: 'primary' }, 'Add number');
   add.addEventListener('click', busy(add, async () => {
     await api('POST', `/api/datasets/${ds.id}/fields`, { name: name.value.trim(), prorate: split.checked });
-    toast('Added'); state.meta = null; renderSetup();
+    toast('Added'); state.meta = null; route();
   }));
   return h('div', {},
-    list.length ? populationImportPanel(ds, list) : null,
+    h('h2', {}, '1 · The numbers'),
     h('div', { class: 'scroll' }, h('table', {},
       h('thead', {}, h('tr', {}, h('th', {}, 'Number (entered once a year per LGA)'), h('th', {}, 'For monthly or quarterly indicators'), h('th', {}, 'ID'), h('th'))),
       h('tbody', {}, list.map((d) => {
         const n = h('input', { value: d.name, size: 36 });
         const sel = select([{ id: '1', name: 'Split by months (÷12 per month)' }, { id: '0', name: 'Use the yearly figure as is' }], d.prorate ? '1' : '0');
         const b = h('button', {}, 'Save');
-        b.addEventListener('click', busy(b, async () => { await api('PATCH', '/api/fields/' + d.id, { name: n.value.trim(), prorate: sel.value === '1' }); toast('Saved'); state.meta = null; renderSetup(); }));
+        b.addEventListener('click', busy(b, async () => { await api('PATCH', '/api/fields/' + d.id, { name: n.value.trim(), prorate: sel.value === '1' }); toast('Saved'); state.meta = null; route(); }));
         return h('tr', {}, h('td', {}, n), h('td', {}, sel), h('td', {}, idTag(d.id)), h('td', {}, b));
       }), h('tr', {}, h('td', {}, name), h('td', {}, h('label', { class: 'check' }, split, 'Split by months')), h('td'), h('td', {}, add))))),
-    h('p', { class: 'muted small' }, '“Split by months” suits yearly flows such as expected pregnancies or births: a monthly indicator divides by one twelfth. “As is” suits counts such as households, schools or total population. Each LGA (or the state on its behalf) enters these once a year under Data entry.'));
+    h('p', { class: 'muted small' }, '“Split by months” suits yearly flows such as expected pregnancies or births: a monthly indicator divides by one twelfth. “As is” suits counts such as households, schools or total population. Each LGA can also type these in once a year under My reports.'),
+    list.length ? h('h2', {}, '2 · The official figures for each LGA') : null,
+    list.length ? populationImportPanel(ds, list) : h('div', { class: 'note info' }, 'Add at least one number above; then you can import the figures for each LGA.'));
 }
 
 // Official population figures (NPC / NBS …) for every LGA from one Excel sheet.
@@ -916,33 +1311,44 @@ async function populationImportDialog(ds, fields, file, year, after) {
   document.body.append(dlg); dlg.showModal();
 }
 
-function datasetDialog(ds, m, makeShared = false) {
+// Edit a form's settings, add another form to a sector, or create the population figures.
+function datasetDialog(ds, m, makeShared = false, presetSector = '') {
   const shared = ds ? ds.shared : makeShared;
-  const name = h('input', { value: ds ? ds.name : shared ? 'Population and denominators' : '' });
-  const sector = h('input', { list: 'sector-list-dlg', value: ds ? ds.sector : '', placeholder: 'e.g. Health' });
+  const name = h('input', { value: ds ? ds.name : shared ? 'Population and denominators' : presetSector ? `${presetSector} – ` : '' });
+  const sector = h('input', { list: 'sector-list-dlg', value: ds ? ds.sector : presetSector, placeholder: 'e.g. Health', disabled: !!presetSector });
   const freq = select(m.frequencies, ds ? ds.frequency : 'MONTHLY');
-  const level = select([{ id: 'LGA', name: 'Each LGA (one report per LGA)' }, { id: 'UNIT', name: 'Each unit — school, facility … (added up to the LGA)' }], ds ? ds.reportLevel : 'LGA');
+  const level = select([{ id: 'LGA', name: 'Each LGA' }, { id: 'UNIT', name: 'Each school / facility (added up to the LGA)' }], ds ? ds.reportLevel : 'LGA');
   const due = h('input', { type: 'number', min: 1, max: 28, value: ds ? ds.dueDay : 15 });
-  const id = h('input', { class: 'mono', placeholder: 'auto', maxlength: 11 });
+  const id = h('input', { class: 'mono', placeholder: 'made automatically', maxlength: 11 });
   const err = h('div', { class: 'err' });
   const save = h('button', { class: 'primary' }, ds ? 'Save' : 'Create');
-  const dlg = h('dialog', {}, h('h2', {}, ds ? 'Edit data set' : shared ? 'Population & denominators' : 'New sector data set'),
+  const title = ds ? (shared ? 'Population figures — settings' : 'Form settings') : shared ? 'Create population figures' : `Add another form to ${presetSector || 'a sector'}`;
+  const dlg = h('dialog', {}, h('h2', {}, title),
     h('datalist', { id: 'sector-list-dlg' }, m.sectors.map((x) => h('option', { value: x.name }))),
-    shared ? h('p', { class: 'muted small' }, 'A yearly data set for numbers that every sector’s indicators divide by. It has no indicators of its own.') : null,
-    h('div', { class: 'grid2' }, field('Name', name), shared ? null : field('Sector', sector), shared ? null : field('Reporting frequency', freq), shared ? null : field('Who reports', level),
-      shared ? null : field('Due day (of the following month)', due), ds ? field('ID', idTag(ds.id)) : field('ID (optional)', id)),
+    shared ? h('p', { class: 'muted small' }, 'One yearly list of numbers (population, under-5s, expected pregnancies …) that every sector’s indicators can divide by. It has no indicators of its own.')
+      : !ds ? h('p', { class: 'muted small' }, 'A sector can have more than one form, e.g. a monthly one and a yearly one, or one sent by each LGA and one by each school.') : null,
+    ds && !shared ? h('p', { class: 'muted small' }, 'Once reports exist, the sector, how often and who reports can no longer change.') : null,
+    h('div', { class: 'grid2' },
+      field('Form name', name),
+      shared ? null : field('Sector', sector),
+      shared ? null : field('How often it reports', freq),
+      shared ? null : field('Who reports', level),
+      shared ? null : field('Due day', due, 'Day of the month after the period ends.'),
+      ds ? field('ID', idTag(ds.id)) : field('ID (optional)', id, 'Only to reuse an existing DHIS2 ID.')),
     err, h('p'), h('div', { class: 'actions' }, save, h('button', { onclick: () => dlg.close() }, 'Cancel'),
-      ds && is('sysadmin') ? h('button', { class: 'danger', onclick: async () => { await api('PATCH', '/api/datasets/' + ds.id, { archived: !ds.archived }); dlg.close(); state.meta = null; renderSetup(); } }, ds.archived ? 'Restore' : 'Archive') : null));
+      ds && is('sysadmin') ? h('button', { class: 'danger', title: 'Archived forms are hidden from data entry; their data is kept.', onclick: async () => { await api('PATCH', '/api/datasets/' + ds.id, { archived: !ds.archived }); dlg.close(); state.meta = null; route(); } }, ds.archived ? 'Restore form' : 'Archive form') : null));
   dlg.addEventListener('close', () => dlg.remove());
   save.addEventListener('click', busy(save, async () => {
     err.textContent = '';
     const body = shared ? { name: name.value.trim() } : { name: name.value.trim(), sector: sector.value.trim(), frequency: freq.value, reportLevel: level.value, dueDay: Number(due.value) };
     if (shared && !ds) body.shared = true;
+    let newId = null;
     try {
       if (ds) await api('PATCH', '/api/datasets/' + ds.id, body);
-      else { if (id.value.trim()) body.id = id.value.trim(); const { data } = await api('POST', '/api/datasets', body); pref('setupDs', data.id); }
+      else { if (id.value.trim()) body.id = id.value.trim(); newId = (await api('POST', '/api/datasets', body)).data.id; }
     } catch (e) { err.textContent = e.message; return; }
-    dlg.close(); state.meta = null; await loadMe(); renderSetup();
+    dlg.close(); state.meta = null; await loadMe();
+    if (newId) go('#/setup/' + newId); else route();
   }));
   document.body.append(dlg); dlg.showModal();
 }
@@ -964,19 +1370,27 @@ async function rolloutPanel() {
     toast(`Rollout saved (${data.changed} state${data.changed === 1 ? '' : 's'} changed)`);
   }));
   const all = (on) => () => { boxes.forEach((b) => { b.box.checked = on; }); upd(); };
-  return h('details', { class: 'panel', open: states.some((st) => !st.active) || undefined },
-    h('summary', {}, 'Rollout — which states use the system'),
-    h('p', { class: 'muted small' }, 'Only active states show up: in lists, registration QR codes, the state picture, pivot table, national totals and reporting rates, and exports. Data and accounts of inactive states are kept and come back when you activate them again.'),
+  return h('div', { class: 'panel' },
     h('div', { class: 'actions' }, h('button', { class: 'link', onclick: all(true) }, 'Select all'), h('button', { class: 'link', onclick: all(false) }, 'Select none'), count),
     h('div', { class: 'chips rollout' }, boxes.map((b) => h('label', { class: 'check' }, b.box, b.st.name))),
     h('p'), save);
 }
 
+async function renderRollout() {
+  mount(h('div', {},
+    pageHead({
+      title: 'States in use',
+      text: 'Tick the states that use the system, then press Save. The other states are hidden everywhere: in lists, registration QR codes, results, national totals, reporting rates and exports.',
+      how: ['Nothing is deleted: data and accounts of a state you untick are kept and come back when you tick it again.'],
+    }),
+    await rolloutPanel()));
+}
+
 async function renderUnits() {
-  const rollout = is('sysadmin') ? await rolloutPanel() : null;
+  const rollout = null;
   const sectorPref = pref('unitSector');
   const first = await get('/api/units' + qs({ sector: sectorPref, state: state.me.ou.level === 1 ? pref('unitState') : undefined }));
-  if (!first.sectors.length) return mount(h('div', {}, h('h1', {}, 'Org units'), rollout, h('div', { class: 'panel empty' }, 'Create a sector data set on the Indicators page first; units below LGAs are added per sector.')));
+  if (!first.sectors.length) return mount(h('div', {}, pageHead({ title: 'Schools & facilities', text: 'Places below the LGA that report on their own.' }), h('div', { class: 'panel empty' }, 'Add a sector first (Sectors & indicators). Schools and facilities are listed per sector.')));
   const o = await orgs();
   const sector = first.sector;
   const sectorName = (first.sectors.find((x) => x.id === sector) || {}).name;
@@ -1041,15 +1455,24 @@ async function renderUnits() {
   const lgaOpts = [...new Map(first.units.map((u) => [u.lgaId, u.lgaName])).entries()].map(([id, name]) => ({ id, name }));
   mount(h('div', {},
     rollout,
-    h('div', { class: 'head' }, h('div', {}, h('h1', {}, 'Org units'), h('div', { class: 'muted' }, 'Units below each LGA that a sector reports on — schools, health facilities, water points… Each gets a DHIS2-style ID.')),
-      h('div', { class: 'actions' }, tplBtn, h('button', { class: 'primary', onclick: () => fileIn.click() }, 'Import Excel'), fileIn,
-        h('button', { onclick: () => scorecardDialog(sector, sectorName, states, stateId) }, 'Load health facilities'))),
+    pageHead({
+      title: 'Schools & facilities',
+      text: 'Places below each LGA that a sector reports on — schools, health facilities, water points … You only need them when a form is reported by each school / facility.',
+      how: [
+        'Choose the sector.',
+        'Add one place with the form below, or download the Excel template, fill one row per place and press Import Excel. You see a check before anything is saved.',
+        'For Health, “Load health facilities” reads a state’s facilities (with their DHIS2 IDs) from the scorecard platform.',
+        'Click a place to rename or close it. Places are never deleted, so past data stays.',
+      ],
+      actions: [tplBtn, h('button', { class: 'primary', onclick: () => fileIn.click() }, 'Import Excel'), fileIn,
+        h('button', { onclick: () => scorecardDialog(sector, sectorName, states, stateId) }, 'Load health facilities')],
+    }),
     h('div', { class: 'bar' },
       field('Sector', select(first.sectors, sector, { onchange: (e) => { pref('unitSector', e.target.value); renderUnits(); } })),
       states ? field('State', select([{ id: '', name: 'All states' }, ...states], stateId, { onchange: (e) => { pref('unitState', e.target.value); pref('unitLga', ''); renderUnits(); } })) : null,
       field('LGA', select([{ id: '', name: 'All LGAs' }, ...lgaOpts], lgaFilter, { onchange: (e) => { pref('unitLga', e.target.value); renderUnits(); } })),
-      h('div', { class: 'muted small' }, `${units.length} unit${units.length === 1 ? '' : 's'}`), listBtn),
-    h('div', { class: 'panel' }, h('h2', {}, 'Add one'), typeList,
+      h('div', { class: 'muted small' }, `${units.length} place${units.length === 1 ? '' : 's'}`), listBtn),
+    h('div', { class: 'panel' }, h('h2', {}, `Add one ${sectorName.toLowerCase()} place`), typeList,
       h('div', { class: 'bar' }, addState ? field('State', addState) : null, field('LGA', addLga), field('Name', nName), field('Type', nType), field('Code', nCode), field('DHIS2 ID', nId), addBtn)),
     units.length > 2000 ? h('p', { class: 'muted small' }, `Showing the first 2,000 of ${units.length}. Choose an LGA, or use “Download list” for all.`) : null,
     units.length ? h('div', { class: 'scroll' }, h('table', {},
@@ -1203,28 +1626,46 @@ async function checkAndImport(data, sectorId, sectorName, sourceName) {
 // ---------- accounts ----------
 async function renderAccounts() {
   const [{ users, roles }, m] = await Promise.all([get('/api/users'), meta()]);
-  const add = h('button', { class: 'primary', onclick: () => userDialog(null, roles, m) }, '+ New account');
   const [{ requests }, { links }] = await Promise.all([get('/api/account-requests'), get('/api/registration-links')]);
-  const qrBtn = h('button', { onclick: () => linkDialog(m) }, '+ Registration QR code');
+  const roleFilter = pref('userRole') || '';
+  const q = (pref('userQ') || '').toLowerCase();
+  const shownUsers = users.filter((u) => (!roleFilter || u.role === roleFilter) && (!q || `${u.name} ${u.email} ${u.ou ? u.ou.name : ''}`.toLowerCase().includes(q)));
+  const search = h('input', { type: 'search', placeholder: 'Name, email or place', value: pref('userQ') || '' });
+  search.addEventListener('change', () => { pref('userQ', search.value.trim()); renderAccounts(); });
+  const choice = (title, text, btn) => h('div', { class: 'choice' }, h('strong', {}, title), h('p', { class: 'muted small' }, text), btn);
   mount(h('div', {},
-    h('div', { class: 'head' }, h('div', {}, h('h1', {}, 'Accounts'), h('div', { class: 'muted' }, 'Create accounts yourself, or share a registration QR code: people fill in their details and you approve them.')), h('div', { class: 'actions' }, qrBtn, add)),
+    pageHead({
+      title: 'Users',
+      text: 'Everyone signs in with their own account. Each account has one role and one place (the country, a state, an LGA or a school / facility) and only sees that place.',
+    }),
     requestsPanel(requests, m),
+    h('div', { class: 'choices' },
+      choice('Add one person', 'Fill in their name, email, role and place. You get a one-time link to send them (email or WhatsApp); they choose their own password.',
+        h('button', { class: 'primary', onclick: () => userDialog(null, roles, m) }, '+ New account')),
+      choice('Let many people sign up', 'Make a QR code for an area and sector, and print or share it. People scan it and ask for an account; you approve them here.',
+        h('button', { onclick: () => linkDialog(m) }, '+ Registration QR code'))),
     linksPanel(links),
-    h('h2', {}, 'Accounts'),
+    h('details', { class: 'panel roles' }, h('summary', {}, 'What each role can do'),
+      h('table', {}, h('tbody', {}, roles.map((r) => h('tr', {}, h('td', {}, h('strong', {}, r.name)), h('td', { class: 'small' }, ROLE_HELP[r.id] || '')))))),
+    h('h2', {}, `All users (${users.length})`),
+    h('div', { class: 'bar' },
+      field('Role', select([{ id: '', name: 'All roles' }, ...roles.filter((r) => users.some((u) => u.role === r.id))], roleFilter, { onchange: (e) => { pref('userRole', e.target.value); renderAccounts(); } })),
+      field('Search', search),
+      h('span', { class: 'muted small' }, shownUsers.length === users.length ? 'Click a name to change it.' : `${shownUsers.length} shown · click a name to change it.`)),
     h('div', { class: 'scroll' }, h('table', {},
-      h('thead', {}, h('tr', {}, h('th', {}, 'Name'), h('th', {}, 'Email'), h('th', {}, 'Role'), h('th', {}, 'Area'), h('th', {}, 'Assigned'), h('th', {}, 'Last sign-in'), h('th', {}, 'Status'))),
-      h('tbody', {}, users.map((u) => h('tr', { class: 'click', onclick: () => userDialog(u, roles, m) },
+      h('thead', {}, h('tr', {}, h('th', {}, 'Name'), h('th', {}, 'Email'), h('th', {}, 'Role'), h('th', {}, 'Place'), h('th', {}, 'Forms'), h('th', {}, 'Last sign-in'), h('th', {}, 'Status'))),
+      h('tbody', {}, shownUsers.map((u) => h('tr', { class: 'click', onclick: () => userDialog(u, roles, m) },
         h('td', {}, u.name), h('td', {}, u.email), h('td', {}, u.roleName), h('td', {}, u.ou ? u.ou.name : ''),
         h('td', { class: 'small' }, assignedText(u, m)),
         h('td', {}, fmtDate(u.lastLoginAt)),
-        h('td', {}, !u.active ? pill('none', 'Deactivated') : u.locked ? pill('returned', 'Locked') : !u.passwordSet ? pill('submitted', 'Invited') : pill('accepted', 'Active')))))))));
+        h('td', {}, !u.active ? pill('none', 'Switched off') : u.locked ? pill('returned', 'Locked') : !u.passwordSet ? pill('submitted', 'Invited — not signed in yet') : pill('accepted', 'Active')))))))));
 }
 
 // ---------- self-registration: requests, links, QR codes ----------
 function requestsPanel(requests, m) {
   if (!requests.length) return null;
   const dsName = (id) => (m.datasets.find((d) => d.id === id) || {}).name || '';
-  return h('div', { class: 'panel' }, h('h2', {}, `Waiting for approval (${requests.length})`),
+  return h('div', { class: 'panel hotpanel' }, h('h2', {}, `People waiting for you to approve their account (${requests.length})`),
     h('div', { class: 'scroll' }, h('table', {},
       h('thead', {}, h('tr', {}, h('th', {}, 'Name'), h('th', {}, 'Contact'), h('th', {}, 'Job / organisation'), h('th', {}, 'Sector'), h('th', {}, 'Asked for'), h('th', {}, 'Where'), h('th', {}, 'Data sets'), h('th', {}, 'Sent'), h('th'))),
       h('tbody', {}, requests.map((r) => {
@@ -1247,7 +1688,7 @@ function requestsPanel(requests, m) {
           h('td', { class: 'small' }, fmtDate(r.createdAt), h('div', { class: 'cov' }, `via “${r.link}”`)),
           h('td', {}, h('div', { class: 'actions' }, approve, reject)));
       })))),
-    h('p', { class: 'muted small' }, 'Approving creates the account with the password the person chose. You can change their data sets or limit them to certain numbers afterwards in the account list.'));
+    h('p', { class: 'muted small' }, 'Approve: the account is created with the password the person chose, and they can sign in at once. Reject: they see your reason when they try to sign in. You can change their forms afterwards in the list below.'));
 }
 
 function linksPanel(links) {
@@ -1421,7 +1862,7 @@ async function renderRegister(token) {
 }
 
 function assignedText(u, m) {
-  const ds = u.datasets.length ? u.datasets.map((id) => (m.datasets.find((d) => d.id === id) || {}).name).filter(Boolean).join(', ') : 'All data sets';
+  const ds = u.datasets.length ? u.datasets.map((id) => (m.datasets.find((d) => d.id === id) || {}).name).filter(Boolean).join(', ') : 'All forms';
   return u.dataElements.length ? `${ds} · ${u.dataElements.length} number${u.dataElements.length === 1 ? '' : 's'} only` : ds;
 }
 
@@ -1470,6 +1911,8 @@ async function userDialog(u, roles, m) {
   }
   roleSel.addEventListener('change', layoutWhere);
   await fillLgas(); layoutWhere();
+  const showRoleHelp = () => { const el = dlg && dlg.querySelector('.role-help'); if (el) el.textContent = ROLE_HELP[roleSel.value] || ''; };
+  roleSel.addEventListener('change', showRoleHelp);
 
   // Data sets and the numbers (numerators/denominators) the account may enter.
   const dsBoxes = m.datasets.filter((d) => !d.archived).map((d) => ({ d, box: h('input', { type: 'checkbox', checked: u ? u.datasets.includes(d.id) : false }) }));
@@ -1499,16 +1942,18 @@ async function userDialog(u, roles, m) {
     h('h2', {}, u ? u.name : 'New account'),
     h('div', { class: 'grid2' }, field('Full name', name), field('Email', email), field('Role', roleSel)),
     where,
-    h('h3', {}, 'Data sets'),
+    h('p', { class: 'muted small role-help' }),
+    h('h3', {}, 'Forms this person works on'),
     h('div', { class: 'chips' }, dsBoxes.map((x) => h('label', { class: 'check' }, x.box, dsLabel(x.d)))),
-    h('p', { class: 'muted small' }, 'None ticked = all data sets.'),
-    h('h3', {}, 'Numbers this account enters'),
-    h('p', { class: 'muted small' }, 'Tick only the numerators/denominators this person is responsible for. None ticked = all numbers in their data sets.'),
-    deArea,
+    h('p', { class: 'muted small' }, 'Nothing ticked = all forms.'),
+    h('details', {}, h('summary', { class: 'small' }, 'Advanced: only some numbers on a form'),
+      h('p', { class: 'muted small' }, 'Use this when two people share a form (e.g. a Health officer and an Education officer). Tick only the numbers this person types in. Nothing ticked = every number.'),
+      deArea),
     u ? h('label', { class: 'check' }, active, 'Account active') : null,
     err, out, h('p'),
     h('div', { class: 'actions' }, save, reset, h('button', { onclick: () => dlg.close() }, 'Close')));
   dlg.addEventListener('close', () => { dlg.remove(); renderAccounts(); });
+  showRoleHelp();
 
   const showLink = (link, exp) => out.replaceChildren(h('div', { class: 'note ok' },
     'Send this one-time link to the person (by email or WhatsApp). It works once and expires ', fmtDate(exp), '.',
@@ -1537,7 +1982,7 @@ async function userDialog(u, roles, m) {
 async function renderAudit() {
   const { entries } = await get('/api/audit');
   mount(h('div', {},
-    h('div', { class: 'head' }, h('div', {}, h('h1', {}, 'Audit log'), h('div', { class: 'muted' }, 'Sign-ins, account changes, setup changes, data saves, reviews and exports (latest 200).'))),
+    pageHead({ title: 'Activity log', text: 'Every sign-in, set-up change, data save, approval, import and download, with who did it and when (latest 200).' }),
     h('div', { class: 'scroll' }, h('table', {},
       h('thead', {}, h('tr', {}, h('th', {}, 'When'), h('th', {}, 'Who'), h('th', {}, 'What'), h('th', {}, 'Item'), h('th', {}, 'Details'))),
       h('tbody', {}, entries.map((e) => h('tr', {}, h('td', {}, fmtDate(e.created_at)), h('td', {}, e.user_name || e.user_email || e.user_id || '—'),

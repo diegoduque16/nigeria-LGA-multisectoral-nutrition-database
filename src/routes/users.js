@@ -7,6 +7,7 @@ import {
 } from '../lib/auth.js';
 import { loadSeedOrgUnits } from './orgunits.js';
 import { pendingFor } from './register.js';
+import { FREQUENCY_NAMES } from '../lib/dhis.js';
 
 const INVITE_DAYS = 7;
 const RESET_HOURS = 24;
@@ -88,9 +89,9 @@ export async function logout(request, env, ctx) {
 }
 
 export async function me(request, env, ctx) {
-  const datasets = await all(env.DB, `SELECT d.id, d.name, d.frequency, d.shared, d.report_level, d.sector_id AS sectorId, s.name AS sector
+  const datasets = await all(env.DB, `SELECT d.id, d.name, d.frequency, d.due_day AS dueDay, d.shared, d.report_level, d.sector_id AS sectorId, s.name AS sector
     FROM datasets d LEFT JOIN sectors s ON s.id = d.sector_id WHERE d.archived_at IS NULL ORDER BY d.shared, s.name, d.name`);
-  for (const d of datasets) { d.shared = !!d.shared; d.reportLevel = d.report_level === 4 ? 'UNIT' : 'LGA'; delete d.report_level; }
+  for (const d of datasets) { d.shared = !!d.shared; d.reportLevel = d.report_level === 4 ? 'UNIT' : 'LGA'; d.frequencyName = FREQUENCY_NAMES[d.frequency]; delete d.report_level; }
   const mine = ctx.datasets.length && ctx.role !== 'sysadmin' ? datasets.filter((s) => ctx.datasets.includes(s.id)) : datasets;
   return json({
     user: { ...ctx.user, roleName: ROLE_NAMES[ctx.role] },
