@@ -1,4 +1,6 @@
-# Nigeria LGA Multisectoral Nutrition Database
+# LGA Multi-Sectoral Scorecard Data Reporting System
+
+(Repository: Nigeria LGA multisectoral nutrition database)
 
 A simple, DHIS2-compatible aggregate reporting system. LGAs report monthly/quarterly/yearly numbers by sector,
 states review them, and the system gives a state-level picture and exports JSON files in the ALMA Export format

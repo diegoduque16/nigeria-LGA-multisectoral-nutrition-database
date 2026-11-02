@@ -543,7 +543,10 @@ test('self-registration by link/QR: request, pending sign-in message, approval b
   assert.equal((await anon.get(`/api/register/${token}/places`)).data.children.length, 17);
   assert.equal((await anon.get(`/api/register/${token}/places?parent=${ADAMAWA}`)).status, 403); // outside the link's area
   assert.equal((await anon.get('/api/register/nonsense')).status, 404);
-  const form = { name: 'Ngozi Eze', email: 'ngozi@abia.gov.ng', phone: '0803 000 0000', jobTitle: 'M&E officer', organisation: 'Aba North LGA', role: 'lga', ouId: ABA_NORTH, datasets: [ds.id], password: PW };
+  const healthSector = info.sectors.find((x) => x.name === 'Health').id;
+  const form = { name: 'Ngozi Eze', email: 'ngozi@abia.gov.ng', phone: '0803 000 0000', jobTitle: 'M&E officer', organisation: 'Aba North LGA', role: 'lga', sectorId: healthSector, ouId: ABA_NORTH, datasets: [ds.id], password: PW };
+  const { sectorId: _s, ...noSector } = form;
+  assert.equal((await anon.post('/api/register/' + token, noSector)).status, 422);                      // sector is required
   assert.equal((await anon.post('/api/register/' + token, { ...form, ouId: ABIA })).status, 422);       // LGA role needs an LGA
   assert.equal((await anon.post('/api/register/' + token, { ...form, ouId: ADAMAWA })).status, 422);    // outside area
   assert.equal((await anon.post('/api/register/' + token, { ...form, password: 'short' })).status, 422);
@@ -558,7 +561,7 @@ test('self-registration by link/QR: request, pending sign-in message, approval b
   assert.equal((await ad.c.get('/api/account-requests')).data.requests.length, 0);
   const so = await addUser(env, admin, { name: 'S', email: 's@abia.gov.ng', role: 'state', ouId: ABIA });
   const reqs = (await so.c.get('/api/account-requests')).data.requests;
-  assert.equal(reqs.length, 1); assert.equal(reqs[0].ou.name, 'ab Aba North LGA'); assert.equal(reqs[0].phone, '0803 000 0000');
+  assert.equal(reqs.length, 1); assert.equal(reqs[0].ou.name, 'ab Aba North LGA'); assert.equal(reqs[0].phone, '0803 000 0000'); assert.equal(reqs[0].sector, 'Health');
   assert.equal((await so.c.post(`/api/account-requests/${reqs[0].id}/approve`, { role: 'state' })).status, 403);
   assert.equal((await so.c.post(`/api/account-requests/${reqs[0].id}/approve`, {})).status, 200);
   assert.equal((await so.c.post(`/api/account-requests/${reqs[0].id}/approve`, {})).status, 409);
@@ -581,4 +584,36 @@ test('self-registration by link/QR: request, pending sign-in message, approval b
   // An LGA-scoped link only offers LGA-level and unit roles.
   const l2 = (await admin.post('/api/registration-links', { name: 'Aba North schools', ouId: ABA_NORTH, role: 'unit' })).data.link;
   assert.deepEqual((await anon.get('/api/register/' + l2.url.split('/register/')[1])).data.roles.map((r) => r.id), ['lga', 'unit', 'viewer']);
+});
+
+test('registration sector: data sets and units must belong to it; empty choice gets the whole sector', async () => {
+  const env = makeEnv();
+  const admin = await setupAdmin(env);
+  const h1 = (await admin.post('/api/datasets', { name: 'Health – monthly', sector: 'Health', frequency: 'MONTHLY' })).data;
+  const h2 = (await admin.post('/api/datasets', { name: 'Health – yearly', sector: 'Health', frequency: 'YEARLY' })).data;
+  const ed = (await admin.post('/api/datasets', { name: 'Schools', sector: 'Education', frequency: 'YEARLY', reportLevel: 'UNIT' })).data;
+  const secs = Object.fromEntries((await admin.get('/api/units')).data.sectors.map((s) => [s.name, s.id]));
+  const school = (await admin.post('/api/units', { sectorId: secs.Education, lgaId: ABA_NORTH, name: 'School A' })).data.id;
+  const link = (await admin.post('/api/registration-links', { name: 'Education only', ouId: ABIA, sectorId: secs.Education })).data.link;
+  assert.equal(link.sector, 'Education');
+  const token = link.url.split('/register/')[1];
+  const anon = client(env);
+  const info = (await anon.get('/api/register/' + token)).data;
+  assert.equal(info.sector, secs.Education);
+  assert.deepEqual(info.sectors.map((s) => s.name).sort(), ['Education', 'Health']);
+  const units = (await anon.get(`/api/register/${token}/places?parent=${ABA_NORTH}&units=1`)).data.children;
+  assert.equal(units[0].sectorId, secs.Education);
+  const base = { name: 'Head A', email: 'head@school.ng', role: 'unit', ouId: school, password: PW };
+  assert.equal((await anon.post('/api/register/' + token, { ...base, sectorId: secs.Health })).status, 422);            // link is Education-only
+  assert.equal((await anon.post('/api/register/' + token, { ...base, sectorId: secs.Education, datasets: [h1.id] })).status, 422); // Health data set
+  assert.equal((await anon.post('/api/register/' + token, { ...base, sectorId: secs.Education })).status, 201);
+  // Open link: a Health LGA officer who ticks nothing gets both Health data sets on approval (not Education).
+  const open = (await admin.post('/api/registration-links', { name: 'Any sector', ouId: ABIA })).data.link.url.split('/register/')[1];
+  assert.equal((await anon.post('/api/register/' + open, { name: 'Officer', email: 'o@abia.gov.ng', role: 'lga', sectorId: secs.Health, ouId: ABA_NORTH, password: PW })).status, 201);
+  const reqs = (await admin.get('/api/account-requests')).data.requests;
+  for (const r of reqs) await admin.post(`/api/account-requests/${r.id}/approve`, {});
+  const off = client(env); await off.post('/api/auth/login', { email: 'o@abia.gov.ng', password: PW });
+  assert.deepEqual((await off.get('/api/me')).data.datasets.map((d) => d.id).sort(), [h1.id, h2.id].sort());
+  const head = client(env); await head.post('/api/auth/login', { email: 'head@school.ng', password: PW });
+  assert.deepEqual((await head.get('/api/me')).data.datasets.map((d) => d.id), [ed.id]);
 });

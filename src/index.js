@@ -1,4 +1,4 @@
-// LGA Sector Reporting System — Worker entry: API router and the static app (via Assets).
+// LGA Multi-Sectoral Scorecard Data Reporting System — Worker entry: API router and the static app (via Assets).
 import { HttpError, json, errorResponse } from './lib/util.js';
 import { loadContext, checkCsrf } from './lib/auth.js';
 import { run } from './lib/db.js';

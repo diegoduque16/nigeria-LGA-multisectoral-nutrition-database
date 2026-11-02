@@ -1,4 +1,4 @@
-// LGA Sector Reporting — single-page app (no framework, no dashboards: forms and tables).
+// LGA Multi-Sectoral Scorecard Data Reporting System — single-page app (no framework, no dashboards: forms and tables).
 
 // ---------- tiny helpers ----------
 // replaceChildren() would print empty slots as the text "null"; skip them, like h() does.
@@ -155,7 +155,7 @@ function renderLogin() {
   const pw = h('input', { type: 'password', autocomplete: 'current-password', required: true });
   const btn = h('button', { class: 'primary', type: 'submit' }, 'Sign in');
   const form = h('form', { class: 'panel card-narrow' },
-    h('h1', {}, 'Sign in'), h('p', { class: 'muted small' }, 'LGA Sector Reporting System'),
+    h('h1', {}, 'Sign in'), h('p', { class: 'muted small' }, 'LGA Multi-Sectoral Scorecard Data Reporting System'),
     h('div', { class: 'grid2' }, field('Email', email)), field('Password', pw), h('p'), btn, err,
     h('p', { class: 'muted small' }, 'Forgot your password? Ask your administrator for a new sign-in link.'));
   form.addEventListener('submit', busy(btn, async () => {
@@ -1202,7 +1202,7 @@ function requestsPanel(requests, m) {
   const dsName = (id) => (m.datasets.find((d) => d.id === id) || {}).name || '';
   return h('div', { class: 'panel' }, h('h2', {}, `Waiting for approval (${requests.length})`),
     h('div', { class: 'scroll' }, h('table', {},
-      h('thead', {}, h('tr', {}, h('th', {}, 'Name'), h('th', {}, 'Contact'), h('th', {}, 'Job / organisation'), h('th', {}, 'Asked for'), h('th', {}, 'Where'), h('th', {}, 'Data sets'), h('th', {}, 'Sent'), h('th'))),
+      h('thead', {}, h('tr', {}, h('th', {}, 'Name'), h('th', {}, 'Contact'), h('th', {}, 'Job / organisation'), h('th', {}, 'Sector'), h('th', {}, 'Asked for'), h('th', {}, 'Where'), h('th', {}, 'Data sets'), h('th', {}, 'Sent'), h('th'))),
       h('tbody', {}, requests.map((r) => {
         const approve = h('button', { class: 'primary' }, 'Approve');
         const reject = h('button', { class: 'danger' }, 'Reject');
@@ -1216,9 +1216,10 @@ function requestsPanel(requests, m) {
           h('td', {}, r.name, r.note ? h('div', { class: 'cov' }, `“${r.note}”`) : null),
           h('td', { class: 'small' }, r.email, r.phone ? h('div', {}, r.phone) : null),
           h('td', { class: 'small' }, [r.jobTitle, r.organisation].filter(Boolean).join(' · ')),
+          h('td', {}, r.sector || '—'),
           h('td', {}, r.roleName),
           h('td', { class: 'small' }, r.ou.name, r.ou.lga ? h('div', { class: 'cov' }, r.ou.lga) : null),
-          h('td', { class: 'small' }, r.datasets.map(dsName).filter(Boolean).join(', ') || 'All'),
+          h('td', { class: 'small' }, r.datasets.map(dsName).filter(Boolean).join(', ') || (r.sector ? `All ${r.sector}` : 'All')),
           h('td', { class: 'small' }, fmtDate(r.createdAt), h('div', { class: 'cov' }, `via “${r.link}”`)),
           h('td', {}, h('div', { class: 'actions' }, approve, reject)));
       })))),
@@ -1230,7 +1231,7 @@ function linksPanel(links) {
   return h('details', { class: 'panel', open: links.some((l) => l.active) || undefined }, h('summary', {}, `Registration QR codes (${links.filter((l) => l.active).length} active)`),
     h('table', {}, h('thead', {}, h('tr', {}, h('th', {}, 'Name'), h('th', {}, 'Area'), h('th', {}, 'Requests'), h('th', {}, 'Valid until'), h('th', {}, 'Status'), h('th'))),
       h('tbody', {}, links.map((l) => h('tr', {},
-        h('td', {}, l.name), h('td', {}, l.area ? l.area.name : ''),
+        h('td', {}, l.name, l.sector ? h('div', { class: 'cov' }, l.sector) : null), h('td', {}, l.area ? l.area.name : ''),
         h('td', { class: 'small' }, `${l.requests.pending} waiting · ${l.requests.approved} approved · ${l.requests.total} total`),
         h('td', { class: 'small' }, fmtDay(l.expiresAt)),
         h('td', {}, l.active ? pill('accepted', 'Active') : pill('none', l.revoked ? 'Stopped' : 'Expired')),
@@ -1254,20 +1255,28 @@ async function linkDialog(m) {
     ...(is('sysadmin') ? [{ id: 'state', name: 'State officer' }, { id: 'viewer', name: 'Viewer' }] : [])];
   const roleSel = select(roleOpts, is('state') ? 'lga' : '');
   const days = h('input', { type: 'number', min: 1, max: 365, value: 30, size: 5 });
+  const sectorPick = select([{ id: '', name: 'Any sector (they choose)' }, ...m.sectors.filter((x) => m.datasets.some((d) => d.sectorId === x.id && !d.shared))], '');
   const dsBoxes = m.datasets.filter((d) => !d.archived && !d.shared).map((d) => ({ d, box: h('input', { type: 'checkbox' }) }));
+  const dsWrap = h('div');
+  const fillDs = () => {
+    const list = dsBoxes.filter((x) => !sectorPick.value || x.d.sectorId === sectorPick.value);
+    for (const x of dsBoxes) if (!list.includes(x)) x.box.checked = false;
+    dsWrap.replaceChildren(list.length ? h('div', {}, h('h3', {}, 'Data sets to suggest (optional)'), h('div', { class: 'chips' }, list.map((x) => h('label', { class: 'check' }, x.box, dsLabel(x.d))))) : null);
+  };
+  sectorPick.addEventListener('change', fillDs); fillDs();
   const err = h('div', { class: 'err' });
   const create = h('button', { class: 'primary' }, 'Create QR code');
   const dlg = h('dialog', {}, h('h2', {}, 'New registration QR code'),
     h('p', { class: 'muted small' }, 'Anyone with this QR code can ask for an account inside the area you choose. Nobody gets in until you approve them.'),
-    h('div', { class: 'grid2' }, field('Name (for you)', name), field('Area', area), field('Or one LGA', lgaPick), field('Suggested role', roleSel), field('Valid for (days)', days)),
-    dsBoxes.length ? h('div', {}, h('h3', {}, 'Data sets to suggest'), h('div', { class: 'chips' }, dsBoxes.map((x) => h('label', { class: 'check' }, x.box, dsLabel(x.d))))) : null,
+    h('div', { class: 'grid2' }, field('Name (for you)', name), field('Area', area), field('Or one LGA', lgaPick), field('Sector', sectorPick), field('Suggested role', roleSel), field('Valid for (days)', days)),
+    dsWrap,
     err, h('p'), h('div', { class: 'actions' }, create, h('button', { onclick: () => dlg.close() }, 'Cancel')));
   dlg.addEventListener('close', () => dlg.remove());
   create.addEventListener('click', busy(create, async () => {
     err.textContent = '';
     try {
       const { data } = await api('POST', '/api/registration-links', {
-        name: name.value.trim(), ouId: lgaPick.value || area.value, role: roleSel.value || undefined,
+        name: name.value.trim(), ouId: lgaPick.value || area.value, role: roleSel.value || undefined, sectorId: sectorPick.value || undefined,
         datasets: dsBoxes.filter((x) => x.box.checked).map((x) => x.d.id), days: Number(days.value) || 30,
       });
       dlg.close(); renderAccounts(); showQr(data.link);
@@ -1287,7 +1296,7 @@ async function showQr(link) {
     g.fillStyle = '#fff'; g.fillRect(0, 0, W, H); g.fillStyle = '#000';
     mtx.forEach((row, r) => row.forEach((dark, k) => { if (dark) g.fillRect((k + 4) * scale, (r + 4) * scale, scale, scale); }));
     g.textAlign = 'center'; g.fillStyle = '#1c2321';
-    g.font = 'bold 26px system-ui, sans-serif'; g.fillText('LGA Sector Reporting — request an account', W / 2, W + 40);
+    g.font = 'bold 26px system-ui, sans-serif'; g.fillText('LGA Multi-Sectoral Scorecard — request an account', W / 2, W + 40);
     g.font = '22px system-ui, sans-serif'; g.fillText(link.name.slice(0, 60), W / 2, W + 80);
     g.fillStyle = '#5d6b66'; g.font = '18px system-ui, sans-serif';
     g.fillText('Scan with your phone camera, fill in your details, wait for approval.', W / 2, W + 118);
@@ -1319,7 +1328,19 @@ async function renderRegister(token) {
   const where = h('div', { class: 'grid2' });
   const note = h('textarea', { placeholder: 'Anything the administrator should know (optional)' });
   const pw = h('input', { type: 'password', autocomplete: 'new-password' }); const pw2 = h('input', { type: 'password', autocomplete: 'new-password' });
-  const dsBoxes = info.datasets.map((d) => ({ d, box: h('input', { type: 'checkbox', checked: d.suggested }) }));
+  const dsBoxes = info.datasets.map((d) => ({ d, box: h('input', { type: 'checkbox', checked: d.suggested }), label: null }));
+  const sectorSel = select([{ id: '', name: 'Choose your sector' }, ...info.sectors], info.sector || '', { disabled: !!info.sector });
+  const dsArea = h('div');
+  // Only the chosen sector's data sets; all ticked unless the QR code suggested specific ones.
+  function fillDatasets() {
+    const sid = sectorSel.value;
+    const mine = dsBoxes.filter((x) => x.d.sectorId === sid);
+    const anySuggested = mine.some((x) => x.d.suggested);
+    for (const x of dsBoxes) x.box.checked = x.d.sectorId === sid && (anySuggested ? x.d.suggested : true);
+    dsArea.replaceChildren(sid && mine.length ? h('div', {}, h('h3', {}, 'What you will report or follow'),
+      h('div', { class: 'chips' }, mine.map((x) => h('label', { class: 'check' }, x.box, x.d.name + (x.d.byUnit ? ' (by school / facility)' : ''))))) : null);
+  }
+  sectorSel.addEventListener('change', () => { fillDatasets(); fillUnits(); });
   const err = h('div', { class: 'err' });
   const send = h('button', { class: 'primary', type: 'submit' }, 'Send request');
   const opt = (list, empty) => [h('option', { value: '' }, empty), ...list.map((x) => h('option', { value: x.id }, x.name + (x.type ? ` (${x.type})` : '')))];
@@ -1331,7 +1352,10 @@ async function renderRegister(token) {
     if (info.area.level === 3) { lgaSel.replaceChildren(h('option', { value: info.area.id }, info.area.name)); return fillUnits(); }
     lgaSel.replaceChildren(...opt(sid ? await places(sid) : [], 'Choose your LGA')); await fillUnits();
   }
-  async function fillUnits() { unitSel.replaceChildren(...opt(lgaSel.value ? await places(lgaSel.value, true) : [], lgaSel.value ? 'Choose your school / facility' : '—')); }
+  async function fillUnits() {
+    const list = lgaSel.value ? (await places(lgaSel.value, true)).filter((u) => !sectorSel.value || u.sectorId === sectorSel.value) : [];
+    unitSel.replaceChildren(...opt(list, !lgaSel.value ? '—' : list.length ? 'Choose your school / facility' : 'None listed for this sector yet'));
+  }
   stateSel.addEventListener('change', fillLgas); lgaSel.addEventListener('change', fillUnits);
   function layout() {
     const l = lvl();
@@ -1341,13 +1365,13 @@ async function renderRegister(token) {
       l === 4 ? field('Unit (school, facility …)', unitSel) : null].filter(Boolean));
   }
   roleSel.addEventListener('change', layout);
-  await fillStates(); await fillLgas(); layout();
+  await fillStates(); await fillLgas(); layout(); fillDatasets();
   const form = h('form', { class: 'panel card-narrow reg' },
     h('h1', {}, 'Request an account'),
-    h('p', { class: 'muted small' }, `LGA Sector Reporting · ${info.name} · ${info.area.name}`),
+    h('p', { class: 'muted small' }, `LGA Multi-Sectoral Scorecard Data Reporting System · ${info.name} · ${info.area.name}`),
     h('div', { class: 'grid2' }, field('Full name', name), field('Email', email), field('Phone', phone), field('Job title', job)), field('Organisation / office', org),
-    h('h3', {}, 'Where you work'), field('I will be', roleSel), where,
-    dsBoxes.length ? h('div', {}, h('h3', {}, 'What you will report or follow'), h('div', { class: 'chips' }, dsBoxes.map((x) => h('label', { class: 'check' }, x.box, `${x.d.sector ? x.d.sector + ' — ' : ''}${x.d.name}`)))) : null,
+    h('h3', {}, 'Your sector and where you work'), h('div', { class: 'grid2' }, field('Sector', sectorSel), field('I will be', roleSel)), where,
+    dsArea,
     h('h3', {}, 'Choose a password'), h('div', { class: 'grid2' }, field('Password (10+ characters)', pw), field('Type it again', pw2)),
     note, err, h('p'), send,
     h('p', { class: 'muted small' }, 'An administrator checks your request. Once approved, sign in with your email and this password.'));
@@ -1356,11 +1380,12 @@ async function renderRegister(token) {
     if (pw.value !== pw2.value) { err.textContent = 'The two passwords do not match.'; return; }
     const l = lvl();
     const ouId = l === 4 ? unitSel.value : l === 3 ? lgaSel.value : l === 2 ? (info.area.level === 1 ? stateSel.value : info.area.id) : (lgaSel.value || stateSel.value || info.area.id);
+    if (!sectorSel.value) { err.textContent = 'Choose your sector.'; return; }
     if (!ouId) { err.textContent = 'Choose where you work.'; return; }
     try {
       await api('POST', '/api/register/' + token, {
         name: name.value.trim(), email: email.value.trim(), phone: phone.value.trim() || undefined, jobTitle: job.value.trim() || undefined,
-        organisation: org.value.trim() || undefined, role: roleSel.value, ouId, datasets: dsBoxes.filter((x) => x.box.checked).map((x) => x.d.id),
+        organisation: org.value.trim() || undefined, role: roleSel.value, sectorId: sectorSel.value, ouId, datasets: dsBoxes.filter((x) => x.box.checked).map((x) => x.d.id),
         note: note.value.trim() || undefined, password: pw.value,
       });
       mount(h('div', { class: 'panel card-narrow' }, h('h1', {}, 'Request sent'),

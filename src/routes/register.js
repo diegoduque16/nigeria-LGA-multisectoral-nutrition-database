@@ -19,6 +19,7 @@ const linkOut = async (db, l, request) => {
   return {
     id: l.id, name: l.name, url: `${new URL(request.url).origin}/#/register/${l.id}`,
     area: ou ? { id: ou.id, name: ou.name, level: ou.level } : null, role: l.role, datasets: JSON.parse(l.datasets || '[]'),
+    sector: l.sector_id ? ((await one(db, 'SELECT name FROM sectors WHERE id = ?', l.sector_id)) || {}).name || null : null,
     maxUses: l.max_uses, uses: l.uses, expiresAt: l.expires_at, revoked: !!l.revoked_at,
     active: !l.revoked_at && l.expires_at > now() && (l.max_uses === null || l.uses < l.max_uses),
     requests: { pending: c.pending || 0, approved: c.approved || 0, total: c.total || 0 }, createdAt: l.created_at,
@@ -39,6 +40,7 @@ export async function createLink(request, env, ctx) {
     name: v.string({ min: 1, max: 120 }),
     ouId: v.string({ min: 11, max: 11 }),
     role: v.string({ oneOf: SELF_ROLES }).optional(),
+    sectorId: v.string({ min: 1, max: 20 }).optional(),
     datasets: v.array(v.string({ min: 1, max: 20 }), { max: 50 }).optional(),
     days: v.number({ int: true, min: 1, max: 365 }).default(30),
     maxUses: v.number({ int: true, min: 1, max: 10000 }).optional(),
@@ -48,9 +50,10 @@ export async function createLink(request, env, ctx) {
   if (!inScope(ctx, ou)) throw new HttpError(403, 'out_of_scope', 'That area is outside your account.');
   if (ctx.role === 'state' && body.role && !['lga', 'unit'].includes(body.role)) throw new HttpError(403, 'forbidden', 'State officers can invite LGA and unit data-entry users.');
   for (const d of body.datasets || []) if (!(await one(env.DB, 'SELECT id FROM datasets WHERE id = ?', d))) throw new HttpError(422, 'invalid', 'Unknown data set.', { field: 'datasets' });
+  if (body.sectorId && !(await one(env.DB, 'SELECT id FROM sectors WHERE id = ?', body.sectorId))) throw new HttpError(422, 'invalid', 'Unknown sector.', { field: 'sectorId' });
   const id = randomToken(18);
-  await run(env.DB, 'INSERT INTO registration_links (id, name, ou_id, role, datasets, max_uses, expires_at, created_by, created_at) VALUES (?,?,?,?,?,?,?,?,?)',
-    id, body.name, ou.id, body.role || null, JSON.stringify(body.datasets || []), body.maxUses ?? null, now() + body.days * 86400000, ctx.user.id, now());
+  await run(env.DB, 'INSERT INTO registration_links (id, name, ou_id, role, sector_id, datasets, max_uses, expires_at, created_by, created_at) VALUES (?,?,?,?,?,?,?,?,?,?)',
+    id, body.name, ou.id, body.role || null, body.sectorId || null, JSON.stringify(body.datasets || []), body.maxUses ?? null, now() + body.days * 86400000, ctx.user.id, now());
   await audit(env.DB, ctx, 'registration_link_created', 'registration_link', id.slice(0, 8), { name: body.name, area: ou.id });
   return json({ link: await linkOut(env.DB, await one(env.DB, 'SELECT * FROM registration_links WHERE id = ?', id), request) }, 201);
 }
@@ -78,7 +81,7 @@ const allowedRoles = (area) => SELF_ROLES.filter((r) => ROLE_LEVEL[r] === null |
 export async function registrationInfo(request, env, ctx, { token }) {
   await rateLimit(env.DB, 'reg-info:' + ip(request), 120, 900);
   const { link, area } = await activeLink(env.DB, token);
-  const datasets = await all(env.DB, `SELECT d.id, d.name, d.report_level, s.name AS sector FROM datasets d LEFT JOIN sectors s ON s.id = d.sector_id
+  const datasets = await all(env.DB, `SELECT d.id, d.name, d.report_level, d.sector_id, s.name AS sector FROM datasets d LEFT JOIN sectors s ON s.id = d.sector_id
     WHERE d.archived_at IS NULL AND d.shared = 0 ORDER BY s.name, d.name`);
   const suggested = JSON.parse(link.datasets || '[]');
   return json({
@@ -86,7 +89,9 @@ export async function registrationInfo(request, env, ctx, { token }) {
     area: { id: area.id, name: area.name, level: area.level, parentId: area.parent_id },
     roles: allowedRoles(area).map((r) => ({ id: r, name: ROLE_NAMES[r], level: ROLE_LEVEL[r] })),
     role: link.role,
-    datasets: datasets.map((d) => ({ id: d.id, name: d.name, sector: d.sector || '', byUnit: d.report_level === 4, suggested: suggested.includes(d.id) })),
+    sector: link.sector_id,
+    sectors: (await all(env.DB, `SELECT id, name FROM sectors WHERE id IN (SELECT sector_id FROM datasets WHERE archived_at IS NULL AND shared = 0) ORDER BY sort, name`)),
+    datasets: datasets.map((d) => ({ id: d.id, name: d.name, sectorId: d.sector_id, sector: d.sector || '', byUnit: d.report_level === 4, suggested: suggested.includes(d.id) })),
   });
 }
 
@@ -101,9 +106,9 @@ export async function registrationPlaces(request, env, ctx, { token }) {
     throw new HttpError(403, 'out_of_scope', 'Outside the area of this link.');
   }
   const units = q.get('units') === '1';
-  const rows = await all(env.DB, `SELECT o.id, o.name, o.level, o.unit_type, s.name AS sector FROM org_units o LEFT JOIN sectors s ON s.id = o.sector_id
+  const rows = await all(env.DB, `SELECT o.id, o.name, o.level, o.unit_type, o.sector_id, s.name AS sector FROM org_units o LEFT JOIN sectors s ON s.id = o.sector_id
      WHERE o.parent_id = ? AND o.closed_at IS NULL AND ${units ? 'o.level = 4' : 'o.level <= 3'} ORDER BY o.name LIMIT 3000`, parent.id);
-  return json({ parent: { id: parent.id, name: parent.name, level: parent.level }, children: rows.map((r) => ({ id: r.id, name: r.name, type: r.unit_type || '', sector: r.sector || '' })) });
+  return json({ parent: { id: parent.id, name: parent.name, level: parent.level }, children: rows.map((r) => ({ id: r.id, name: r.name, type: r.unit_type || '', sectorId: r.sector_id, sector: r.sector || '' })) });
 }
 
 // POST /api/register/:token — submit a request.
@@ -117,6 +122,7 @@ export async function submitRegistration(request, env, ctx, { token }) {
     jobTitle: v.string({ max: 120 }).optional(),
     organisation: v.string({ max: 160 }).optional(),
     role: v.string({ oneOf: SELF_ROLES }),
+    sectorId: v.string({ min: 1, max: 20 }),
     ouId: v.string({ min: 11, max: 11 }),
     datasets: v.array(v.string({ min: 1, max: 20 }), { max: 50 }).optional(),
     note: v.string({ max: 500 }).optional(),
@@ -130,16 +136,24 @@ export async function submitRegistration(request, env, ctx, { token }) {
     const where = { 2: 'a state', 3: 'an LGA', 4: 'a unit (school, facility …)' }[lvl];
     throw new HttpError(422, 'invalid', `For “${ROLE_NAMES[body.role]}” choose ${where}.`, { field: 'ouId' });
   }
-  for (const d of body.datasets || []) if (!(await one(env.DB, 'SELECT id FROM datasets WHERE id = ? AND archived_at IS NULL', d))) throw new HttpError(422, 'invalid', 'Unknown data set.', { field: 'datasets' });
+  const sector = await one(env.DB, 'SELECT id, name FROM sectors WHERE id = ?', body.sectorId);
+  if (!sector) throw new HttpError(422, 'invalid', 'Choose your sector.', { field: 'sectorId' });
+  if (link.sector_id && link.sector_id !== sector.id) throw new HttpError(422, 'invalid', 'This link is for another sector.', { field: 'sectorId' });
+  if (ou.level === 4 && ou.sector_id !== sector.id) throw new HttpError(422, 'invalid', `That unit belongs to another sector, not ${sector.name}.`, { field: 'ouId' });
+  for (const d of body.datasets || []) {
+    const ds = await one(env.DB, 'SELECT id, sector_id FROM datasets WHERE id = ? AND archived_at IS NULL', d);
+    if (!ds) throw new HttpError(422, 'invalid', 'Unknown data set.', { field: 'datasets' });
+    if (ds.sector_id !== sector.id) throw new HttpError(422, 'invalid', `Choose data sets of the ${sector.name} sector only.`, { field: 'datasets' });
+  }
   const email = body.email.toLowerCase();
   if (await one(env.DB, 'SELECT id FROM users WHERE email = ?', email)) throw new HttpError(409, 'email_taken', 'An account with this email already exists. Sign in, or ask your administrator for a new password link.');
   if (await one(env.DB, "SELECT id FROM account_requests WHERE email = ? AND status = 'pending'", email)) throw new HttpError(409, 'pending', 'A request with this email is already waiting for approval.');
   checkPasswordStrength(body.password);
   const pw = await hashPassword(body.password);
   const id = uid('rq_');
-  await run(env.DB, `INSERT INTO account_requests (id, link_id, name, email, phone, job_title, organisation, role, ou_id, datasets, note, pw_hash, pw_salt, pw_iter, ip, created_at)
-    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-    id, link.id, body.name, email, body.phone || null, body.jobTitle || null, body.organisation || null, body.role, ou.id,
+  await run(env.DB, `INSERT INTO account_requests (id, link_id, name, email, phone, job_title, organisation, role, sector_id, ou_id, datasets, note, pw_hash, pw_salt, pw_iter, ip, created_at)
+    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+    id, link.id, body.name, email, body.phone || null, body.jobTitle || null, body.organisation || null, body.role, sector.id, ou.id,
     JSON.stringify(body.datasets || []), body.note || null, pw.hash, pw.salt, pw.iter, ip(request), now());
   await run(env.DB, 'UPDATE registration_links SET uses = uses + 1 WHERE id = ?', link.id);
   await audit(env.DB, { user: null, ip: ip(request) }, 'account_requested', 'account_request', id, { email, role: body.role, ou: ou.id });
@@ -148,8 +162,9 @@ export async function submitRegistration(request, env, ctx, { token }) {
 
 // ---------- approval (admin / state officer) ----------
 async function requestsInScope(db, ctx, status) {
-  const rows = await all(db, `SELECT r.*, o.name AS ou_name, o.level AS ou_level, o.path, l.name AS link_name, u.name AS decided_by_name
+  const rows = await all(db, `SELECT r.*, o.name AS ou_name, o.level AS ou_level, o.path, l.name AS link_name, u.name AS decided_by_name, s.name AS sector_name
       FROM account_requests r JOIN org_units o ON o.id = r.ou_id JOIN registration_links l ON l.id = r.link_id LEFT JOIN users u ON u.id = r.decided_by
+      LEFT JOIN sectors s ON s.id = r.sector_id
      WHERE r.status = ? ORDER BY r.created_at ${status === 'pending' ? 'ASC' : 'DESC'} LIMIT 500`, status);
   return rows.filter((r) => inScope(ctx, r) && (ctx.role === 'sysadmin' || ['lga', 'unit'].includes(r.role)));
 }
@@ -169,7 +184,7 @@ export async function listRequests(request, env, ctx) {
   return json({
     requests: rows.map((r) => ({
       id: r.id, name: r.name, email: r.email, phone: r.phone, jobTitle: r.job_title, organisation: r.organisation,
-      role: r.role, roleName: ROLE_NAMES[r.role], ou: { id: r.ou_id, name: r.ou_name, level: r.ou_level, path: r.path, lga: lgaNames[r.id] || null },
+      role: r.role, roleName: ROLE_NAMES[r.role], sectorId: r.sector_id, sector: r.sector_name || '', ou: { id: r.ou_id, name: r.ou_name, level: r.ou_level, path: r.path, lga: lgaNames[r.id] || null },
       datasets: JSON.parse(r.datasets || '[]'), note: r.note, link: r.link_name, createdAt: r.created_at, status: r.status,
       decidedBy: r.decided_by_name, decidedAt: r.decided_at, decisionNote: r.decision_note,
     })),
@@ -197,7 +212,9 @@ export async function approveRequest(request, env, ctx, { id }) {
   const ou = await ouById(env.DB, r.ou_id);
   if (ROLE_LEVEL[role] && ou.level !== ROLE_LEVEL[role]) throw new HttpError(422, 'invalid', `“${ROLE_NAMES[role]}” does not match where this person works (${ou.name}). Reject it and ask them to register again, or keep the requested role.`);
   if (await one(env.DB, 'SELECT id FROM users WHERE email = ?', r.email)) throw new HttpError(409, 'email_taken', 'An account with this email already exists.');
-  const datasets = body.datasets || JSON.parse(r.datasets || '[]');
+  let datasets = body.datasets || JSON.parse(r.datasets || '[]');
+  // Nothing ticked: give them every data set of their sector (rather than all sectors).
+  if (!datasets.length && r.sector_id) datasets = (await all(env.DB, 'SELECT id FROM datasets WHERE sector_id = ? AND archived_at IS NULL AND shared = 0', r.sector_id)).map((d) => d.id);
   const userId = uid('u_');
   const t = now();
   await run(env.DB, 'INSERT INTO users (id, email, name, pw_hash, pw_salt, pw_iter, role, ou_id, created_by, created_at) VALUES (?,?,?,?,?,?,?,?,?,?)',
