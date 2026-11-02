@@ -1123,6 +1123,14 @@ function renderForm(ds, m) {
     fieldsPanel(ds)));
 }
 
+// A real dropdown of the sectors (the value is the sector name, as the API expects).
+// An empty or unknown current value shows “Choose a sector”, never a blank box.
+function sectorSelect(m, current, attrs = {}) {
+  const names = m.sectors.map((x) => x.name);
+  const opts = [...(current && names.includes(current) ? [] : [{ id: '', name: current ? `${current} (not a sector any more)` : 'Choose a sector' }]), ...names.map((n) => ({ id: n, name: n }))];
+  return select(opts, current && names.includes(current) ? current : '', attrs);
+}
+
 // A new sector is created together with its first reporting form.
 function sectorDialog(m) {
   const forms = m.datasets.filter((d) => !d.shared);
@@ -1162,7 +1170,7 @@ function sectorDialog(m) {
 
 function indicatorRow(ds, i, m) {
   const isNew = !i;
-  const sector = h('input', { list: 'sector-list', value: i ? i.sector : ds.sector || pref('lastSector') || '', placeholder: 'e.g. Health' });
+  const sector = sectorSelect(m, i ? i.sector : ds.sector);
   const name = h('input', { value: i ? i.name : '', placeholder: isNew ? 'New indicator name' : '' });
   const num = h('input', { list: 'field-list', value: i ? i.numerator : '', placeholder: 'e.g. Women with 4+ ANC visits' });
   const den = h('input', { list: 'field-list', value: i ? i.denominator : '', placeholder: 'e.g. Expected pregnancies' });
@@ -1462,7 +1470,7 @@ async function populationImportDialog(ds, fields, file, year, after) {
 function datasetDialog(ds, m, makeShared = false, presetSector = '') {
   const shared = ds ? ds.shared : makeShared;
   const name = h('input', { value: ds ? ds.name : shared ? 'Population and denominators' : presetSector ? `${presetSector} – ` : '' });
-  const sector = h('input', { list: 'sector-list-dlg', value: ds ? ds.sector : presetSector, placeholder: 'e.g. Health', disabled: !!presetSector });
+  const sector = sectorSelect(m, ds ? ds.sector : presetSector, { disabled: !!presetSector });
   const freq = select(m.frequencies, ds ? ds.frequency : 'MONTHLY');
   const level = select([{ id: 'LGA', name: 'Each LGA' }, { id: 'UNIT', name: 'Each school / facility (added up to the LGA)' }], ds ? ds.reportLevel : 'LGA');
   const due = h('input', { type: 'number', min: 1, max: 28, value: ds ? ds.dueDay : 15 });
@@ -1471,7 +1479,6 @@ function datasetDialog(ds, m, makeShared = false, presetSector = '') {
   const save = h('button', { class: 'primary' }, ds ? 'Save' : 'Create');
   const title = ds ? (shared ? 'Population figures — settings' : 'Form settings') : shared ? 'Create population figures' : `Add another form to ${presetSector || 'a sector'}`;
   const dlg = h('dialog', {}, h('h2', {}, title),
-    h('datalist', { id: 'sector-list-dlg' }, m.sectors.map((x) => h('option', { value: x.name }))),
     shared ? h('p', { class: 'muted small' }, 'One yearly list of numbers (population, under-5s, expected pregnancies …) that every sector’s indicators can divide by. It has no indicators of its own.')
       : !ds ? h('p', { class: 'muted small' }, 'A sector can have more than one form, e.g. a monthly one and a yearly one, or one sent by each LGA and one by each school.') : null,
     ds && !shared ? h('p', { class: 'muted small' }, 'Once reports exist, the sector, how often and who reports can no longer change.') : null,
