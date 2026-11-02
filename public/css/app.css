@@ -280,3 +280,4 @@ table.indlist td { padding: 9px 10px; }
 .schedule.archived { opacity: .6; }
 .whotypes { margin-top: 8px; padding: 10px 12px; border: 1px dashed var(--line); border-radius: 6px; background: #fafbfa; }
 .whotypes .bar { margin: 6px 0 0; }
+details.excelbar > summary { font-weight: 650; }

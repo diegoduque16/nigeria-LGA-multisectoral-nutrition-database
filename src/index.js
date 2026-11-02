@@ -12,6 +12,7 @@ import * as pop from './routes/popimport.js';
 import * as pv from './routes/pivot.js';
 import * as reg from './routes/register.js';
 import * as wp from './routes/worldpop.js';
+import * as rem from './routes/reminders.js';
 
 // [method, path, handler, access]  access: 'public' | 'optional' | 'session'
 const ROUTES = [
@@ -74,6 +75,9 @@ const ROUTES = [
   ['POST', '/api/worldpop/imported', wp.worldpopImported, 'session'],
 
   ['GET', '/api/entry', entry.getEntry, 'session'],
+  ['GET', '/api/entry/sheet', entry.entrySheet, 'session'],
+  ['GET', '/api/reminders', rem.reminderList, 'session'],
+  ['POST', '/api/reminders', rem.sendReminders, 'session'],
   ['PUT', '/api/entry', entry.saveEntry, 'session'],
   ['POST', '/api/entry/submit', entry.submitEntry, 'session'],
   ['POST', '/api/entry/review', entry.reviewEntry, 'session'],

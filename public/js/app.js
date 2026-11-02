@@ -126,6 +126,8 @@ const PAGES = [
   { id: 'home', name: () => (is(...ENTRY_ROLES) ? 'My reports' : 'Home'), short: 'What needs doing now', roles: ALL, desc: 'Start here: what needs doing and where to find everything.' },
   { id: 'review', group: 'report', name: () => (is('lga') ? 'Check school reports' : 'Approve reports'), short: 'Accept or send back what was sent', roles: ['sysadmin', 'state', 'lga'], nav: () => !is('lga') || hasUnitSets(),
     desc: () => (is('lga') ? 'Your schools / facilities send their reports to you. Check each one: Accept it (it then counts) or Send it back with a note.' : 'When an LGA presses Send, its report waits here. Check each one: Accept it (it then counts in the results) or Send it back with a note saying what to correct.') },
+  { id: 'reminders', group: 'report', name: 'Send reminders', short: 'Email those who have not sent', roles: ['sysadmin', 'state'], desc: 'Remind the people whose report is not sent yet: an email with their Excel template attached and a link to upload it.' },
+  { id: 'upload', name: 'Upload a report', roles: ['sysadmin', 'state', 'lga', 'unit'], nav: () => false, desc: 'Upload a filled Excel template.' },
   { id: 'entry', group: 'report', name: 'Type in a report', short: 'On behalf of an LGA', roles: ['sysadmin', 'state', 'lga', 'unit'], nav: () => !is(...ENTRY_ROLES), desc: 'Type in the numbers of a report for an LGA that cannot do it themselves, and send it.' },
   { id: 'picture', group: 'results', name: 'Results table', short: 'One report, one period', roles: ['sysadmin', 'setupadmin', 'state', 'viewer'], desc: 'The indicators of one report for one period, with a row per state, LGA or school / facility.' },
   { id: 'pivot', group: 'results', name: () => (is(...ENTRY_ROLES) ? 'Results' : 'Compare over time'), short: 'Places × indicators × periods', roles: ['sysadmin', 'setupadmin', 'state', 'lga', 'viewer'], desc: 'Compare indicators across places and periods (a pivot table), and download it to Excel.' },
@@ -211,6 +213,7 @@ async function route() {
   if (page === 'register') return renderRegister(parts[1]);
   if (!state.me) await loadMe();
   if (!state.me) {
+    if (page && !['login', 'me'].includes(page)) pref('afterLogin', location.hash);
     const s = await get('/api/setup').catch(() => ({ needsSetup: false }));
     renderChrome();
     return s.needsSetup ? renderFirstSetup(s) : renderLogin();
@@ -223,7 +226,7 @@ async function route() {
   renderChrome(target);
   mount(h('p', { class: 'muted' }, 'Loading…'));
   try {
-    await ({ home: renderHome, entry: renderEntry, review: renderReview, picture: renderPicture, pivot: renderPivot, export: renderExport, setup: renderSetup, population: renderPopulation, units: renderUnits, rollout: renderRollout, accounts: renderAccounts, audit: renderAudit, me: renderMe })[target](...parts.slice(1));
+    await ({ home: renderHome, entry: renderEntry, review: renderReview, picture: renderPicture, pivot: renderPivot, export: renderExport, setup: renderSetup, population: renderPopulation, reminders: renderReminders, upload: renderUpload, units: renderUnits, rollout: renderRollout, accounts: renderAccounts, audit: renderAudit, me: renderMe })[target](...parts.slice(1));
   } catch (e) {
     if (e.status !== 401) mount(h('div', { class: 'note bad' }, e.message));
   }
@@ -243,7 +246,7 @@ function renderLogin() {
     h('p', { class: 'muted small' }, 'Forgot your password? Ask your administrator for a new sign-in link.'));
   form.addEventListener('submit', busy(btn, async () => {
     err.textContent = '';
-    try { await api('POST', '/api/auth/login', { email: email.value, password: pw.value }); await loadMe(); go('#/'); } catch (e) { err.textContent = e.message; if (e.body && e.body.error && e.body.error.code === 'pending_approval') err.className = 'note info'; }
+    try { await api('POST', '/api/auth/login', { email: email.value, password: pw.value }); await loadMe(); const next = pref('afterLogin'); pref('afterLogin', null); go(next || '#/'); } catch (e) { err.textContent = e.message; if (e.body && e.body.error && e.body.error.code === 'pending_approval') err.className = 'note info'; }
   }));
   mount(form); email.focus();
 }
@@ -471,6 +474,7 @@ async function renderEntry() {
     const sp = role() === 'state' ? { value: state.me.ou.id } : await pickState(stateId, (v) => { pref('state', v); pref('lga', null); renderEntry(); });
     const lgas = await lgasOf(sp.value);
     ouId = lgas.some((l) => l.id === pref('lga')) ? pref('lga') : lgas[0].id;
+    state.entryArea = { state: sp.value, lga: ouId }; // for the Excel template
     pickers = [sp.el, field('LGA', select(lgas, ouId, { onchange: (e) => { pref('lga', e.target.value); renderEntry(); } }))];
   }
   if (byUnit && role() !== 'unit') {
@@ -602,8 +606,165 @@ function entryView(form, sets, pickers) {
         h('div', { class: 'sendbtn' }, saveBtn, h('span', { class: 'hint' }, 'Keeps what you typed. Nothing is sent.'))) : null),
     reviewBox,
     results.length ? h('details', { class: 'panel', open: !simple || undefined }, h('summary', {}, 'See the results these numbers give'), results) : null,
+    is('sysadmin', 'state', 'lga', 'unit') ? excelEntryBar(form) : null,
     r.updatedAt ? h('p', { class: 'muted small' }, `Last saved ${fmtDate(r.updatedAt)}${r.updatedBy ? ' by ' + r.updatedBy : ''}.`) : null,
   );
+}
+
+// ---------- Excel data-entry template ----------
+// One row per place (LGA, or unit below the LGA) the account reports for, one column per number, filled with what
+// is saved already. Row 2 holds the IDs the upload needs.
+function excelEntryBar(form) {
+  const ds = form.dataset;
+  const byUnit = ds.reportLevel === 'UNIT';
+  // The area: an LGA user their LGA, a unit user their unit; others the chosen LGA (unit reports) or state.
+  const ea = state.entryArea || {};
+  const area = is('lga', 'unit') ? undefined : byUnit ? ea.lga : ea.state;
+  const dl = h('button', {}, 'Download Excel template');
+  dl.addEventListener('click', busy(dl, async () => {
+    const t = await get('/api/entry/sheet' + qs({ dataset: ds.id, period: form.period, ou: area }));
+    const [{ writeWorkbook }, { entryTemplateSheets, templateFileName }] = await Promise.all([import('./xlsx.js'), import('./template.js')]);
+    saveBlob(writeWorkbook(entryTemplateSheets(t)), templateFileName(t));
+  }));
+  const fileIn = h('input', { type: 'file', accept: '.xlsx,.csv', hidden: true });
+  fileIn.addEventListener('change', async () => {
+    const f = fileIn.files[0]; fileIn.value = '';
+    if (f) try { await uploadEntryExcel(f); } catch (e) { toast(e.message, true); }
+  });
+  return h('details', { class: 'panel excelbar' },
+    h('summary', {}, 'Many places at once? Use an Excel template'),
+    h('p', { class: 'muted small' }, `Download a sheet with one row per ${byUnit ? 'unit' : 'LGA'} you report for (${form.periodName}), fill it in — offline if you like — and upload it. The numbers are saved as drafts; you can send the complete ones in the same step.`),
+    h('div', { class: 'actions' }, dl, h('button', { onclick: () => fileIn.click() }, 'Upload filled Excel'), fileIn));
+}
+
+async function uploadEntryExcel(file) {
+  const { readSheet } = await import('./xlsx.js');
+  const rows = await readSheet(file);
+  const hi = rows.findIndex((r) => String(r[0] || '').trim() === 'Place ID');
+  if (hi < 0 || !rows[hi + 1]) throw new Error('This is not a data-entry template (no “Place ID” column). Download the template first.');
+  const head = rows[hi]; const ids = rows[hi + 1];
+  const dsId = String(ids[1] || '').trim(); const period = String(ids[2] || '').trim();
+  const ds = myDatasets().find((d) => d.id === dsId);
+  if (!ds) throw new Error('This template is for a report you are not assigned to.');
+  const cols = ids.map((x, i) => ({ i, id: String(x || '').trim(), name: head[i] })).filter((c) => c.i > 2 && /^[A-Za-z0-9_]{6,}$/.test(c.id) && c.id !== dsId);
+  if (!cols.length) throw new Error('No number columns found in the template.');
+  const todo = [];
+  for (const r of rows.slice(hi + 2)) {
+    const ou = String(r[0] || '').trim();
+    if (!ou) continue;
+    const values = {};
+    for (const c of cols) { const v = String(r[c.i] ?? '').trim(); if (v !== '') values[c.id] = v; }
+    if (Object.keys(values).length) todo.push({ ou, name: [r[4] && ds.reportLevel === 'UNIT' ? r[4] : r[2]].join(''), values, full: Object.keys(values).length === cols.length });
+  }
+  if (!todo.length) throw new Error('No numbers were found in the file.');
+  const send = h('input', { type: 'checkbox' });
+  const go = h('button', { class: 'primary' }, `Save ${todo.length} report${todo.length === 1 ? '' : 's'}`);
+  const progress = h('span', { class: 'muted small' });
+  const out = h('div');
+  const dlg = h('dialog', { class: 'wide' }, h('h2', {}, `Upload — ${ds.name}, ${period}`),
+    h('p', { class: 'muted small' }, `${file.name} · ${todo.length} place${todo.length === 1 ? '' : 's'} with numbers (${todo.filter((t) => t.full).length} complete) · ${cols.length} number column${cols.length === 1 ? '' : 's'}`),
+    h('label', { class: 'check' }, send, 'Also send each complete report for checking (otherwise they are saved as drafts)'),
+    out, h('p'), h('div', { class: 'actions' }, go, progress, h('button', { onclick: () => dlg.close() }, 'Close')));
+  dlg.addEventListener('close', () => { dlg.remove(); route(); });
+  go.addEventListener('click', busy(go, async () => {
+    const res = [];
+    for (let i = 0; i < todo.length; i++) {
+      const t = todo[i];
+      progress.textContent = `Saving ${i + 1} of ${todo.length}…`;
+      try {
+        await api('PUT', '/api/entry', { dataset: ds.id, ou: t.ou, period, values: t.values });
+        if (send.checked) {
+          try { await api('POST', '/api/entry/submit', { dataset: ds.id, ou: t.ou, period }); res.push({ t, ok: 'Saved and sent' }); } catch (e) { res.push({ t, ok: 'Saved as draft', note: e.message }); }
+        } else res.push({ t, ok: 'Saved as draft' });
+      } catch (e) { res.push({ t, bad: e.message }); }
+    }
+    progress.textContent = '';
+    go.disabled = true;
+    const bad = res.filter((r) => r.bad);
+    out.replaceChildren(
+      h('div', { class: 'note ' + (bad.length ? 'warn' : 'ok') }, `${res.length - bad.length} saved${send.checked ? ` (${res.filter((r) => r.ok === 'Saved and sent').length} sent)` : ''}${bad.length ? ` · ${bad.length} not saved` : ''}.`),
+      h('div', { class: 'scroll' }, h('table', {}, h('thead', {}, h('tr', {}, h('th', {}, 'Place'), h('th', {}, 'Result'), h('th', {}, 'Note'))),
+        h('tbody', {}, res.map((r) => h('tr', {}, h('td', {}, r.t.name || r.t.ou), h('td', {}, r.bad ? pill('returned', 'Not saved') : pill(r.ok === 'Saved and sent' ? 'submitted' : 'draft', r.ok)), h('td', { class: 'small' }, r.bad || r.note || '')))))));
+  }));
+  document.body.append(dlg); dlg.showModal();
+}
+
+// The page a reminder email links to: one report and period, with the template to download and the upload button.
+async function renderUpload(dsId, period) {
+  await meta();
+  const ds = myDatasets().find((d) => d.id === dsId);
+  if (!ds) return mount(h('div', { class: 'note info' }, 'This report is not assigned to your account. Ask your administrator.'));
+  const t = await get('/api/entry/sheet' + qs({ dataset: ds.id, period, ou: is('lga', 'unit', 'state') ? undefined : state.entryArea && (ds.reportLevel === 'UNIT' ? state.entryArea.lga : state.entryArea.state) })).catch((e) => { throw e; });
+  const form = { dataset: { id: ds.id, reportLevel: ds.reportLevel }, period: t.period, periodName: t.periodName };
+  const open = t.rows.filter((r) => ['none', 'draft', 'returned'].includes(r.status));
+  const bar = excelEntryBar(form); bar.open = true;
+  mount(h('div', {},
+    pageHead({
+      back: is(...ENTRY_ROLES) ? ['#/home', 'My reports'] : null,
+      title: `${ds.name} — ${t.periodName}`,
+      sub: `Due ${fmtDay(t.due)} · ${t.rows.length} place${t.rows.length === 1 ? '' : 's'} · ${open.length} not sent yet`,
+      text: 'Fill in the Excel template (it may already be attached to your email), then upload it here. Or type the numbers in online.',
+      how: ['Download the template (or use the one attached to the email).', 'Type each number; put 0 where there was nothing.', 'Press “Upload filled Excel” and choose the file. Tick “Also send” to send the complete reports for checking.'],
+    }),
+    bar,
+    h('div', { class: 'panel' }, h('h3', {}, 'Or type the numbers in online'),
+      h('table', { class: 'todo' }, h('tbody', {}, t.rows.slice(0, 200).map((r) => h('tr', { class: 'click', onclick: () => {
+        pref('ds', ds.id); pref('pe:' + ds.id, t.period);
+        if (ds.reportLevel === 'UNIT' && !is('unit')) { pref('lga', null); pref('unit', r.id); } else if (!is('lga', 'unit')) pref('lga', r.id);
+        go('#/entry');
+      } }, h('td', {}, r.name, r.ward ? h('span', { class: 'muted small' }, ` · ${r.ward}`) : null), h('td', {}, pill(r.status, STATUS_PLAIN[r.status])), h('td', { class: 'n' }, h('button', {}, ['none', 'draft', 'returned'].includes(r.status) ? 'Open' : 'View')))))))));
+}
+
+// Reminders: pick a report and period, see who has not sent, email them (template attached + upload link).
+async function renderReminders() {
+  await meta();
+  const sets = myDatasets().filter((d) => !d.shared);
+  if (!sets.length) return mount(noDatasets());
+  const ds = sets.find((d) => d.id === pref('remDs')) || sets[0];
+  const o = await orgs();
+  const stateId = is('state') ? state.me.ou.id : o.states.some((x) => x.id === pref('remState')) ? pref('remState') : (o.states[0] || {}).id;
+  const periods = (await get('/api/status' + qs({ dataset: ds.id, state: stateId }))).periods;
+  const period = periods.some((p) => p.id === pref('remPe:' + ds.id)) ? pref('remPe:' + ds.id) : periods[0].id;
+  const r = await get('/api/reminders' + qs({ dataset: ds.id, period, ou: stateId }));
+  const note = h('textarea', { placeholder: 'Optional note added to the email, e.g. “Please send by Friday — the state review meeting is on Monday.”' });
+  const people = r.places.flatMap((p) => p.users.map((u) => ({ p, u, box: h('input', { type: 'checkbox', checked: true }) })));
+  const noAccount = r.places.filter((p) => !p.users.length);
+  const send = h('button', { class: 'primary', disabled: !r.emailConfigured || !people.length }, `Email ${people.length} reminder${people.length === 1 ? '' : 's'}`);
+  const out = h('div');
+  send.addEventListener('click', busy(send, async () => {
+    const ids = people.filter((x) => x.box.checked).map((x) => x.u.id);
+    if (!ids.length) { toast('Tick at least one person.', true); return; }
+    const { data } = await api('POST', '/api/reminders', { dataset: ds.id, period, ou: stateId, userIds: ids, note: note.value.trim() || undefined });
+    const bad = data.results.filter((x) => !x.ok);
+    out.replaceChildren(h('div', { class: 'note ' + (bad.length ? 'warn' : 'ok') }, `${data.sent} reminder${data.sent === 1 ? '' : 's'} sent.`, bad.length ? ` ${bad.length} not sent: ${bad.map((b) => `${(people.find((x) => x.u.id === b.id) || { u: { name: b.id } }).u.name} (${b.message})`).join('; ')}` : ''));
+    toast(`${data.sent} reminder${data.sent === 1 ? '' : 's'} sent`);
+  }));
+  const copyMsg = (u) => copy(r.sample.replace('[name]', u.name) + (note.value.trim() ? '' : ''));
+  mount(h('div', {},
+    pageHead({
+      title: 'Send reminders',
+      text: 'Everyone whose report is not sent yet gets an email: which report, the period and due date, a link to the upload page, and their own Excel template attached (filled with what they saved so far).',
+      how: ['Choose the report and the period.', 'Untick anyone you do not want to remind; add a note if you like.', 'Press “Email reminders”. Each person can upload the filled template from the link, or type the numbers online.'],
+    }),
+    h('div', { class: 'bar' },
+      field('Report', select(sets.map((d) => ({ id: d.id, name: dsLabel(d) })), ds.id, { onchange: (e) => { pref('remDs', e.target.value); renderReminders(); } })),
+      is('state') ? null : field('State', select(o.states, stateId, { onchange: (e) => { pref('remState', e.target.value); renderReminders(); } })),
+      field(periodWord(ds.frequency), select(periods, period, { onchange: (e) => { pref('remPe:' + ds.id, e.target.value); renderReminders(); } }))),
+    r.emailConfigured ? null : h('div', { class: 'note warn' }, h('strong', {}, 'Email is not connected yet. '),
+      'Until it is, copy each person’s message (it includes the upload link) and send it by WhatsApp or your own email; they download the template from the link. ',
+      is('sysadmin') ? 'To connect email: create a free account at resend.com, verify the lganutritiondata.org domain there, then add the secret EMAIL_API_KEY and the variable EMAIL_FROM (e.g. “LGA Scorecard <reports@lganutritiondata.org>”) to the Worker in Cloudflare.' : 'Ask the system administrator to connect an email service.'),
+    h('div', { class: 'panel' },
+      h('h2', {}, `${r.places.length} report${r.places.length === 1 ? '' : 's'} not sent — ${r.periodName}, due ${fmtDay(r.due)}`),
+      r.places.length ? h('div', { class: 'scroll' }, h('table', {},
+        h('thead', {}, h('tr', {}, h('th', {}, ''), h('th', {}, 'Place'), h('th', {}, 'Status'), h('th', {}, 'Person'), h('th', {}, 'Email'), h('th', {}, 'Last reminded'), h('th'))),
+        h('tbody', {}, people.map(({ p, u, box }) => h('tr', {}, h('td', {}, box), h('td', {}, p.name, p.lga && p.lga !== p.name ? h('div', { class: 'cov' }, p.lga) : null),
+          h('td', {}, pill(p.status, STATUS_PLAIN[p.status])), h('td', {}, u.name), h('td', { class: 'small' }, u.email), h('td', { class: 'small' }, fmtDate(u.lastReminded)),
+          h('td', {}, h('button', { class: 'link', onclick: () => copyMsg(u) }, 'Copy message')))))))
+        : h('p', { class: 'muted' }, 'Every report is sent. Nothing to remind.'),
+      noAccount.length ? h('p', { class: 'muted small' }, `No account to remind for: ${noAccount.map((p) => p.name).join(', ')}. Create accounts on the Users page.`) : null,
+      h('p'), h('div', { class: 'f' }, h('span', {}, 'Note in the email (optional)'), note), h('p'),
+      h('div', { class: 'actions' }, send, h('button', { onclick: () => copy(r.link) }, 'Copy upload link')), out),
+    h('details', { class: 'panel' }, h('summary', {}, 'See the email text'), h('pre', { class: 'small', style: 'white-space:pre-wrap' }, r.sample))));
 }
 
 function reviewControls(form, after) {
@@ -1674,7 +1835,7 @@ function datasetDialog(ds, m, makeShared = false, presetSector = '') {
 }
 
 // ---------- sector org units (schools, facilities ...) ----------
-const UNIT_HEADERS = ['State', 'LGA', 'LGA ID', 'Ward', 'Ward ID', 'Type', 'Name', 'Code', 'DHIS2 ID'];
+const UNIT_HEADERS = ['State', 'LGA', 'LGA ID', 'Ward', 'Ward ID', 'Type', 'Name', 'Code', 'ID'];
 
 // Rollout: which states take part (system administrators).
 async function rolloutPanel() {
@@ -1706,6 +1867,37 @@ async function renderRollout() {
     await rolloutPanel()));
 }
 
+// Excel template for units below the LGA: State, LGA and Type are drop-down lists (the LGA list follows the State),
+// so people only type or paste the names. IDs are made by the system.
+const cleanState = (n) => String(n).replace(/^[a-z]{2} /, '').replace(/ state$/i, '').trim();
+const cleanLga = (n) => String(n).replace(/^[a-z]{2} /, '').replace(/ LGA$/i, '').trim();
+const rangeName = (s) => 'S_' + s.replace(/[^A-Za-z0-9]+/g, '_');
+function unitTemplate(lgas, types) {
+  const states = [...new Set(lgas.map((l) => cleanState(l.state)))].sort();
+  const byState = states.map((st) => lgas.filter((l) => cleanState(l.state) === st).map((l) => cleanLga(l.name)).sort());
+  const typeNames = types.map((t) => t.name).filter((n) => n !== 'Ward');
+  const col = (i) => { let x = ''; i++; while (i) { const m = (i - 1) % 26; x = String.fromCharCode(65 + m) + x; i = Math.floor((i - 1) / 26); } return x; };
+  // Lists sheet: A = states, B = unit types, C… = the LGAs of each state.
+  const height = Math.max(states.length, typeNames.length, ...byState.map((l) => l.length)) + 1;
+  const lists = Array.from({ length: height }, (_, r) => (r === 0 ? ['State', 'Type', ...states] : [states[r - 1] ?? '', typeNames[r - 1] ?? '', ...byState.map((l) => l[r - 1] ?? '')]));
+  const names = states.map((st, i) => ({ name: rangeName(st), ref: `Lists!$${col(i + 2)}$2:$${col(i + 2)}$${byState[i].length + 1}` }));
+  const N = 3000;
+  const lgaFormula = 'INDIRECT("S_"&SUBSTITUTE(SUBSTITUTE(SUBSTITUTE(SUBSTITUTE($A2," ","_"),"-","_"),"\'",""),"/","_"))';
+  return [[
+    { name: 'Units', rows: [['State', 'LGA', 'Ward (optional)', 'Type', 'Name', 'Code (optional)']], widths: [20, 26, 24, 22, 40, 16],
+      lists: [{ sqref: `A2:A${N}`, formula: `Lists!$A$2:$A$${states.length + 1}` }, { sqref: `B2:B${N}`, formula: lgaFormula }, ...(typeNames.length ? [{ sqref: `D2:D${N}`, formula: `Lists!$B$2:$B$${typeNames.length + 1}` }] : [])] },
+    { name: 'How to fill', rows: [['How to fill'], ...[
+      'One row per unit below an LGA: a school, health facility, water point, market …',
+      'State: choose from the list. LGA: choose from the list (it shows the LGAs of the state you chose).',
+      'Type: choose from the list. A new type name is added automatically when you import.',
+      'Name: type or paste the names — you can paste a whole column of names at once.',
+      'Ward (optional): the ward the unit is in, if the wards are loaded. Code (optional): your own reference.',
+      'Each unit gets its own ID automatically. Import the file with “Import Excel”; you see a check before anything is saved.',
+    ].map((t) => [t])], widths: [110] },
+    { name: 'Lists', rows: lists, hidden: true },
+  ], { names }];
+}
+
 // Units below the LGA: the LGA's child org units (DHIS2 level 4, and level 5 under wards), by unit type.
 async function renderUnits() {
   const o = await orgs();
@@ -1725,9 +1917,9 @@ async function renderUnits() {
   const addType = h('button', {}, '+ Add unit type');
   addType.addEventListener('click', busy(addType, async () => { await api('POST', '/api/unit-types', { name: newType.value.trim() }); toast('Unit type added'); state.meta = null; renderUnits(); }));
   const typesPanel = h('div', { class: 'panel' }, h('h2', {}, 'Unit types'),
-    h('p', { class: 'muted small' }, 'The kinds of unit below the LGA. Each reporting schedule chooses which types report (Sectors & indicators → Schedule settings). Wards are built in and keep their real DHIS2 IDs; facilities and schools can sit under their ward, as in DHIS2.'),
+    h('p', { class: 'muted small' }, 'The kinds of unit below the LGA. Each reporting schedule chooses which types report (Sectors & indicators → Schedule settings). Ward is built in: wards are loaded with their official IDs, and other units can sit under their ward.'),
     h('table', { class: 'todo' }, h('tbody', {}, types.map((t) => h('tr', {},
-      h('td', {}, h('strong', {}, t.name), t.isWard ? h('span', { class: 'muted small' }, ' · DHIS2 level 4, directly under the LGA') : null),
+      h('td', {}, h('strong', {}, t.name), t.isWard ? h('span', { class: 'muted small' }, ' · directly under the LGA, official IDs') : null),
       h('td', { class: 'small' }, `${t.units} unit${t.units === 1 ? '' : 's'}`),
       h('td', { class: 'small muted' }, t.datasets.length ? 'Reports on: ' + t.datasets.map((d) => d.name).join(', ') : 'No schedule uses it yet'),
       h('td', { class: 'n' }, admin && !t.isWard ? h('div', { class: 'actions' },
@@ -1743,12 +1935,12 @@ async function renderUnits() {
   const nCode = h('input', { placeholder: 'optional', size: 10 });
   const nId = h('input', { class: 'mono', maxlength: 11, size: 13 });
   const wardBox = field('Ward (optional)', addWard);
-  const idBox = field('DHIS2 ID', nId);
+  const idBox = field('Ward ID', nId);
   const fillWards = async () => {
     const isWard = addType_.value === 'ut_ward';
     wardBox.hidden = isWard;
-    nId.placeholder = isWard ? 'required for wards' : 'made automatically';
-    idBox.firstChild.textContent = isWard ? 'DHIS2 ID (required)' : 'DHIS2 ID (optional)';
+    nId.placeholder = 'official ward ID';
+    idBox.hidden = !isWard; // other units get their ID automatically
     const ws = addLga.value ? (await unitsOf(addLga.value)).filter((u) => u.typeId === 'ut_ward') : [];
     addWard.replaceChildren(h('option', { value: '' }, ws.length ? '— directly under the LGA —' : 'No wards loaded for this LGA'), ...ws.map((w) => h('option', { value: w.id }, w.name)));
   };
@@ -1772,21 +1964,7 @@ async function renderUnits() {
   tplBtn.addEventListener('click', busy(tplBtn, async () => {
     const { lgas: all_ } = await get('/api/orgunits?lgas=all');
     const { writeWorkbook } = await import('./xlsx.js');
-    saveBlob(writeWorkbook([
-      { name: 'Units', rows: [UNIT_HEADERS], widths: [18, 24, 14, 22, 14, 20, 36, 12, 16] },
-      { name: 'LGAs', rows: [['State', 'LGA', 'LGA ID'], ...all_.map((l) => [l.state, l.name, l.id])], widths: [22, 30, 14] },
-      { name: 'Unit types', rows: [['Unit type'], ...types.map((t) => [t.name])], widths: [30] },
-      { name: 'How to fill', rows: [['How to fill the template'], ...[
-        'One row per unit below an LGA: a ward, health facility, school, water point …',
-        'State and LGA: copy the names from the “LGAs” sheet, or put the LGA ID instead (safest).',
-        'Type: a name from the “Unit types” sheet (a new name creates a new type). “Ward” makes the row a ward.',
-        'Wards must have their real DHIS2 ID in the DHIS2 ID column. Put wards before the units under them, or load them first with “Load from DHIS2”.',
-        'Ward / Ward ID: the ward a facility or school sits in (name or ID). If the ward is not loaded yet, the name is kept as a label and the unit sits directly under the LGA.',
-        'DHIS2 ID for other units: only if the unit already exists in DHIS2 — paste its 11-character ID to keep it. Leave empty to create a new ID.',
-        'Rows that match an existing unit (same name and type in the same LGA, or the same DHIS2 ID) update it instead of creating a duplicate.',
-        'Save as .xlsx (or .csv) and use “Import Excel”. You see a check before anything is saved.',
-      ].map((t) => [t])], widths: [120] },
-    ]), 'Units_below_LGA_template.xlsx');
+    saveBlob(writeWorkbook(...unitTemplate(all_, types)), 'Units_below_LGA_template.xlsx');
   }));
   const listBtn = h('button', {}, 'Download list');
   listBtn.addEventListener('click', busy(listBtn, async () => {
@@ -1799,15 +1977,15 @@ async function renderUnits() {
     pageHead({
       title: 'Units below the LGA',
       sub: 'Child org units of each LGA: wards (DHIS2 level 4) and the facilities, schools … under them',
-      text: 'Here you customise the org units below each LGA that sectors report on. Wards keep their real DHIS2 IDs; health facilities, schools, water points … sit under their ward (or directly under the LGA) and keep a DHIS2 ID too, so exports join to DHIS2. Each reporting schedule chooses which unit types report.',
+      text: 'Here you set up the units below each LGA that sectors report on — schools, health facilities, water points, markets … — and, if you use them, wards. Each unit gets its own ID automatically, so results can be exported. Each reporting schedule chooses which unit types report.',
       how: [
-        'Load the wards (and health facilities) of a state with “Load from DHIS2” — they come with their real DHIS2 IDs.',
-        'Add other unit types you need (Primary school, Water point …) under Unit types.',
-        'Add units one by one, or download the Excel template, fill one row per unit and press Import Excel. You see a check before anything is saved.',
+        'Add the unit types you need (Primary school, Water point …) under Unit types.',
+        'Download the Excel template: choose the State, LGA and Type from the lists and paste the names. Then press Import Excel — you see a check before anything is saved. Or add units one by one.',
+        'Optional: “Load wards & health facilities” brings in a state’s official wards and health facilities, with their official IDs.',
         'In Sectors & indicators → Schedule settings, set Who reports to “Each ward”, or to “Each facility, school …” and tick the unit types that report. Their values add up to the LGA.',
         'Click a unit to rename it, change its type or ward, or close it. Units are never deleted, so past data stays.',
       ],
-      actions: [h('button', { class: 'primary', onclick: () => scorecardDialog(states, stateId, types) }, 'Load from DHIS2'), tplBtn, h('button', { onclick: () => fileIn.click() }, 'Import Excel'), fileIn],
+      actions: [tplBtn, h('button', { class: 'primary', onclick: () => fileIn.click() }, 'Import Excel'), fileIn, h('button', { onclick: () => scorecardDialog(states, stateId, types) }, 'Load wards & health facilities')],
     }),
     typesPanel,
     h('h2', {}, 'Units'),
@@ -1820,12 +1998,12 @@ async function renderUnits() {
       h('div', { class: 'bar' }, field('Type', addType_), field('LGA', addLga), wardBox, field('Name', nName), field('Code', nCode), idBox, addBtn)),
     units.length > 2000 ? h('p', { class: 'muted small' }, `Showing the first 2,000 of ${units.length}. Choose an LGA or a type, or use “Download list” for all.`) : null,
     units.length ? h('div', { class: 'scroll' }, h('table', {},
-      h('thead', {}, h('tr', {}, h('th', {}, 'LGA'), h('th', {}, 'Ward'), h('th', {}, 'Name'), h('th', {}, 'Type'), h('th', {}, 'Code'), h('th', {}, 'DHIS2 ID'), h('th', {}, 'Status'))),
+      h('thead', {}, h('tr', {}, h('th', {}, 'LGA'), h('th', {}, 'Ward'), h('th', {}, 'Name'), h('th', {}, 'Type'), h('th', {}, 'Code'), h('th', {}, 'ID'), h('th', {}, 'Status'))),
       h('tbody', {}, units.slice(0, 2000).map((u) => h('tr', { class: 'click', onclick: () => unitDialog(u, types) },
         h('td', {}, u.lgaName), h('td', { class: 'small' }, u.isWard ? '' : u.wardId ? u.ward : u.ward ? h('span', { class: 'muted', title: 'Ward not loaded yet: kept as a label' }, u.ward + ' (label)') : '—'),
         h('td', {}, u.isWard ? h('strong', {}, u.name) : u.name), h('td', {}, u.type), h('td', {}, u.code),
         h('td', {}, h('span', { class: 'id' }, u.id)), h('td', {}, u.closed ? pill('none', 'Closed') : pill('accepted', 'Open')))))))
-      : h('div', { class: 'panel empty' }, 'No units here yet. Load the wards and health facilities with “Load from DHIS2”, add one above, or import the Excel template.'),
+      : h('div', { class: 'panel empty' }, 'No units here yet. Download the Excel template, paste the names and import it — or add one above.'),
   ));
 }
 
@@ -1920,10 +2098,10 @@ async function scorecardDialog(states, stateId, types) {
     (types.find((t) => /health facilit/i.test(t.name)) || {}).name || 'Health facility');
   const status = h('p', { class: 'muted small' });
   const start = h('button', { class: 'primary' }, 'Load');
-  const dlg = h('dialog', {}, h('h2', {}, 'Load wards and health facilities from DHIS2'),
-    h('p', { class: 'muted small' }, 'Reads one state’s wards and health facilities, with their real DHIS2 IDs, from the scorecard platform (which mirrors Nigeria’s DHIS2). You see the usual check before anything is saved.'),
+  const dlg = h('dialog', {}, h('h2', {}, 'Load wards & health facilities'),
+    h('p', { class: 'muted small' }, 'Reads one state’s official wards and health facilities, with their official IDs (Nigeria’s health information system, via the scorecard platform). You see the usual check before anything is saved.'),
     h('div', { class: 'grid2' }, field('State', stSel), field('Type for the facilities', facType)),
-    h('label', { class: 'check' }, wantWards, 'Wards (DHIS2 level 4)'), h('label', { class: 'check' }, wantFac, 'Health facilities, under their wards (level 5)'),
+    h('label', { class: 'check' }, wantWards, 'Wards'), h('label', { class: 'check' }, wantFac, 'Health facilities, under their wards'),
     status, h('div', { class: 'actions' }, start, h('button', { onclick: () => dlg.close() }, 'Cancel')));
   dlg.addEventListener('close', () => dlg.remove());
   start.addEventListener('click', busy(start, async () => {
@@ -1953,7 +2131,7 @@ async function scorecardDialog(states, stateId, types) {
     }
     await Promise.all([1, 2, 3, 4].map(worker));
     dlg.close();
-    await checkAndImport([...wardRows, ...facRows].map((r, i) => ({ row: i + 1, ...r })), '', `DHIS2 via the scorecard platform — ${stSel.options[stSel.selectedIndex].text}`);
+    await checkAndImport([...wardRows, ...facRows].map((r, i) => ({ row: i + 1, ...r })), '', `Official wards and health facilities — ${stSel.options[stSel.selectedIndex].text}`);
   }));
   document.body.append(dlg); dlg.showModal();
 }

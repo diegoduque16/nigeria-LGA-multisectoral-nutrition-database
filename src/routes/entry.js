@@ -11,13 +11,13 @@ import { unitsOf } from '../lib/units.js';
 const STATUS_NAMES = { none: 'Not started', draft: 'Draft', submitted: 'Submitted', accepted: 'Accepted', returned: 'Sent back' };
 const EDITABLE = ['none', 'draft', 'returned'];
 
-async function loadDataset(db, id) {
+export async function loadDataset(db, id) {
   const d = await one(db, 'SELECT * FROM datasets WHERE id = ?', id);
   if (!d || d.archived_at) throw new HttpError(404, 'not_found', 'Data set not found.');
   return d;
 }
 
-function checkPeriod(ds, period) {
+export function checkPeriod(ds, period) {
   if (!periodMatches(period, ds.frequency)) {
     throw new HttpError(422, 'invalid', `“${ds.name}” is reported ${FREQUENCY_NAMES[ds.frequency].toLowerCase()}; that period does not fit.`, { field: 'period' });
   }
@@ -300,4 +300,57 @@ export async function reportStatus(request, env, ctx) {
       updatedAt: r.updated_at, comment: r.review_comment,
     })),
   });
+}
+
+// GET /api/entry/sheet?dataset=&period=&ou=  — for the Excel data-entry template: every place the caller can report
+// for on this data set (LGAs, or units below the LGA) inside ou, with the values already saved and the report status.
+export async function entrySheet(request, env, ctx) {
+  const q = new URL(request.url).searchParams;
+  if (!canEnter(ctx)) throw new HttpError(403, 'forbidden', 'Your account cannot enter data.');
+  const ds = await loadDataset(env.DB, q.get('dataset') || '');
+  requireDataset(ctx, ds.id);
+  const period = q.get('period') || (ds.shared ? String(Number(lastCompletedPeriod('YEARLY')) + 1) : lastCompletedPeriod(ds.frequency));
+  checkPeriod(ds, period);
+  let area = q.get('ou') ? await one(env.DB, 'SELECT * FROM org_units WHERE id = ?', q.get('ou')) : ctx.ou;
+  if (!area) throw new HttpError(404, 'not_found', 'Organisation unit not found.');
+  if (!inScope(ctx, area)) area = ctx.ou; // asking for a wider area than the account covers: its own area
+  if (area.level === 1) throw new HttpError(422, 'invalid', 'Choose a state.', { field: 'ou' });
+  return json(await sheetData(env.DB, ctx, ds, period, area));
+}
+
+// The template's content for one account (who: { role, ou, dataElements }) inside area. Also used for reminder emails.
+export async function sheetData(db, who, ds, period, area) {
+  let places;
+  if (ds.report_level === 4) {
+    const f = unitsOf(ds, 'o');
+    places = await all(db,
+      `SELECT o.id, o.name, o.path, l.name AS lga, s.name AS state, w.name AS ward, COALESCE(t.name, o.unit_type) AS type
+         FROM org_units o JOIN org_units l ON l.id = o.lga_id JOIN org_units s ON s.id = l.parent_id
+         LEFT JOIN unit_types t ON t.id = o.unit_type_id LEFT JOIN org_units w ON w.id = o.parent_id AND o.level = 5
+        WHERE ${f.sql} AND o.closed_at IS NULL AND (o.id = ? OR o.path LIKE ?) ORDER BY l.name, w.name, o.name LIMIT 5000`,
+      ...f.args, area.id, area.path + '/%');
+  } else {
+    places = await all(db,
+      `SELECT o.id, o.name, o.path, o.name AS lga, s.name AS state, NULL AS ward, NULL AS type FROM org_units o JOIN org_units s ON s.id = o.parent_id
+        WHERE o.level = 3 AND o.closed_at IS NULL AND s.inactive = 0 AND (o.id = ? OR o.path LIKE ?) ORDER BY o.name`, area.id, area.path + '/%');
+  }
+  places = places.filter((p) => inScope(who, p));
+  const fields = await all(db, 'SELECT id, name, value_type FROM data_elements WHERE dataset_id = ? AND archived_at IS NULL ORDER BY sort, name', ds.id);
+  const ids = places.map((p) => p.id);
+  const vals = []; const reps = [];
+  for (let i = 0; i < ids.length; i += 90) {
+    const part = ids.slice(i, i + 90); const marks = part.map(() => '?').join(',');
+    vals.push(...await all(db, `SELECT ou_id, de_id, value FROM data_values WHERE period = ? AND ou_id IN (${marks}) AND de_id IN (SELECT id FROM data_elements WHERE dataset_id = ?)`, period, ...part, ds.id));
+    reps.push(...await all(db, `SELECT ou_id, status FROM reports WHERE dataset_id = ? AND period = ? AND ou_id IN (${marks})`, ds.id, period, ...part));
+  }
+  const status = new Map(reps.map((r) => [r.ou_id, r.status]));
+  return {
+    dataset: { id: ds.id, name: ds.name, frequency: ds.frequency, frequencyName: FREQUENCY_NAMES[ds.frequency], byUnit: ds.report_level === 4 },
+    period, periodName: periodName(period), due: dueAt(period, ds.due_day), area: { id: area.id, name: area.name },
+    fields: fields.map((f) => ({ id: f.id, name: f.name, whole: f.value_type === 'INTEGER', editable: canEnterElement(who, f.id) })),
+    rows: places.map((p) => ({
+      id: p.id, name: p.name, lga: p.lga, state: p.state, ward: p.ward || '', type: p.type || '', status: status.get(p.id) || 'none',
+      values: Object.fromEntries(vals.filter((v_) => v_.ou_id === p.id).map((v_) => [v_.de_id, v_.value])),
+    })),
+  };
 }
