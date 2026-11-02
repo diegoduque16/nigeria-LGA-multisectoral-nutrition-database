@@ -1,0 +1,11 @@
+{
+  "name": "lga-reporting",
+  "private": true,
+  "type": "module",
+  "version": "0.1.0",
+  "scripts": {
+    "test": "node --test --no-warnings test/*.test.js",
+    "dev": "node scripts/dev-server.js",
+    "deploy": "npx wrangler d1 migrations apply DB --remote && npx wrangler deploy"
+  }
+}

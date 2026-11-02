@@ -1,0 +1,312 @@
+// Simple setup: data sets (name + reporting frequency) and indicators (name, numerator, denominator, source).
+// The numerator and denominator become the fields LGAs fill in ("data elements"); the same name
+// in one data set is the same field, so a shared denominator is entered once.
+import { HttpError, json, readJson, validate, v, now } from '../lib/util.js';
+import { one, all, run, audit } from '../lib/db.js';
+import { requireRole } from '../lib/auth.js';
+import { dhisUid, UID_RE, parseExpression, FREQUENCIES, FREQUENCY_NAMES } from '../lib/dhis.js';
+
+const idField = v.string({ pattern: UID_RE }).optional();
+const TYPE = { number: 'bWuNrMHEoZ0', percent: 'hmSnCXmLYwt', per1000: 'k7XnYhQ0P2w' };
+const SHOW_AS = Object.fromEntries(Object.entries(TYPE).map(([k, id]) => [id, k]));
+
+function requireSetupAdmin(ctx, datasetId) {
+  if (ctx.role === 'sysadmin') return;
+  if (ctx.role === 'setupadmin' && (ctx.datasets.length === 0 || datasetId === null || ctx.datasets.includes(datasetId))) return;
+  throw new HttpError(403, 'forbidden', 'Only an administrator of this data set can change its setup.');
+}
+
+async function idFree(db, id) {
+  for (const t of ['sectors', 'datasets', 'data_elements', 'indicators', 'org_units']) {
+    if (await one(db, `SELECT id FROM ${t} WHERE id = ?`, id)) return false;
+  }
+  return !(await one(db, 'SELECT id FROM datasets WHERE group_id = ? OR reporting_rate_id = ?', id, id));
+}
+async function pickId(db, wanted, avoid = []) {
+  if (wanted) {
+    if (avoid.includes(wanted) || !(await idFree(db, wanted))) throw new HttpError(409, 'id_taken', `The ID ${wanted} is already used.`, { field: 'id' });
+    return wanted;
+  }
+  for (;;) { const id = dhisUid(); if (!avoid.includes(id) && await idFree(db, id)) return id; }
+}
+
+async function loadDataset(db, id) {
+  const s = await one(db, 'SELECT * FROM datasets WHERE id = ?', id);
+  if (!s) throw new HttpError(404, 'not_found', 'Data set not found.');
+  return s;
+}
+
+const deOut = (d) => ({
+  id: d.id, datasetId: d.dataset_id, name: d.name, valueType: d.value_type,
+  min: d.min_value, max: d.max_value, sort: d.sort, archived: !!d.archived_at,
+});
+
+function deIdOf(expr) {
+  const m = /^#\{([A-Za-z][A-Za-z0-9]{10})\}$/.exec(String(expr).trim());
+  return m ? m[1] : null;
+}
+
+function indOut(i, deNames, sectorNames = {}) {
+  const numId = deIdOf(i.numerator); const denId = deIdOf(i.denominator);
+  return {
+    id: i.id, datasetId: i.dataset_id, sectorId: i.sector_id, sector: sectorNames[i.sector_id] || '', name: i.name, shortName: i.short_name, source: i.source,
+    numerator: numId ? deNames[numId] || '' : i.numerator_description,
+    denominator: i.denominator.trim() === '1' ? '' : denId ? deNames[denId] || '' : i.denominator_description,
+    numeratorId: numId, denominatorId: denId,
+    numeratorExpression: i.numerator, denominatorExpression: i.denominator,
+    showAs: SHOW_AS[i.type_id] || 'number', typeId: i.type_id,
+    decimals: i.decimals, sort: i.sort, version: i.version, archived: !!i.archived_at,
+  };
+}
+
+// ---------- read ----------
+export async function getMetadata(request, env, ctx) {
+  const sectors = await all(env.DB, 'SELECT * FROM sectors ORDER BY sort, name');
+  const datasets = await all(env.DB, 'SELECT * FROM datasets ORDER BY name');
+  const des = await all(env.DB, 'SELECT * FROM data_elements ORDER BY dataset_id, sort, name');
+  const inds = await all(env.DB, 'SELECT * FROM indicators ORDER BY dataset_id, sort, name');
+  const names = Object.fromEntries(des.map((d) => [d.id, d.name]));
+  const sectorNames = Object.fromEntries(sectors.map((s) => [s.id, s.name]));
+  return json({
+    frequencies: Object.entries(FREQUENCY_NAMES).map(([id, name]) => ({ id, name })),
+    showAs: [{ id: 'percent', name: 'Percentage' }, { id: 'per1000', name: 'Per 1,000' }, { id: 'number', name: 'Number' }],
+    sectors: sectors.map((s) => ({ id: s.id, name: s.name, indicators: inds.filter((i) => i.sector_id === s.id && !i.archived_at).length })),
+    datasets: datasets.map((s) => ({
+      id: s.id, name: s.name, frequency: s.frequency, frequencyName: FREQUENCY_NAMES[s.frequency], dueDay: s.due_day,
+      groupId: s.group_id, reportingRateId: s.reporting_rate_id, archived: !!s.archived_at,
+      dataElements: des.filter((d) => d.dataset_id === s.id).map(deOut),
+      indicators: inds.filter((i) => i.dataset_id === s.id).map((i) => indOut(i, names, sectorNames)),
+    })),
+  });
+}
+
+// ---------- sectors ----------
+// Finds a sector by name (case-insensitive) or creates it.
+async function sectorFor(db, name) {
+  const clean = name.replace(/\s+/g, ' ').trim();
+  const e = await one(db, 'SELECT id FROM sectors WHERE lower(name) = lower(?)', clean);
+  if (e) return e.id;
+  const id = await pickId(db);
+  await run(db, 'INSERT INTO sectors (id, name, created_at) VALUES (?,?,?)', id, clean, now());
+  return id;
+}
+
+export async function updateSector(request, env, ctx, { id }) {
+  requireRole(ctx, ['sysadmin']);
+  const s = await one(env.DB, 'SELECT * FROM sectors WHERE id = ?', id);
+  if (!s) throw new HttpError(404, 'not_found', 'Sector not found.');
+  const body = validate(v.object({ name: v.string({ min: 1, max: 100 }).optional(), sort: v.number({ int: true, min: 0, max: 1000 }).optional() }), await readJson(request));
+  if (body.name && body.name.toLowerCase() !== s.name.toLowerCase() && await one(env.DB, 'SELECT id FROM sectors WHERE lower(name) = lower(?)', body.name)) {
+    throw new HttpError(409, 'name_taken', 'A sector with this name already exists.');
+  }
+  await run(env.DB, 'UPDATE sectors SET name = ?, sort = ? WHERE id = ?', body.name ?? s.name, body.sort ?? s.sort, id);
+  await audit(env.DB, ctx, 'sector_updated', 'sector', id, body);
+  return json({ ok: true });
+}
+
+// ---------- data sets ----------
+export async function createDataset(request, env, ctx) {
+  requireRole(ctx, ['sysadmin']);
+  const body = validate(v.object({
+    name: v.string({ min: 1, max: 100 }),
+    frequency: v.string({ oneOf: Object.keys(FREQUENCIES) }).default('MONTHLY'),
+    dueDay: v.number({ min: 1, max: 28, int: true }).default(15),
+    id: idField, groupId: idField, reportingRateId: idField,
+  }), await readJson(request));
+  if (await one(env.DB, 'SELECT id FROM datasets WHERE name = ?', body.name)) throw new HttpError(409, 'name_taken', 'A data set with this name already exists.');
+  const id = await pickId(env.DB, body.id);
+  const groupId = await pickId(env.DB, body.groupId, [id]);
+  const rrId = await pickId(env.DB, body.reportingRateId, [id, groupId]);
+  await run(env.DB, 'INSERT INTO datasets (id, name, frequency, group_id, reporting_rate_id, due_day, created_at) VALUES (?,?,?,?,?,?,?)',
+    id, body.name, body.frequency, groupId, rrId, body.dueDay, now());
+  await audit(env.DB, ctx, 'dataset_created', 'dataset', id, { name: body.name, frequency: body.frequency });
+  return json({ id, groupId, reportingRateId: rrId }, 201);
+}
+
+export async function updateDataset(request, env, ctx, { id }) {
+  const s = await loadDataset(env.DB, id);
+  requireSetupAdmin(ctx, id);
+  const body = validate(v.object({
+    name: v.string({ min: 1, max: 100 }).optional(),
+    frequency: v.string({ oneOf: Object.keys(FREQUENCIES) }).optional(),
+    dueDay: v.number({ min: 1, max: 28, int: true }).optional(),
+    archived: v.boolean().optional(),
+  }), await readJson(request));
+  if (body.archived !== undefined && ctx.role !== 'sysadmin') throw new HttpError(403, 'forbidden', 'Only a system administrator can archive a data set.');
+  if (body.name && body.name !== s.name && await one(env.DB, 'SELECT id FROM datasets WHERE name = ?', body.name)) throw new HttpError(409, 'name_taken', 'A data set with this name already exists.');
+  if (body.frequency && body.frequency !== s.frequency && await one(env.DB, 'SELECT 1 AS x FROM reports WHERE dataset_id = ? LIMIT 1', id)) {
+    throw new HttpError(409, 'has_reports', 'Reports already exist for this data set, so its frequency can no longer change. Create a new data set instead.');
+  }
+  await run(env.DB, 'UPDATE datasets SET name = ?, frequency = ?, due_day = ?, archived_at = ? WHERE id = ?',
+    body.name ?? s.name, body.frequency ?? s.frequency, body.dueDay ?? s.due_day,
+    body.archived === undefined ? s.archived_at : body.archived ? now() : null, id);
+  await audit(env.DB, ctx, 'dataset_updated', 'dataset', id, body);
+  return json({ ok: true });
+}
+
+// ---------- fields (numerators / denominators) ----------
+// Finds the field with this name in the data set (case-insensitive) or creates it.
+async function fieldFor(db, datasetId, name) {
+  const clean = name.replace(/\s+/g, ' ').trim();
+  const e = await one(db, 'SELECT * FROM data_elements WHERE dataset_id = ? AND lower(name) = lower(?)', datasetId, clean);
+  if (e) {
+    if (e.archived_at) await run(db, 'UPDATE data_elements SET archived_at = NULL WHERE id = ?', e.id);
+    return e.id;
+  }
+  const id = await pickId(db);
+  const sort = (await one(db, 'SELECT COALESCE(MAX(sort), 0) + 10 AS s FROM data_elements WHERE dataset_id = ?', datasetId)).s;
+  await run(db, 'INSERT INTO data_elements (id, dataset_id, name, short_name, value_type, min_value, sort, created_at) VALUES (?,?,?,?,?,?,?,?)',
+    id, datasetId, clean, clean.slice(0, 50), 'INTEGER', 0, sort, now());
+  return id;
+}
+
+// Removes a field that no indicator uses any more and that has no values; archives it if it has values.
+async function tidyField(db, deId) {
+  if (!deId) return;
+  const used = await one(db, 'SELECT COUNT(*) AS n FROM indicators WHERE archived_at IS NULL AND (numerator LIKE ? OR denominator LIKE ?)', `%${deId}%`, `%${deId}%`);
+  if (used.n) return;
+  const vals = await one(db, 'SELECT COUNT(*) AS n FROM data_values WHERE de_id = ?', deId);
+  if (vals.n) await run(db, 'UPDATE data_elements SET archived_at = ? WHERE id = ? AND archived_at IS NULL', now(), deId);
+  else {
+    await run(db, 'DELETE FROM user_data_elements WHERE de_id = ?', deId);
+    await run(db, 'DELETE FROM data_elements WHERE id = ?', deId);
+  }
+}
+
+// Rename a field (fixes a typo everywhere, keeps its values) or set its limits.
+export async function updateDataElement(request, env, ctx, { id }) {
+  const d = await one(env.DB, 'SELECT * FROM data_elements WHERE id = ?', id);
+  if (!d) throw new HttpError(404, 'not_found', 'Field not found.');
+  requireSetupAdmin(ctx, d.dataset_id);
+  const body = validate(v.object({
+    name: v.string({ min: 1, max: 230 }).optional(),
+    valueType: v.string({ oneOf: ['INTEGER', 'NUMBER'] }).optional(),
+    min: v.number().nullable(),
+    max: v.number().nullable(),
+  }), await readJson(request));
+  const min = body.min === undefined ? d.min_value : body.min;
+  const max = body.max === undefined ? d.max_value : body.max;
+  if (min !== null && max !== null && min > max) throw new HttpError(422, 'invalid', 'Minimum must not be above maximum.', { field: 'min' });
+  if (body.name && body.name.toLowerCase() !== d.name.toLowerCase() &&
+      await one(env.DB, 'SELECT id FROM data_elements WHERE dataset_id = ? AND lower(name) = lower(?)', d.dataset_id, body.name)) {
+    throw new HttpError(409, 'name_taken', 'Another field in this data set already has that name.');
+  }
+  if (body.valueType === 'INTEGER' && d.value_type === 'NUMBER') {
+    const frac = await one(env.DB, 'SELECT COUNT(*) AS n FROM data_values WHERE de_id = ? AND value != CAST(value AS INTEGER)', id);
+    if (frac.n) throw new HttpError(409, 'has_decimals', 'Some values already have decimals, so this cannot become a whole-number field.');
+  }
+  await run(env.DB, 'UPDATE data_elements SET name = ?, short_name = ?, value_type = ?, min_value = ?, max_value = ? WHERE id = ?',
+    body.name ?? d.name, (body.name ?? d.name).slice(0, 50), body.valueType ?? d.value_type, min, max, id);
+  await audit(env.DB, ctx, 'field_updated', 'data_element', id, body);
+  return json({ dataElement: deOut(await one(env.DB, 'SELECT * FROM data_elements WHERE id = ?', id)) });
+}
+
+// ---------- indicators ----------
+const indicatorSchema = (partial) => {
+  const req = (f) => (partial ? f.optional() : f);
+  const shape = {
+    id: partial ? undefined : idField,
+    name: req(v.string({ min: 1, max: 230 })),
+    sector: req(v.string({ min: 1, max: 100 })),     // typed or picked; new names create a sector
+    numerator: req(v.string({ min: 1, max: 230 })),
+    denominator: v.string({ max: 230 }).optional(),     // empty = a plain count
+    source: v.string({ max: 300 }).optional(),
+    showAs: v.string({ oneOf: Object.keys(TYPE) }).optional(),
+    decimals: v.number({ int: true, min: 0, max: 4 }).optional(),
+    shortName: v.string({ min: 1, max: 50 }).optional(),
+    description: v.string({ max: 2000 }).optional(),
+    sort: v.number({ int: true, min: 0, max: 10000 }).optional(),
+    archived: partial ? v.boolean().optional() : undefined,
+  };
+  for (const k of Object.keys(shape)) if (!shape[k]) delete shape[k];
+  return v.object(shape);
+};
+const schemaFor = indicatorSchema;
+
+function describe(source, description) {
+  const parts = [];
+  if (description) parts.push(description);
+  if (source) parts.push(`Source: ${source}`);
+  return parts.join(' — ');
+}
+
+export async function createIndicator(request, env, ctx, { datasetId }) {
+  const ds = await loadDataset(env.DB, datasetId);
+  requireSetupAdmin(ctx, datasetId);
+  const body = validate(schemaFor(false), await readJson(request));
+  if (await one(env.DB, 'SELECT id FROM indicators WHERE dataset_id = ? AND lower(name) = lower(?) AND archived_at IS NULL', datasetId, body.name)) {
+    throw new HttpError(409, 'name_taken', 'This data set already has an indicator with that name.');
+  }
+  const sectorId = await sectorFor(env.DB, body.sector);
+  const id = await pickId(env.DB, body.id);
+  const numId = await fieldFor(env.DB, datasetId, body.numerator);
+  const den = (body.denominator || '').trim();
+  const denId = den ? await fieldFor(env.DB, datasetId, den) : null;
+  const showAs = body.showAs || (denId ? 'percent' : 'number');
+  const t = now();
+  const sort = body.sort ?? ((await one(env.DB, 'SELECT COALESCE(MAX(sort), 0) + 10 AS s FROM indicators WHERE dataset_id = ?', datasetId)).s);
+  await run(env.DB,
+    `INSERT INTO indicators (id, dataset_id, sector_id, name, short_name, description, source, numerator, denominator, numerator_description,
+       denominator_description, type_id, decimals, sort, version, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,1,?,?)`,
+    id, ds.id, sectorId, body.name, body.shortName || body.name.slice(0, 50), body.description || '', body.source || '',
+    `#{${numId}}`, denId ? `#{${denId}}` : '1', body.numerator.trim(), den || '1', TYPE[showAs],
+    body.decimals ?? (showAs === 'number' && !denId ? 0 : 1), sort, t, t);
+  await audit(env.DB, ctx, 'indicator_created', 'indicator', id, { name: body.name });
+  return json({ indicator: await indicatorById(env.DB, id) }, 201);
+}
+
+async function indicatorById(db, id) {
+  const i = await one(db, 'SELECT * FROM indicators WHERE id = ?', id);
+  const des = await all(db, 'SELECT id, name FROM data_elements WHERE dataset_id = ?', i.dataset_id);
+  const sec = await one(db, 'SELECT id, name FROM sectors WHERE id = ?', i.sector_id);
+  return indOut(i, Object.fromEntries(des.map((d) => [d.id, d.name])), sec ? { [sec.id]: sec.name } : {});
+}
+
+export async function updateIndicator(request, env, ctx, { id }) {
+  const i = await one(env.DB, 'SELECT * FROM indicators WHERE id = ?', id);
+  if (!i) throw new HttpError(404, 'not_found', 'Indicator not found.');
+  requireSetupAdmin(ctx, i.dataset_id);
+  const body = validate(schemaFor(true), await readJson(request));
+  const before = await indicatorById(env.DB, id);
+  let numerator = i.numerator; let denominator = i.denominator;
+  let numDesc = i.numerator_description; let denDesc = i.denominator_description;
+  if (body.numerator !== undefined && body.numerator.trim().toLowerCase() !== (before.numerator || '').toLowerCase()) {
+    numerator = `#{${await fieldFor(env.DB, i.dataset_id, body.numerator)}}`;
+    numDesc = body.numerator.trim();
+  }
+  if (body.denominator !== undefined && body.denominator.trim().toLowerCase() !== (before.denominator || '').toLowerCase()) {
+    const den = body.denominator.trim();
+    denominator = den ? `#{${await fieldFor(env.DB, i.dataset_id, den)}}` : '1';
+    denDesc = den || '1';
+  }
+  for (const e of [numerator, denominator]) parseExpression(e); // sanity
+  const sectorId = body.sector ? await sectorFor(env.DB, body.sector) : i.sector_id;
+  const showAs = body.showAs || (denominator === '1' && body.denominator !== undefined ? 'number' : SHOW_AS[i.type_id]);
+  const typeId = TYPE[showAs] || i.type_id;
+  const formulaChanged = numerator !== i.numerator || denominator !== i.denominator || typeId !== i.type_id;
+  await run(env.DB, 'INSERT OR REPLACE INTO indicator_history (indicator_id, version, snapshot, changed_by, changed_at) VALUES (?,?,?,?,?)',
+    id, i.version, JSON.stringify(before), ctx.user.id, now());
+  await run(env.DB,
+    `UPDATE indicators SET sector_id = ?, name = ?, short_name = ?, description = ?, source = ?, numerator = ?, denominator = ?, numerator_description = ?,
+       denominator_description = ?, type_id = ?, decimals = ?, sort = ?, version = ?, updated_at = ?, archived_at = ? WHERE id = ?`,
+    sectorId, body.name ?? i.name, body.shortName ?? (body.name ? body.name.slice(0, 50) : i.short_name), body.description ?? i.description,
+    body.source ?? i.source, numerator, denominator, numDesc, denDesc, typeId, body.decimals ?? i.decimals, body.sort ?? i.sort,
+    formulaChanged ? i.version + 1 : i.version, now(),
+    body.archived === undefined ? i.archived_at : body.archived ? now() : null, id);
+  if (formulaChanged || body.archived) for (const old of [before.numeratorId, before.denominatorId]) await tidyField(env.DB, old);
+  await audit(env.DB, ctx, 'indicator_updated', 'indicator', id, body);
+  return json({ indicator: await indicatorById(env.DB, id) });
+}
+
+export async function deleteIndicator(request, env, ctx, { id }) {
+  const i = await one(env.DB, 'SELECT * FROM indicators WHERE id = ?', id);
+  if (!i) throw new HttpError(404, 'not_found', 'Indicator not found.');
+  requireSetupAdmin(ctx, i.dataset_id);
+  const before = await indicatorById(env.DB, id);
+  await run(env.DB, 'UPDATE indicators SET archived_at = ?, updated_at = ? WHERE id = ?', now(), now(), id);
+  for (const f of [before.numeratorId, before.denominatorId]) await tidyField(env.DB, f);
+  await audit(env.DB, ctx, 'indicator_archived', 'indicator', id, { name: i.name });
+  return json({ ok: true });
+}
+
+export { describe as indicatorDescription };

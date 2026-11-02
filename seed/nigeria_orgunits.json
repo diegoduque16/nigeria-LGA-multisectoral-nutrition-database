@@ -1,0 +1,6498 @@
+{
+ "source": "ALMA scorecard platform (malariascorecard.org) dhisRegionId, retrieved 2026-11-02",
+ "organisationUnits": [
+  {
+   "id": "s5DPBsdoE8b",
+   "name": "Nigeria",
+   "level": 1
+  },
+  {
+   "id": "FHlOerryBjk",
+   "name": "ab Abia State",
+   "level": 2,
+   "parent": {
+    "id": "s5DPBsdoE8b"
+   }
+  },
+  {
+   "id": "NmLIx68MjRi",
+   "name": "ab Aba North LGA",
+   "level": 3,
+   "parent": {
+    "id": "FHlOerryBjk"
+   }
+  },
+  {
+   "id": "FQhClVW8Xg4",
+   "name": "ab Aba South LGA",
+   "level": 3,
+   "parent": {
+    "id": "FHlOerryBjk"
+   }
+  },
+  {
+   "id": "YmDVu2Zobjx",
+   "name": "ab Arochukwu LGA",
+   "level": 3,
+   "parent": {
+    "id": "FHlOerryBjk"
+   }
+  },
+  {
+   "id": "mM1oE6m2BPZ",
+   "name": "ab Bende LGA",
+   "level": 3,
+   "parent": {
+    "id": "FHlOerryBjk"
+   }
+  },
+  {
+   "id": "XrdEDixLBo6",
+   "name": "ab Ikwuano LGA",
+   "level": 3,
+   "parent": {
+    "id": "FHlOerryBjk"
+   }
+  },
+  {
+   "id": "noxZsS0SI3j",
+   "name": "ab Isiala-Ngwa North LGA",
+   "level": 3,
+   "parent": {
+    "id": "FHlOerryBjk"
+   }
+  },
+  {
+   "id": "PvCx4O9hUyE",
+   "name": "ab Isiala-Ngwa South LGA",
+   "level": 3,
+   "parent": {
+    "id": "FHlOerryBjk"
+   }
+  },
+  {
+   "id": "VVYnLplahao",
+   "name": "ab Isuikwuato LGA",
+   "level": 3,
+   "parent": {
+    "id": "FHlOerryBjk"
+   }
+  },
+  {
+   "id": "SglI2OVCrRH",
+   "name": "ab Obi Nwga LGA",
+   "level": 3,
+   "parent": {
+    "id": "FHlOerryBjk"
+   }
+  },
+  {
+   "id": "CaNeJHeZmUR",
+   "name": "ab Ohafia LGA",
+   "level": 3,
+   "parent": {
+    "id": "FHlOerryBjk"
+   }
+  },
+  {
+   "id": "R72wK9F1YKO",
+   "name": "ab Osisioma Ngwa LGA",
+   "level": 3,
+   "parent": {
+    "id": "FHlOerryBjk"
+   }
+  },
+  {
+   "id": "hbPiBm4baVQ",
+   "name": "ab Ugwunagbo LGA",
+   "level": 3,
+   "parent": {
+    "id": "FHlOerryBjk"
+   }
+  },
+  {
+   "id": "MOb01aK42zX",
+   "name": "ab Ukwa East LGA",
+   "level": 3,
+   "parent": {
+    "id": "FHlOerryBjk"
+   }
+  },
+  {
+   "id": "VIBkrLoSn6m",
+   "name": "ab Ukwa West LGA",
+   "level": 3,
+   "parent": {
+    "id": "FHlOerryBjk"
+   }
+  },
+  {
+   "id": "Nya0Lyr9MV5",
+   "name": "ab Umuahia North LGA",
+   "level": 3,
+   "parent": {
+    "id": "FHlOerryBjk"
+   }
+  },
+  {
+   "id": "gtiaV7dAXXP",
+   "name": "ab Umuahia South LGA",
+   "level": 3,
+   "parent": {
+    "id": "FHlOerryBjk"
+   }
+  },
+  {
+   "id": "jcDcQsnT8hO",
+   "name": "ab Umunneochi LGA",
+   "level": 3,
+   "parent": {
+    "id": "FHlOerryBjk"
+   }
+  },
+  {
+   "id": "OgjFloqKoqk",
+   "name": "ad Adamawa State",
+   "level": 2,
+   "parent": {
+    "id": "s5DPBsdoE8b"
+   }
+  },
+  {
+   "id": "agAcarLl8in",
+   "name": "ad Demsa LGA",
+   "level": 3,
+   "parent": {
+    "id": "OgjFloqKoqk"
+   }
+  },
+  {
+   "id": "MTrbt9Enp9l",
+   "name": "ad Fufore LGA",
+   "level": 3,
+   "parent": {
+    "id": "OgjFloqKoqk"
+   }
+  },
+  {
+   "id": "uH7aGHolUPO",
+   "name": "ad Ganye LGA",
+   "level": 3,
+   "parent": {
+    "id": "OgjFloqKoqk"
+   }
+  },
+  {
+   "id": "E4UgKl7XGyR",
+   "name": "ad Girei LGA",
+   "level": 3,
+   "parent": {
+    "id": "OgjFloqKoqk"
+   }
+  },
+  {
+   "id": "gR02KHxwEkC",
+   "name": "ad Gombi LGA",
+   "level": 3,
+   "parent": {
+    "id": "OgjFloqKoqk"
+   }
+  },
+  {
+   "id": "nTbVPkvXnYg",
+   "name": "ad Guyuk LGA",
+   "level": 3,
+   "parent": {
+    "id": "OgjFloqKoqk"
+   }
+  },
+  {
+   "id": "xO0Hru6SBFb",
+   "name": "ad Hong LGA",
+   "level": 3,
+   "parent": {
+    "id": "OgjFloqKoqk"
+   }
+  },
+  {
+   "id": "oAhWtMSiDTs",
+   "name": "ad Jada LGA",
+   "level": 3,
+   "parent": {
+    "id": "OgjFloqKoqk"
+   }
+  },
+  {
+   "id": "nJtkRzcJ64r",
+   "name": "ad Lamurde LGA",
+   "level": 3,
+   "parent": {
+    "id": "OgjFloqKoqk"
+   }
+  },
+  {
+   "id": "sfBIqMYf2Me",
+   "name": "ad Madagali LGA",
+   "level": 3,
+   "parent": {
+    "id": "OgjFloqKoqk"
+   }
+  },
+  {
+   "id": "v1qQNHi2SLe",
+   "name": "ad Maiha LGA",
+   "level": 3,
+   "parent": {
+    "id": "OgjFloqKoqk"
+   }
+  },
+  {
+   "id": "Gnc1yMuFCPD",
+   "name": "ad Mayo-Belwa LGA",
+   "level": 3,
+   "parent": {
+    "id": "OgjFloqKoqk"
+   }
+  },
+  {
+   "id": "AG1tY8HEJdp",
+   "name": "ad Michika LGA",
+   "level": 3,
+   "parent": {
+    "id": "OgjFloqKoqk"
+   }
+  },
+  {
+   "id": "f5Jrkz6QYek",
+   "name": "ad Mubi North LGA",
+   "level": 3,
+   "parent": {
+    "id": "OgjFloqKoqk"
+   }
+  },
+  {
+   "id": "GznoYjquR5l",
+   "name": "ad Mubi South LGA",
+   "level": 3,
+   "parent": {
+    "id": "OgjFloqKoqk"
+   }
+  },
+  {
+   "id": "BSGaVgpmuaq",
+   "name": "ad Numan LGA",
+   "level": 3,
+   "parent": {
+    "id": "OgjFloqKoqk"
+   }
+  },
+  {
+   "id": "TjCLys8YgKo",
+   "name": "ad Shelleng LGA",
+   "level": 3,
+   "parent": {
+    "id": "OgjFloqKoqk"
+   }
+  },
+  {
+   "id": "DJzgYjMWAEh",
+   "name": "ad Song LGA",
+   "level": 3,
+   "parent": {
+    "id": "OgjFloqKoqk"
+   }
+  },
+  {
+   "id": "o5V62YZjB6t",
+   "name": "ad Toungo LGA",
+   "level": 3,
+   "parent": {
+    "id": "OgjFloqKoqk"
+   }
+  },
+  {
+   "id": "cGlWN2vidCC",
+   "name": "ad Yola North LGA",
+   "level": 3,
+   "parent": {
+    "id": "OgjFloqKoqk"
+   }
+  },
+  {
+   "id": "GArKPmuMV50",
+   "name": "ad Yola South LGA",
+   "level": 3,
+   "parent": {
+    "id": "OgjFloqKoqk"
+   }
+  },
+  {
+   "id": "qLiKWoddwFu",
+   "name": "ak Akwa-Ibom State",
+   "level": 2,
+   "parent": {
+    "id": "s5DPBsdoE8b"
+   }
+  },
+  {
+   "id": "MknZt95LesH",
+   "name": "ak Abak LGA",
+   "level": 3,
+   "parent": {
+    "id": "qLiKWoddwFu"
+   }
+  },
+  {
+   "id": "gI48C9UcOmu",
+   "name": "ak Eastern Obolo LGA",
+   "level": 3,
+   "parent": {
+    "id": "qLiKWoddwFu"
+   }
+  },
+  {
+   "id": "VAUw4GObZiJ",
+   "name": "ak Eket LGA",
+   "level": 3,
+   "parent": {
+    "id": "qLiKWoddwFu"
+   }
+  },
+  {
+   "id": "vAjS3WBzBB3",
+   "name": "ak Esit Eket LGA",
+   "level": 3,
+   "parent": {
+    "id": "qLiKWoddwFu"
+   }
+  },
+  {
+   "id": "DGbAz9uZOBi",
+   "name": "ak Essien Udim LGA",
+   "level": 3,
+   "parent": {
+    "id": "qLiKWoddwFu"
+   }
+  },
+  {
+   "id": "xfLkspXI6N5",
+   "name": "ak Etim Ekpo LGA",
+   "level": 3,
+   "parent": {
+    "id": "qLiKWoddwFu"
+   }
+  },
+  {
+   "id": "Rbsn0XmQBtz",
+   "name": "ak Etinan LGA",
+   "level": 3,
+   "parent": {
+    "id": "qLiKWoddwFu"
+   }
+  },
+  {
+   "id": "zpuL1cuc0Cp",
+   "name": "ak Ibeno LGA",
+   "level": 3,
+   "parent": {
+    "id": "qLiKWoddwFu"
+   }
+  },
+  {
+   "id": "BnM53CW3AqV",
+   "name": "ak Ibesikpo Asutan LGA",
+   "level": 3,
+   "parent": {
+    "id": "qLiKWoddwFu"
+   }
+  },
+  {
+   "id": "xGiiF6VCAbn",
+   "name": "ak Ibiono Ibom LGA",
+   "level": 3,
+   "parent": {
+    "id": "qLiKWoddwFu"
+   }
+  },
+  {
+   "id": "rnJDFjrHjSG",
+   "name": "ak Ika LGA",
+   "level": 3,
+   "parent": {
+    "id": "qLiKWoddwFu"
+   }
+  },
+  {
+   "id": "m4qW9wF3Kll",
+   "name": "ak Ikono LGA",
+   "level": 3,
+   "parent": {
+    "id": "qLiKWoddwFu"
+   }
+  },
+  {
+   "id": "IzltXcJbPvr",
+   "name": "ak Ikot Abasi LGA",
+   "level": 3,
+   "parent": {
+    "id": "qLiKWoddwFu"
+   }
+  },
+  {
+   "id": "NgcZB6JYmC0",
+   "name": "ak Ikot Ekpene LGA",
+   "level": 3,
+   "parent": {
+    "id": "qLiKWoddwFu"
+   }
+  },
+  {
+   "id": "M3D1SW7tTia",
+   "name": "ak Ini LGA",
+   "level": 3,
+   "parent": {
+    "id": "qLiKWoddwFu"
+   }
+  },
+  {
+   "id": "chV97vQcggT",
+   "name": "ak Itu LGA",
+   "level": 3,
+   "parent": {
+    "id": "qLiKWoddwFu"
+   }
+  },
+  {
+   "id": "iXSM6GwyHCY",
+   "name": "ak Mbo LGA",
+   "level": 3,
+   "parent": {
+    "id": "qLiKWoddwFu"
+   }
+  },
+  {
+   "id": "LbA7JUgAJ2f",
+   "name": "ak Mkpat Enin LGA",
+   "level": 3,
+   "parent": {
+    "id": "qLiKWoddwFu"
+   }
+  },
+  {
+   "id": "razBnhTAvlJ",
+   "name": "ak Nsit Atai LGA",
+   "level": 3,
+   "parent": {
+    "id": "qLiKWoddwFu"
+   }
+  },
+  {
+   "id": "h5oRiRm565v",
+   "name": "ak Nsit Ibom LGA",
+   "level": 3,
+   "parent": {
+    "id": "qLiKWoddwFu"
+   }
+  },
+  {
+   "id": "m05T1Vgqgav",
+   "name": "ak Nsit Ubium LGA",
+   "level": 3,
+   "parent": {
+    "id": "qLiKWoddwFu"
+   }
+  },
+  {
+   "id": "SzCMTWR5n0f",
+   "name": "ak Obot Akara LGA",
+   "level": 3,
+   "parent": {
+    "id": "qLiKWoddwFu"
+   }
+  },
+  {
+   "id": "jVbeHAv16lH",
+   "name": "ak Okobo LGA",
+   "level": 3,
+   "parent": {
+    "id": "qLiKWoddwFu"
+   }
+  },
+  {
+   "id": "SfVPbLG5FJm",
+   "name": "ak Onna LGA",
+   "level": 3,
+   "parent": {
+    "id": "qLiKWoddwFu"
+   }
+  },
+  {
+   "id": "QsPs42Eh0KL",
+   "name": "ak Oron LGA",
+   "level": 3,
+   "parent": {
+    "id": "qLiKWoddwFu"
+   }
+  },
+  {
+   "id": "jgHgTm8cgD6",
+   "name": "ak Oruk Anam LGA",
+   "level": 3,
+   "parent": {
+    "id": "qLiKWoddwFu"
+   }
+  },
+  {
+   "id": "oPBJJ5icMUq",
+   "name": "ak Udung Uko LGA",
+   "level": 3,
+   "parent": {
+    "id": "qLiKWoddwFu"
+   }
+  },
+  {
+   "id": "DO04b12uwvI",
+   "name": "ak Ukanafun LGA",
+   "level": 3,
+   "parent": {
+    "id": "qLiKWoddwFu"
+   }
+  },
+  {
+   "id": "kWdeL5ZH2WW",
+   "name": "ak Uruan LGA",
+   "level": 3,
+   "parent": {
+    "id": "qLiKWoddwFu"
+   }
+  },
+  {
+   "id": "p3dz8LVRfBy",
+   "name": "ak Urue-Offong/Oruko LGA",
+   "level": 3,
+   "parent": {
+    "id": "qLiKWoddwFu"
+   }
+  },
+  {
+   "id": "LS6DYNHhJR9",
+   "name": "ak Uyo LGA",
+   "level": 3,
+   "parent": {
+    "id": "qLiKWoddwFu"
+   }
+  },
+  {
+   "id": "Nko8QFDmYmq",
+   "name": "an Anambra state",
+   "level": 2,
+   "parent": {
+    "id": "s5DPBsdoE8b"
+   }
+  },
+  {
+   "id": "S1PsGJvdud6",
+   "name": "an Aguata LGA",
+   "level": 3,
+   "parent": {
+    "id": "Nko8QFDmYmq"
+   }
+  },
+  {
+   "id": "ePx1ECcPAwd",
+   "name": "an Anambra East LGA",
+   "level": 3,
+   "parent": {
+    "id": "Nko8QFDmYmq"
+   }
+  },
+  {
+   "id": "MrJa5BgCqh3",
+   "name": "an Anambra West LGA",
+   "level": 3,
+   "parent": {
+    "id": "Nko8QFDmYmq"
+   }
+  },
+  {
+   "id": "TXx3n80tf9o",
+   "name": "an Anaocha LGA",
+   "level": 3,
+   "parent": {
+    "id": "Nko8QFDmYmq"
+   }
+  },
+  {
+   "id": "X05kjVjpK5Y",
+   "name": "an Awka North LGA",
+   "level": 3,
+   "parent": {
+    "id": "Nko8QFDmYmq"
+   }
+  },
+  {
+   "id": "Q2npDNVPZIN",
+   "name": "an Awka South LGA",
+   "level": 3,
+   "parent": {
+    "id": "Nko8QFDmYmq"
+   }
+  },
+  {
+   "id": "bFPhh99vupF",
+   "name": "an Ayamelum LGA",
+   "level": 3,
+   "parent": {
+    "id": "Nko8QFDmYmq"
+   }
+  },
+  {
+   "id": "qrvs4qJ8ecG",
+   "name": "an Dunukofia LGA",
+   "level": 3,
+   "parent": {
+    "id": "Nko8QFDmYmq"
+   }
+  },
+  {
+   "id": "JWNGE36YAWM",
+   "name": "an Ekwusigo LGA",
+   "level": 3,
+   "parent": {
+    "id": "Nko8QFDmYmq"
+   }
+  },
+  {
+   "id": "mkWCHtt0cmw",
+   "name": "an Idemili North LGA",
+   "level": 3,
+   "parent": {
+    "id": "Nko8QFDmYmq"
+   }
+  },
+  {
+   "id": "GRJR80tAACR",
+   "name": "an Idemili South LGA",
+   "level": 3,
+   "parent": {
+    "id": "Nko8QFDmYmq"
+   }
+  },
+  {
+   "id": "Oc0CsckdG6w",
+   "name": "an Ihiala LGA",
+   "level": 3,
+   "parent": {
+    "id": "Nko8QFDmYmq"
+   }
+  },
+  {
+   "id": "myFehhoZraL",
+   "name": "an Njikoka LGA",
+   "level": 3,
+   "parent": {
+    "id": "Nko8QFDmYmq"
+   }
+  },
+  {
+   "id": "VhQ9XNIC1YF",
+   "name": "an Nnewi North LGA",
+   "level": 3,
+   "parent": {
+    "id": "Nko8QFDmYmq"
+   }
+  },
+  {
+   "id": "Nk6Zp0MHp87",
+   "name": "an Nnewi South LGA",
+   "level": 3,
+   "parent": {
+    "id": "Nko8QFDmYmq"
+   }
+  },
+  {
+   "id": "kIIc6z1MTiT",
+   "name": "an Ogbaru LGA",
+   "level": 3,
+   "parent": {
+    "id": "Nko8QFDmYmq"
+   }
+  },
+  {
+   "id": "LOymDyfJtxx",
+   "name": "an Onitsha North LGA",
+   "level": 3,
+   "parent": {
+    "id": "Nko8QFDmYmq"
+   }
+  },
+  {
+   "id": "RNxEQZTdN6y",
+   "name": "an Onitsha South LGA",
+   "level": 3,
+   "parent": {
+    "id": "Nko8QFDmYmq"
+   }
+  },
+  {
+   "id": "YqiVViq60lt",
+   "name": "an Orumba North LGA",
+   "level": 3,
+   "parent": {
+    "id": "Nko8QFDmYmq"
+   }
+  },
+  {
+   "id": "Lf4lWFshJs4",
+   "name": "an Orumba South LGA",
+   "level": 3,
+   "parent": {
+    "id": "Nko8QFDmYmq"
+   }
+  },
+  {
+   "id": "zclzKDIkAYR",
+   "name": "an Oyi LGA",
+   "level": 3,
+   "parent": {
+    "id": "Nko8QFDmYmq"
+   }
+  },
+  {
+   "id": "ziJ3yxfgb3m",
+   "name": "ba Bauchi State",
+   "level": 2,
+   "parent": {
+    "id": "s5DPBsdoE8b"
+   }
+  },
+  {
+   "id": "v3GUZsQb0Un",
+   "name": "ba Alkaleri LGA",
+   "level": 3,
+   "parent": {
+    "id": "ziJ3yxfgb3m"
+   }
+  },
+  {
+   "id": "c8JDsLKbFBR",
+   "name": "ba Bauchi LGA",
+   "level": 3,
+   "parent": {
+    "id": "ziJ3yxfgb3m"
+   }
+  },
+  {
+   "id": "notdTGbsKLX",
+   "name": "ba Bogoro LGA",
+   "level": 3,
+   "parent": {
+    "id": "ziJ3yxfgb3m"
+   }
+  },
+  {
+   "id": "guLLcevRGdK",
+   "name": "ba Dambam LGA",
+   "level": 3,
+   "parent": {
+    "id": "ziJ3yxfgb3m"
+   }
+  },
+  {
+   "id": "kSyEE6ut2en",
+   "name": "ba Darazo LGA",
+   "level": 3,
+   "parent": {
+    "id": "ziJ3yxfgb3m"
+   }
+  },
+  {
+   "id": "WqHLYB673fH",
+   "name": "ba Dass LGA",
+   "level": 3,
+   "parent": {
+    "id": "ziJ3yxfgb3m"
+   }
+  },
+  {
+   "id": "G9oXC1A26tX",
+   "name": "ba Gamawa LGA",
+   "level": 3,
+   "parent": {
+    "id": "ziJ3yxfgb3m"
+   }
+  },
+  {
+   "id": "iMIRFfrdgQM",
+   "name": "ba Ganjuwa LGA",
+   "level": 3,
+   "parent": {
+    "id": "ziJ3yxfgb3m"
+   }
+  },
+  {
+   "id": "G7oLibKGcIG",
+   "name": "ba Giade LGA",
+   "level": 3,
+   "parent": {
+    "id": "ziJ3yxfgb3m"
+   }
+  },
+  {
+   "id": "W8AHKgEFoS0",
+   "name": "ba Itas/Gadau LGA",
+   "level": 3,
+   "parent": {
+    "id": "ziJ3yxfgb3m"
+   }
+  },
+  {
+   "id": "O0Lq1m0a0KS",
+   "name": "ba Jama'are LGA",
+   "level": 3,
+   "parent": {
+    "id": "ziJ3yxfgb3m"
+   }
+  },
+  {
+   "id": "g8mqPshZTIb",
+   "name": "ba Katagum LGA",
+   "level": 3,
+   "parent": {
+    "id": "ziJ3yxfgb3m"
+   }
+  },
+  {
+   "id": "eKQiMUBtDb7",
+   "name": "ba Kirfi LGA",
+   "level": 3,
+   "parent": {
+    "id": "ziJ3yxfgb3m"
+   }
+  },
+  {
+   "id": "eACbQ5aruhW",
+   "name": "ba Misau LGA",
+   "level": 3,
+   "parent": {
+    "id": "ziJ3yxfgb3m"
+   }
+  },
+  {
+   "id": "DWhH6AQSCsj",
+   "name": "ba Ningi LGA",
+   "level": 3,
+   "parent": {
+    "id": "ziJ3yxfgb3m"
+   }
+  },
+  {
+   "id": "u20hNdSWPZp",
+   "name": "ba Shira LGA",
+   "level": 3,
+   "parent": {
+    "id": "ziJ3yxfgb3m"
+   }
+  },
+  {
+   "id": "CqzyFbSzhJn",
+   "name": "ba Tafawa-Balewa LGA",
+   "level": 3,
+   "parent": {
+    "id": "ziJ3yxfgb3m"
+   }
+  },
+  {
+   "id": "MVIVSuywQVu",
+   "name": "ba Toro LGA",
+   "level": 3,
+   "parent": {
+    "id": "ziJ3yxfgb3m"
+   }
+  },
+  {
+   "id": "lkOqJRpJNWN",
+   "name": "ba Warji LGA",
+   "level": 3,
+   "parent": {
+    "id": "ziJ3yxfgb3m"
+   }
+  },
+  {
+   "id": "DOz124ajI0p",
+   "name": "ba Zaki LGA",
+   "level": 3,
+   "parent": {
+    "id": "ziJ3yxfgb3m"
+   }
+  },
+  {
+   "id": "MXrZyuS9E7A",
+   "name": "be Benue State",
+   "level": 2,
+   "parent": {
+    "id": "s5DPBsdoE8b"
+   }
+  },
+  {
+   "id": "R6mcmVN1GJD",
+   "name": "be Ado LGA",
+   "level": 3,
+   "parent": {
+    "id": "MXrZyuS9E7A"
+   }
+  },
+  {
+   "id": "NU5b5JHDyoj",
+   "name": "be Agatu LGA",
+   "level": 3,
+   "parent": {
+    "id": "MXrZyuS9E7A"
+   }
+  },
+  {
+   "id": "z9HdEaKEpsg",
+   "name": "be Apa LGA",
+   "level": 3,
+   "parent": {
+    "id": "MXrZyuS9E7A"
+   }
+  },
+  {
+   "id": "YeiyHttkjGy",
+   "name": "be Buruku LGA",
+   "level": 3,
+   "parent": {
+    "id": "MXrZyuS9E7A"
+   }
+  },
+  {
+   "id": "XkAgF2SCYLI",
+   "name": "be Gboko LGA",
+   "level": 3,
+   "parent": {
+    "id": "MXrZyuS9E7A"
+   }
+  },
+  {
+   "id": "l1FzCRjKHOg",
+   "name": "be Guma LGA",
+   "level": 3,
+   "parent": {
+    "id": "MXrZyuS9E7A"
+   }
+  },
+  {
+   "id": "eWlGoLbfLr7",
+   "name": "be Gwer East LGA",
+   "level": 3,
+   "parent": {
+    "id": "MXrZyuS9E7A"
+   }
+  },
+  {
+   "id": "cZxafI86D2Y",
+   "name": "be Gwer West LGA",
+   "level": 3,
+   "parent": {
+    "id": "MXrZyuS9E7A"
+   }
+  },
+  {
+   "id": "AL7eUjryxNi",
+   "name": "be Katsina-Ala LGA",
+   "level": 3,
+   "parent": {
+    "id": "MXrZyuS9E7A"
+   }
+  },
+  {
+   "id": "KUYwdQS66vH",
+   "name": "be Konshisha LGA",
+   "level": 3,
+   "parent": {
+    "id": "MXrZyuS9E7A"
+   }
+  },
+  {
+   "id": "raMi3uSwcqz",
+   "name": "be Kwande LGA",
+   "level": 3,
+   "parent": {
+    "id": "MXrZyuS9E7A"
+   }
+  },
+  {
+   "id": "MgmX3e0u0CY",
+   "name": "be Logo LGA",
+   "level": 3,
+   "parent": {
+    "id": "MXrZyuS9E7A"
+   }
+  },
+  {
+   "id": "qXeCZBlULbN",
+   "name": "be Makurdi LGA",
+   "level": 3,
+   "parent": {
+    "id": "MXrZyuS9E7A"
+   }
+  },
+  {
+   "id": "AhMtxuQDl0d",
+   "name": "be Obi LGA",
+   "level": 3,
+   "parent": {
+    "id": "MXrZyuS9E7A"
+   }
+  },
+  {
+   "id": "gnuDlIMv2na",
+   "name": "be Ogbadibo LGA",
+   "level": 3,
+   "parent": {
+    "id": "MXrZyuS9E7A"
+   }
+  },
+  {
+   "id": "yVy6pUvXxvU",
+   "name": "be Ohimini LGA",
+   "level": 3,
+   "parent": {
+    "id": "MXrZyuS9E7A"
+   }
+  },
+  {
+   "id": "tOZbj1G5WhA",
+   "name": "be Oju LGA",
+   "level": 3,
+   "parent": {
+    "id": "MXrZyuS9E7A"
+   }
+  },
+  {
+   "id": "Po7gAwTAK3M",
+   "name": "be Okpokwu LGA",
+   "level": 3,
+   "parent": {
+    "id": "MXrZyuS9E7A"
+   }
+  },
+  {
+   "id": "NOzrBbK5XWV",
+   "name": "be Otukpo LGA",
+   "level": 3,
+   "parent": {
+    "id": "MXrZyuS9E7A"
+   }
+  },
+  {
+   "id": "wQdK2eUxycm",
+   "name": "be Tarka LGA",
+   "level": 3,
+   "parent": {
+    "id": "MXrZyuS9E7A"
+   }
+  },
+  {
+   "id": "mGqDapo7wKU",
+   "name": "be Ukum LGA",
+   "level": 3,
+   "parent": {
+    "id": "MXrZyuS9E7A"
+   }
+  },
+  {
+   "id": "jbmVrnNa4hY",
+   "name": "be Ushongo LGA",
+   "level": 3,
+   "parent": {
+    "id": "MXrZyuS9E7A"
+   }
+  },
+  {
+   "id": "H5nm1I86Gpk",
+   "name": "be Vandeikya LGA",
+   "level": 3,
+   "parent": {
+    "id": "MXrZyuS9E7A"
+   }
+  },
+  {
+   "id": "RLySnRCE1Gy",
+   "name": "bo Borno State",
+   "level": 2,
+   "parent": {
+    "id": "s5DPBsdoE8b"
+   }
+  },
+  {
+   "id": "E61wS75qRs5",
+   "name": "bo Abadam LGA",
+   "level": 3,
+   "parent": {
+    "id": "RLySnRCE1Gy"
+   }
+  },
+  {
+   "id": "oGiYVoQA2gU",
+   "name": "bo Askira/Uba LGA",
+   "level": 3,
+   "parent": {
+    "id": "RLySnRCE1Gy"
+   }
+  },
+  {
+   "id": "Xi7jSTKECe1",
+   "name": "bo Bama LGA",
+   "level": 3,
+   "parent": {
+    "id": "RLySnRCE1Gy"
+   }
+  },
+  {
+   "id": "t7PoK1sZwld",
+   "name": "bo Bayo LGA",
+   "level": 3,
+   "parent": {
+    "id": "RLySnRCE1Gy"
+   }
+  },
+  {
+   "id": "tibO57aNd3I",
+   "name": "bo Biu LGA",
+   "level": 3,
+   "parent": {
+    "id": "RLySnRCE1Gy"
+   }
+  },
+  {
+   "id": "Ftj90GxMqCn",
+   "name": "bo Chibok LGA",
+   "level": 3,
+   "parent": {
+    "id": "RLySnRCE1Gy"
+   }
+  },
+  {
+   "id": "ZAAC4l8kAzH",
+   "name": "bo Damboa LGA",
+   "level": 3,
+   "parent": {
+    "id": "RLySnRCE1Gy"
+   }
+  },
+  {
+   "id": "r5wSAYYsyqy",
+   "name": "bo Dikwa LGA",
+   "level": 3,
+   "parent": {
+    "id": "RLySnRCE1Gy"
+   }
+  },
+  {
+   "id": "m3N2zMOYXTZ",
+   "name": "bo Gubio LGA",
+   "level": 3,
+   "parent": {
+    "id": "RLySnRCE1Gy"
+   }
+  },
+  {
+   "id": "kdeO9XKxYaA",
+   "name": "bo Guzamala LGA",
+   "level": 3,
+   "parent": {
+    "id": "RLySnRCE1Gy"
+   }
+  },
+  {
+   "id": "s0vZTopivtV",
+   "name": "bo Gwoza LGA",
+   "level": 3,
+   "parent": {
+    "id": "RLySnRCE1Gy"
+   }
+  },
+  {
+   "id": "SOwTzNzeQC5",
+   "name": "bo Hawul LGA",
+   "level": 3,
+   "parent": {
+    "id": "RLySnRCE1Gy"
+   }
+  },
+  {
+   "id": "oVxhljsN4G2",
+   "name": "bo Jere LGA",
+   "level": 3,
+   "parent": {
+    "id": "RLySnRCE1Gy"
+   }
+  },
+  {
+   "id": "DMpOAwpoTyo",
+   "name": "bo Kaga LGA",
+   "level": 3,
+   "parent": {
+    "id": "RLySnRCE1Gy"
+   }
+  },
+  {
+   "id": "AOVucxvGlXM",
+   "name": "bo Kala/Balge LGA",
+   "level": 3,
+   "parent": {
+    "id": "RLySnRCE1Gy"
+   }
+  },
+  {
+   "id": "Nk9ApK5fW3m",
+   "name": "bo Konduga LGA",
+   "level": 3,
+   "parent": {
+    "id": "RLySnRCE1Gy"
+   }
+  },
+  {
+   "id": "Oy4Ck6tkIqh",
+   "name": "bo Kukawa LGA",
+   "level": 3,
+   "parent": {
+    "id": "RLySnRCE1Gy"
+   }
+  },
+  {
+   "id": "b0xcmTeb9Dz",
+   "name": "bo Kwaya Kusar LGA",
+   "level": 3,
+   "parent": {
+    "id": "RLySnRCE1Gy"
+   }
+  },
+  {
+   "id": "sZVX8SrFngT",
+   "name": "bo Mafa LGA",
+   "level": 3,
+   "parent": {
+    "id": "RLySnRCE1Gy"
+   }
+  },
+  {
+   "id": "JFc9t100xwS",
+   "name": "bo Magumeri LGA",
+   "level": 3,
+   "parent": {
+    "id": "RLySnRCE1Gy"
+   }
+  },
+  {
+   "id": "DFZEhJCgoyk",
+   "name": "bo Maiduguri LGA",
+   "level": 3,
+   "parent": {
+    "id": "RLySnRCE1Gy"
+   }
+  },
+  {
+   "id": "jJVgiRuuq5V",
+   "name": "bo Marte LGA",
+   "level": 3,
+   "parent": {
+    "id": "RLySnRCE1Gy"
+   }
+  },
+  {
+   "id": "etIBINYvvhX",
+   "name": "bo Mobbar LGA",
+   "level": 3,
+   "parent": {
+    "id": "RLySnRCE1Gy"
+   }
+  },
+  {
+   "id": "CkAEv8rbu8I",
+   "name": "bo Monguno LGA",
+   "level": 3,
+   "parent": {
+    "id": "RLySnRCE1Gy"
+   }
+  },
+  {
+   "id": "y5JLBMBMK13",
+   "name": "bo Ngala LGA",
+   "level": 3,
+   "parent": {
+    "id": "RLySnRCE1Gy"
+   }
+  },
+  {
+   "id": "iMXR5pjNO0p",
+   "name": "bo Nganzai LGA",
+   "level": 3,
+   "parent": {
+    "id": "RLySnRCE1Gy"
+   }
+  },
+  {
+   "id": "tWZrMpZmrDm",
+   "name": "bo Shani LGA",
+   "level": 3,
+   "parent": {
+    "id": "RLySnRCE1Gy"
+   }
+  },
+  {
+   "id": "ns3vF75Y0bF",
+   "name": "by Bayelsa State",
+   "level": 2,
+   "parent": {
+    "id": "s5DPBsdoE8b"
+   }
+  },
+  {
+   "id": "wqEr1A8RSHh",
+   "name": "by Brass LGA",
+   "level": 3,
+   "parent": {
+    "id": "ns3vF75Y0bF"
+   }
+  },
+  {
+   "id": "hMI05a23sKJ",
+   "name": "by Ekeremor LGA",
+   "level": 3,
+   "parent": {
+    "id": "ns3vF75Y0bF"
+   }
+  },
+  {
+   "id": "z2oxy84B0Nd",
+   "name": "by Kolokuma/Opokuma LGA",
+   "level": 3,
+   "parent": {
+    "id": "ns3vF75Y0bF"
+   }
+  },
+  {
+   "id": "vrwifbRv2Pq",
+   "name": "by Nembe LGA",
+   "level": 3,
+   "parent": {
+    "id": "ns3vF75Y0bF"
+   }
+  },
+  {
+   "id": "NrTQtP47M50",
+   "name": "by Ogbia LGA",
+   "level": 3,
+   "parent": {
+    "id": "ns3vF75Y0bF"
+   }
+  },
+  {
+   "id": "IFOh0atDC1J",
+   "name": "by Sagbama LGA",
+   "level": 3,
+   "parent": {
+    "id": "ns3vF75Y0bF"
+   }
+  },
+  {
+   "id": "lousIlV80fh",
+   "name": "by Southern Ijaw LGA",
+   "level": 3,
+   "parent": {
+    "id": "ns3vF75Y0bF"
+   }
+  },
+  {
+   "id": "Uux15IO3mXc",
+   "name": "by Yenagoa LGA",
+   "level": 3,
+   "parent": {
+    "id": "ns3vF75Y0bF"
+   }
+  },
+  {
+   "id": "caG44DzHu6F",
+   "name": "cr Cross River State",
+   "level": 2,
+   "parent": {
+    "id": "s5DPBsdoE8b"
+   }
+  },
+  {
+   "id": "sUwhbVY2D0o",
+   "name": "cr Abi LGA",
+   "level": 3,
+   "parent": {
+    "id": "caG44DzHu6F"
+   }
+  },
+  {
+   "id": "JJNOwLhzjRt",
+   "name": "cr Akamkpa LGA",
+   "level": 3,
+   "parent": {
+    "id": "caG44DzHu6F"
+   }
+  },
+  {
+   "id": "QDiBopYlkjc",
+   "name": "cr Akpabuyo LGA",
+   "level": 3,
+   "parent": {
+    "id": "caG44DzHu6F"
+   }
+  },
+  {
+   "id": "W2QpO5bmah4",
+   "name": "cr Bakassi LGA",
+   "level": 3,
+   "parent": {
+    "id": "caG44DzHu6F"
+   }
+  },
+  {
+   "id": "Nmoti6l5OVN",
+   "name": "cr Bekwarra LGA",
+   "level": 3,
+   "parent": {
+    "id": "caG44DzHu6F"
+   }
+  },
+  {
+   "id": "tFjkRJfZefX",
+   "name": "cr Biase LGA",
+   "level": 3,
+   "parent": {
+    "id": "caG44DzHu6F"
+   }
+  },
+  {
+   "id": "mjnthmF1Nkq",
+   "name": "cr Boki LGA",
+   "level": 3,
+   "parent": {
+    "id": "caG44DzHu6F"
+   }
+  },
+  {
+   "id": "Z1CBbXtt8Mr",
+   "name": "cr Calabar Municipal LGA",
+   "level": 3,
+   "parent": {
+    "id": "caG44DzHu6F"
+   }
+  },
+  {
+   "id": "T92hNiuxwbb",
+   "name": "cr Calabar South LGA",
+   "level": 3,
+   "parent": {
+    "id": "caG44DzHu6F"
+   }
+  },
+  {
+   "id": "GIpyAYxZomS",
+   "name": "cr Etung LGA",
+   "level": 3,
+   "parent": {
+    "id": "caG44DzHu6F"
+   }
+  },
+  {
+   "id": "LN2ZesUts0H",
+   "name": "cr Ikom LGA",
+   "level": 3,
+   "parent": {
+    "id": "caG44DzHu6F"
+   }
+  },
+  {
+   "id": "g6KmQ0Xq4rM",
+   "name": "cr Obanliku LGA",
+   "level": 3,
+   "parent": {
+    "id": "caG44DzHu6F"
+   }
+  },
+  {
+   "id": "vhAuczG0Jnn",
+   "name": "cr Obubra LGA",
+   "level": 3,
+   "parent": {
+    "id": "caG44DzHu6F"
+   }
+  },
+  {
+   "id": "UHsx7L74QSF",
+   "name": "cr Obudu LGA",
+   "level": 3,
+   "parent": {
+    "id": "caG44DzHu6F"
+   }
+  },
+  {
+   "id": "LuVepgkLEc9",
+   "name": "cr Odukpani LGA",
+   "level": 3,
+   "parent": {
+    "id": "caG44DzHu6F"
+   }
+  },
+  {
+   "id": "Y6XWMM7TpjM",
+   "name": "cr Ogoja LGA",
+   "level": 3,
+   "parent": {
+    "id": "caG44DzHu6F"
+   }
+  },
+  {
+   "id": "HRntm3mF9dY",
+   "name": "cr Yakurr LGA",
+   "level": 3,
+   "parent": {
+    "id": "caG44DzHu6F"
+   }
+  },
+  {
+   "id": "fKxXiBDQCWZ",
+   "name": "cr Yala LGA",
+   "level": 3,
+   "parent": {
+    "id": "caG44DzHu6F"
+   }
+  },
+  {
+   "id": "m0rZG06GdPe",
+   "name": "de Delta State",
+   "level": 2,
+   "parent": {
+    "id": "s5DPBsdoE8b"
+   }
+  },
+  {
+   "id": "j52EIwzpmlX",
+   "name": "de Aniocha North LGA",
+   "level": 3,
+   "parent": {
+    "id": "m0rZG06GdPe"
+   }
+  },
+  {
+   "id": "Vv50GrOQBgt",
+   "name": "de Aniocha South LGA",
+   "level": 3,
+   "parent": {
+    "id": "m0rZG06GdPe"
+   }
+  },
+  {
+   "id": "j2dzYRMDmxH",
+   "name": "de Bomadi LGA",
+   "level": 3,
+   "parent": {
+    "id": "m0rZG06GdPe"
+   }
+  },
+  {
+   "id": "Db3Zb7bSyXz",
+   "name": "de Burutu LGA",
+   "level": 3,
+   "parent": {
+    "id": "m0rZG06GdPe"
+   }
+  },
+  {
+   "id": "PFKM91IcOjj",
+   "name": "de Ethiope East LGA",
+   "level": 3,
+   "parent": {
+    "id": "m0rZG06GdPe"
+   }
+  },
+  {
+   "id": "MxtP5U6VBYv",
+   "name": "de Ethiope West LGA",
+   "level": 3,
+   "parent": {
+    "id": "m0rZG06GdPe"
+   }
+  },
+  {
+   "id": "GiHix1rNgBX",
+   "name": "de Ika North East LGA",
+   "level": 3,
+   "parent": {
+    "id": "m0rZG06GdPe"
+   }
+  },
+  {
+   "id": "KDBaiIrHbfC",
+   "name": "de Ika South LGA",
+   "level": 3,
+   "parent": {
+    "id": "m0rZG06GdPe"
+   }
+  },
+  {
+   "id": "o3CXmTb1F5b",
+   "name": "de Isoko North LGA",
+   "level": 3,
+   "parent": {
+    "id": "m0rZG06GdPe"
+   }
+  },
+  {
+   "id": "CTbnkHELJH7",
+   "name": "de Isoko South LGA",
+   "level": 3,
+   "parent": {
+    "id": "m0rZG06GdPe"
+   }
+  },
+  {
+   "id": "aiGlXCcpxN3",
+   "name": "de Ndokwa East LGA",
+   "level": 3,
+   "parent": {
+    "id": "m0rZG06GdPe"
+   }
+  },
+  {
+   "id": "hmsWjDD64So",
+   "name": "de Ndokwa West LGA",
+   "level": 3,
+   "parent": {
+    "id": "m0rZG06GdPe"
+   }
+  },
+  {
+   "id": "paJD0qSggAn",
+   "name": "de Okpe LGA",
+   "level": 3,
+   "parent": {
+    "id": "m0rZG06GdPe"
+   }
+  },
+  {
+   "id": "x5mCQh9oTQL",
+   "name": "de Oshimili North LGA",
+   "level": 3,
+   "parent": {
+    "id": "m0rZG06GdPe"
+   }
+  },
+  {
+   "id": "h087AwKU4GS",
+   "name": "de Oshimili South LGA",
+   "level": 3,
+   "parent": {
+    "id": "m0rZG06GdPe"
+   }
+  },
+  {
+   "id": "tsjWOeqWiqK",
+   "name": "de Patani LGA",
+   "level": 3,
+   "parent": {
+    "id": "m0rZG06GdPe"
+   }
+  },
+  {
+   "id": "gyPSeXVbjKI",
+   "name": "de Sapele LGA",
+   "level": 3,
+   "parent": {
+    "id": "m0rZG06GdPe"
+   }
+  },
+  {
+   "id": "aE3iGQ5DRBT",
+   "name": "de Udu LGA",
+   "level": 3,
+   "parent": {
+    "id": "m0rZG06GdPe"
+   }
+  },
+  {
+   "id": "jnXelZv9CyG",
+   "name": "de Ughelli North LGA",
+   "level": 3,
+   "parent": {
+    "id": "m0rZG06GdPe"
+   }
+  },
+  {
+   "id": "g4LlG8QT4hc",
+   "name": "de Ughelli South LGA",
+   "level": 3,
+   "parent": {
+    "id": "m0rZG06GdPe"
+   }
+  },
+  {
+   "id": "GOx4cJj7YMe",
+   "name": "de Ukwuani LGA",
+   "level": 3,
+   "parent": {
+    "id": "m0rZG06GdPe"
+   }
+  },
+  {
+   "id": "URjJ5g5H80D",
+   "name": "de Uvwie LGA",
+   "level": 3,
+   "parent": {
+    "id": "m0rZG06GdPe"
+   }
+  },
+  {
+   "id": "JUzxUM1VCqi",
+   "name": "de Warri North LGA",
+   "level": 3,
+   "parent": {
+    "id": "m0rZG06GdPe"
+   }
+  },
+  {
+   "id": "xcLWuab7vTk",
+   "name": "de Warri South LGA",
+   "level": 3,
+   "parent": {
+    "id": "m0rZG06GdPe"
+   }
+  },
+  {
+   "id": "FkmxvfXOoEn",
+   "name": "de Warri South West LGA",
+   "level": 3,
+   "parent": {
+    "id": "m0rZG06GdPe"
+   }
+  },
+  {
+   "id": "xWSEoKmrbBW",
+   "name": "eb Ebonyi State",
+   "level": 2,
+   "parent": {
+    "id": "s5DPBsdoE8b"
+   }
+  },
+  {
+   "id": "Mdw38r6EWdr",
+   "name": "eb Abakaliki LGA",
+   "level": 3,
+   "parent": {
+    "id": "xWSEoKmrbBW"
+   }
+  },
+  {
+   "id": "p0fs5SPuL7W",
+   "name": "eb Afikpo North LGA",
+   "level": 3,
+   "parent": {
+    "id": "xWSEoKmrbBW"
+   }
+  },
+  {
+   "id": "boiupsBy2Jw",
+   "name": "eb Afikpo South LGA",
+   "level": 3,
+   "parent": {
+    "id": "xWSEoKmrbBW"
+   }
+  },
+  {
+   "id": "HTe8clfALbO",
+   "name": "eb Ebonyi LGA",
+   "level": 3,
+   "parent": {
+    "id": "xWSEoKmrbBW"
+   }
+  },
+  {
+   "id": "tNbYIyjRFNu",
+   "name": "eb Ezza North LGA",
+   "level": 3,
+   "parent": {
+    "id": "xWSEoKmrbBW"
+   }
+  },
+  {
+   "id": "oQ99eCb4VJo",
+   "name": "eb Ezza South LGA",
+   "level": 3,
+   "parent": {
+    "id": "xWSEoKmrbBW"
+   }
+  },
+  {
+   "id": "BRE8G5Aioht",
+   "name": "eb Ikwo LGA",
+   "level": 3,
+   "parent": {
+    "id": "xWSEoKmrbBW"
+   }
+  },
+  {
+   "id": "XVl9mxz5TmG",
+   "name": "eb Ishielu LGA",
+   "level": 3,
+   "parent": {
+    "id": "xWSEoKmrbBW"
+   }
+  },
+  {
+   "id": "ayJOmJIa9zz",
+   "name": "eb Ivo LGA",
+   "level": 3,
+   "parent": {
+    "id": "xWSEoKmrbBW"
+   }
+  },
+  {
+   "id": "KX8XFw30wV5",
+   "name": "eb Izzi LGA",
+   "level": 3,
+   "parent": {
+    "id": "xWSEoKmrbBW"
+   }
+  },
+  {
+   "id": "eZ8BGQE35Gc",
+   "name": "eb Ohaozara LGA",
+   "level": 3,
+   "parent": {
+    "id": "xWSEoKmrbBW"
+   }
+  },
+  {
+   "id": "oWKBmHlff8o",
+   "name": "eb Ohaukwu LGA",
+   "level": 3,
+   "parent": {
+    "id": "xWSEoKmrbBW"
+   }
+  },
+  {
+   "id": "Um8AzghPVOs",
+   "name": "eb Onicha LGA",
+   "level": 3,
+   "parent": {
+    "id": "xWSEoKmrbBW"
+   }
+  },
+  {
+   "id": "aMQcvAoEFh0",
+   "name": "ed Edo State",
+   "level": 2,
+   "parent": {
+    "id": "s5DPBsdoE8b"
+   }
+  },
+  {
+   "id": "Y9WsQVR0EOg",
+   "name": "ed Akoko-Edo LGA",
+   "level": 3,
+   "parent": {
+    "id": "aMQcvAoEFh0"
+   }
+  },
+  {
+   "id": "fJIUHN5HMoA",
+   "name": "ed Egor LGA",
+   "level": 3,
+   "parent": {
+    "id": "aMQcvAoEFh0"
+   }
+  },
+  {
+   "id": "G8Wq5Z8HpxB",
+   "name": "ed Esan Central LGA",
+   "level": 3,
+   "parent": {
+    "id": "aMQcvAoEFh0"
+   }
+  },
+  {
+   "id": "YCyy6zv95vX",
+   "name": "ed Esan North-East LGA",
+   "level": 3,
+   "parent": {
+    "id": "aMQcvAoEFh0"
+   }
+  },
+  {
+   "id": "aLjFNCBwEG6",
+   "name": "ed Esan South-East LGA",
+   "level": 3,
+   "parent": {
+    "id": "aMQcvAoEFh0"
+   }
+  },
+  {
+   "id": "YTdPBKzEn7A",
+   "name": "ed Esan West LGA",
+   "level": 3,
+   "parent": {
+    "id": "aMQcvAoEFh0"
+   }
+  },
+  {
+   "id": "fS9gbjMUC1e",
+   "name": "ed Etsako Central LGA",
+   "level": 3,
+   "parent": {
+    "id": "aMQcvAoEFh0"
+   }
+  },
+  {
+   "id": "JBTIrRMGE5V",
+   "name": "ed Etsako East LGA",
+   "level": 3,
+   "parent": {
+    "id": "aMQcvAoEFh0"
+   }
+  },
+  {
+   "id": "K2EYBivPhbg",
+   "name": "ed Etsako West LGA",
+   "level": 3,
+   "parent": {
+    "id": "aMQcvAoEFh0"
+   }
+  },
+  {
+   "id": "JkbHQYwtK4k",
+   "name": "ed Igueben LGA",
+   "level": 3,
+   "parent": {
+    "id": "aMQcvAoEFh0"
+   }
+  },
+  {
+   "id": "UUiUqD3dfhg",
+   "name": "ed Ikpoba-Okha LGA",
+   "level": 3,
+   "parent": {
+    "id": "aMQcvAoEFh0"
+   }
+  },
+  {
+   "id": "WPtJktvrF3V",
+   "name": "ed Oredo LGA",
+   "level": 3,
+   "parent": {
+    "id": "aMQcvAoEFh0"
+   }
+  },
+  {
+   "id": "o0OGcdhCdIH",
+   "name": "ed Orhionmwon LGA",
+   "level": 3,
+   "parent": {
+    "id": "aMQcvAoEFh0"
+   }
+  },
+  {
+   "id": "GloR2gOeVio",
+   "name": "ed Ovia North-East LGA",
+   "level": 3,
+   "parent": {
+    "id": "aMQcvAoEFh0"
+   }
+  },
+  {
+   "id": "DzqgZ9xkWdA",
+   "name": "ed Ovia South-West LGA",
+   "level": 3,
+   "parent": {
+    "id": "aMQcvAoEFh0"
+   }
+  },
+  {
+   "id": "n0sjYRHtZJ8",
+   "name": "ed Owan East LGA",
+   "level": 3,
+   "parent": {
+    "id": "aMQcvAoEFh0"
+   }
+  },
+  {
+   "id": "gqSdBEisK44",
+   "name": "ed Owan West LGA",
+   "level": 3,
+   "parent": {
+    "id": "aMQcvAoEFh0"
+   }
+  },
+  {
+   "id": "NoZSZQVIWIz",
+   "name": "ed Uhunmwonde LGA",
+   "level": 3,
+   "parent": {
+    "id": "aMQcvAoEFh0"
+   }
+  },
+  {
+   "id": "iilma7EajGc",
+   "name": "ek Ekiti State",
+   "level": 2,
+   "parent": {
+    "id": "s5DPBsdoE8b"
+   }
+  },
+  {
+   "id": "lX1DPipklqw",
+   "name": "ek Ado Ekiti LGA",
+   "level": 3,
+   "parent": {
+    "id": "iilma7EajGc"
+   }
+  },
+  {
+   "id": "bkadXOncypR",
+   "name": "ek Aiyekire (Gbonyin) LGA",
+   "level": 3,
+   "parent": {
+    "id": "iilma7EajGc"
+   }
+  },
+  {
+   "id": "EAMqiSWXnnG",
+   "name": "ek Efon LGA",
+   "level": 3,
+   "parent": {
+    "id": "iilma7EajGc"
+   }
+  },
+  {
+   "id": "qLXIshcdWET",
+   "name": "ek Ekiti East LGA",
+   "level": 3,
+   "parent": {
+    "id": "iilma7EajGc"
+   }
+  },
+  {
+   "id": "cwz85Tr6yjn",
+   "name": "ek Ekiti South West LGA",
+   "level": 3,
+   "parent": {
+    "id": "iilma7EajGc"
+   }
+  },
+  {
+   "id": "oXMb2mWxbvf",
+   "name": "ek Ekiti West LGA",
+   "level": 3,
+   "parent": {
+    "id": "iilma7EajGc"
+   }
+  },
+  {
+   "id": "oIgdhsCoU3d",
+   "name": "ek Emure LGA",
+   "level": 3,
+   "parent": {
+    "id": "iilma7EajGc"
+   }
+  },
+  {
+   "id": "SsZxuiV4yKy",
+   "name": "ek Ido-Osi LGA",
+   "level": 3,
+   "parent": {
+    "id": "iilma7EajGc"
+   }
+  },
+  {
+   "id": "mgBdtL6UnT8",
+   "name": "ek Ijero LGA",
+   "level": 3,
+   "parent": {
+    "id": "iilma7EajGc"
+   }
+  },
+  {
+   "id": "M173V11E9gD",
+   "name": "ek Ikere LGA",
+   "level": 3,
+   "parent": {
+    "id": "iilma7EajGc"
+   }
+  },
+  {
+   "id": "k6IsMRx4NND",
+   "name": "ek Ikole LGA",
+   "level": 3,
+   "parent": {
+    "id": "iilma7EajGc"
+   }
+  },
+  {
+   "id": "TEpoMYdGvnn",
+   "name": "ek Ilejemeje LGA",
+   "level": 3,
+   "parent": {
+    "id": "iilma7EajGc"
+   }
+  },
+  {
+   "id": "n4py1SjwReL",
+   "name": "ek Irepodun/Ifelodun LGA",
+   "level": 3,
+   "parent": {
+    "id": "iilma7EajGc"
+   }
+  },
+  {
+   "id": "AFU31wHxjZ8",
+   "name": "ek Ise/Orun LGA",
+   "level": 3,
+   "parent": {
+    "id": "iilma7EajGc"
+   }
+  },
+  {
+   "id": "y2o0KtnXyNy",
+   "name": "ek Moba LGA",
+   "level": 3,
+   "parent": {
+    "id": "iilma7EajGc"
+   }
+  },
+  {
+   "id": "Gjls5BDZpoC",
+   "name": "ek Oye LGA",
+   "level": 3,
+   "parent": {
+    "id": "iilma7EajGc"
+   }
+  },
+  {
+   "id": "Quac4RHRtaZ",
+   "name": "en Enugu State",
+   "level": 2,
+   "parent": {
+    "id": "s5DPBsdoE8b"
+   }
+  },
+  {
+   "id": "lO3sJfS1JQp",
+   "name": "en Aninri LGA",
+   "level": 3,
+   "parent": {
+    "id": "Quac4RHRtaZ"
+   }
+  },
+  {
+   "id": "YVctfWFxF9b",
+   "name": "en Awgu LGA",
+   "level": 3,
+   "parent": {
+    "id": "Quac4RHRtaZ"
+   }
+  },
+  {
+   "id": "f02ioIBtZF8",
+   "name": "en Enugu East LGA",
+   "level": 3,
+   "parent": {
+    "id": "Quac4RHRtaZ"
+   }
+  },
+  {
+   "id": "ndHSDYGyrY9",
+   "name": "en Enugu North LGA",
+   "level": 3,
+   "parent": {
+    "id": "Quac4RHRtaZ"
+   }
+  },
+  {
+   "id": "byzO7g2ujzW",
+   "name": "en Enugu South LGA",
+   "level": 3,
+   "parent": {
+    "id": "Quac4RHRtaZ"
+   }
+  },
+  {
+   "id": "eDX6FH5055y",
+   "name": "en Ezeagu LGA",
+   "level": 3,
+   "parent": {
+    "id": "Quac4RHRtaZ"
+   }
+  },
+  {
+   "id": "gMciU1RaNwu",
+   "name": "en Igbo-Etiti LGA",
+   "level": 3,
+   "parent": {
+    "id": "Quac4RHRtaZ"
+   }
+  },
+  {
+   "id": "Gcs1n2SVhIu",
+   "name": "en Igbo-Eze North LGA",
+   "level": 3,
+   "parent": {
+    "id": "Quac4RHRtaZ"
+   }
+  },
+  {
+   "id": "d4NSM6aWP5L",
+   "name": "en Igbo-Eze South LGA",
+   "level": 3,
+   "parent": {
+    "id": "Quac4RHRtaZ"
+   }
+  },
+  {
+   "id": "Gw4QeZq2z0b",
+   "name": "en Isi-Uzo LGA",
+   "level": 3,
+   "parent": {
+    "id": "Quac4RHRtaZ"
+   }
+  },
+  {
+   "id": "EuGUD7M6N7i",
+   "name": "en Nkanu East LGA",
+   "level": 3,
+   "parent": {
+    "id": "Quac4RHRtaZ"
+   }
+  },
+  {
+   "id": "SsXQR7GyUud",
+   "name": "en Nkanu West LGA",
+   "level": 3,
+   "parent": {
+    "id": "Quac4RHRtaZ"
+   }
+  },
+  {
+   "id": "nQZ1HinGHzp",
+   "name": "en Nsukka LGA",
+   "level": 3,
+   "parent": {
+    "id": "Quac4RHRtaZ"
+   }
+  },
+  {
+   "id": "gzkH1eVDnoL",
+   "name": "en Oji River LGA",
+   "level": 3,
+   "parent": {
+    "id": "Quac4RHRtaZ"
+   }
+  },
+  {
+   "id": "PFJ5LRz2PY6",
+   "name": "en Udenu LGA",
+   "level": 3,
+   "parent": {
+    "id": "Quac4RHRtaZ"
+   }
+  },
+  {
+   "id": "lmk7AfBPPY7",
+   "name": "en Udi LGA",
+   "level": 3,
+   "parent": {
+    "id": "Quac4RHRtaZ"
+   }
+  },
+  {
+   "id": "hYU6A2CTzbn",
+   "name": "en Uzo-Uwani LGA",
+   "level": 3,
+   "parent": {
+    "id": "Quac4RHRtaZ"
+   }
+  },
+  {
+   "id": "HYCMnXqLDPV",
+   "name": "fc Federal Capital Territory",
+   "level": 2,
+   "parent": {
+    "id": "s5DPBsdoE8b"
+   }
+  },
+  {
+   "id": "K2qqCmbDJSZ",
+   "name": "fc Abaji LGA",
+   "level": 3,
+   "parent": {
+    "id": "HYCMnXqLDPV"
+   }
+  },
+  {
+   "id": "L5dwl2CgVsM",
+   "name": "fc Abuja Municipal Area Council",
+   "level": 3,
+   "parent": {
+    "id": "HYCMnXqLDPV"
+   }
+  },
+  {
+   "id": "y5SiAJsJU73",
+   "name": "fc Bwari LGA",
+   "level": 3,
+   "parent": {
+    "id": "HYCMnXqLDPV"
+   }
+  },
+  {
+   "id": "FEdn0qGSoOj",
+   "name": "fc Gwagwalada LGA",
+   "level": 3,
+   "parent": {
+    "id": "HYCMnXqLDPV"
+   }
+  },
+  {
+   "id": "J0z0JSUiuMQ",
+   "name": "fc Kuje LGA",
+   "level": 3,
+   "parent": {
+    "id": "HYCMnXqLDPV"
+   }
+  },
+  {
+   "id": "cSyF7oyTnzY",
+   "name": "fc Kwali LGA",
+   "level": 3,
+   "parent": {
+    "id": "HYCMnXqLDPV"
+   }
+  },
+  {
+   "id": "bSfaEpPFa9Y",
+   "name": "go Gombe State",
+   "level": 2,
+   "parent": {
+    "id": "s5DPBsdoE8b"
+   }
+  },
+  {
+   "id": "MeEcKbyAXLe",
+   "name": "go Akko LGA",
+   "level": 3,
+   "parent": {
+    "id": "bSfaEpPFa9Y"
+   }
+  },
+  {
+   "id": "SHyV3xoUWYG",
+   "name": "go Balanga LGA",
+   "level": 3,
+   "parent": {
+    "id": "bSfaEpPFa9Y"
+   }
+  },
+  {
+   "id": "Vei9wMGtGlU",
+   "name": "go Billiri LGA",
+   "level": 3,
+   "parent": {
+    "id": "bSfaEpPFa9Y"
+   }
+  },
+  {
+   "id": "BoRQ8po7pRm",
+   "name": "go Dukku LGA",
+   "level": 3,
+   "parent": {
+    "id": "bSfaEpPFa9Y"
+   }
+  },
+  {
+   "id": "LTGyqAcDwpI",
+   "name": "go Funakaye LGA",
+   "level": 3,
+   "parent": {
+    "id": "bSfaEpPFa9Y"
+   }
+  },
+  {
+   "id": "JHZYTYBocLi",
+   "name": "go Gombe LGA",
+   "level": 3,
+   "parent": {
+    "id": "bSfaEpPFa9Y"
+   }
+  },
+  {
+   "id": "VDlRF1ZGE4C",
+   "name": "go Kaltungo LGA",
+   "level": 3,
+   "parent": {
+    "id": "bSfaEpPFa9Y"
+   }
+  },
+  {
+   "id": "od7nf9dhqJh",
+   "name": "go Kwami LGA",
+   "level": 3,
+   "parent": {
+    "id": "bSfaEpPFa9Y"
+   }
+  },
+  {
+   "id": "fRzug3nsaDf",
+   "name": "go Nafada LGA",
+   "level": 3,
+   "parent": {
+    "id": "bSfaEpPFa9Y"
+   }
+  },
+  {
+   "id": "DalX9ZjKBwp",
+   "name": "go Shongom LGA",
+   "level": 3,
+   "parent": {
+    "id": "bSfaEpPFa9Y"
+   }
+  },
+  {
+   "id": "k7NTZR3OXph",
+   "name": "go Yamaltu/Deba LGA",
+   "level": 3,
+   "parent": {
+    "id": "bSfaEpPFa9Y"
+   }
+  },
+  {
+   "id": "FmOhtDnhdwU",
+   "name": "im Imo State",
+   "level": 2,
+   "parent": {
+    "id": "s5DPBsdoE8b"
+   }
+  },
+  {
+   "id": "m4QqnTo0Iuu",
+   "name": "im Aboh-Mbaise LGA",
+   "level": 3,
+   "parent": {
+    "id": "FmOhtDnhdwU"
+   }
+  },
+  {
+   "id": "cwVYVQXgOzu",
+   "name": "im Ahiazu-Mbaise LGA",
+   "level": 3,
+   "parent": {
+    "id": "FmOhtDnhdwU"
+   }
+  },
+  {
+   "id": "Nj5nINF827P",
+   "name": "im Ehime-Mbano LGA",
+   "level": 3,
+   "parent": {
+    "id": "FmOhtDnhdwU"
+   }
+  },
+  {
+   "id": "XdVBYBycVHo",
+   "name": "im Ezinihitte-Mbaise LGA",
+   "level": 3,
+   "parent": {
+    "id": "FmOhtDnhdwU"
+   }
+  },
+  {
+   "id": "TYvtAIIS7s4",
+   "name": "im Ideato North LGA",
+   "level": 3,
+   "parent": {
+    "id": "FmOhtDnhdwU"
+   }
+  },
+  {
+   "id": "VdRy1Ehlwho",
+   "name": "im Ideato South LGA",
+   "level": 3,
+   "parent": {
+    "id": "FmOhtDnhdwU"
+   }
+  },
+  {
+   "id": "vz5FLDvhSwp",
+   "name": "im Ihitte/Uboma LGA",
+   "level": 3,
+   "parent": {
+    "id": "FmOhtDnhdwU"
+   }
+  },
+  {
+   "id": "m8GSOE7FDrw",
+   "name": "im Ikeduru LGA",
+   "level": 3,
+   "parent": {
+    "id": "FmOhtDnhdwU"
+   }
+  },
+  {
+   "id": "Z8brdgxXEB5",
+   "name": "im Isiala Mbano LGA",
+   "level": 3,
+   "parent": {
+    "id": "FmOhtDnhdwU"
+   }
+  },
+  {
+   "id": "yzIM2v95biD",
+   "name": "im Isu LGA",
+   "level": 3,
+   "parent": {
+    "id": "FmOhtDnhdwU"
+   }
+  },
+  {
+   "id": "aMECb81TXIz",
+   "name": "im Mbaitoli LGA",
+   "level": 3,
+   "parent": {
+    "id": "FmOhtDnhdwU"
+   }
+  },
+  {
+   "id": "DRMu5F2FFbX",
+   "name": "im Ngor-Okpala LGA",
+   "level": 3,
+   "parent": {
+    "id": "FmOhtDnhdwU"
+   }
+  },
+  {
+   "id": "FXSdptZf7KA",
+   "name": "im Njaba LGA",
+   "level": 3,
+   "parent": {
+    "id": "FmOhtDnhdwU"
+   }
+  },
+  {
+   "id": "IvhriV46NXA",
+   "name": "im Nkwerre LGA",
+   "level": 3,
+   "parent": {
+    "id": "FmOhtDnhdwU"
+   }
+  },
+  {
+   "id": "hLSg4x5U7wJ",
+   "name": "im Nwangele LGA",
+   "level": 3,
+   "parent": {
+    "id": "FmOhtDnhdwU"
+   }
+  },
+  {
+   "id": "COU60VI6GF0",
+   "name": "im Obowo LGA",
+   "level": 3,
+   "parent": {
+    "id": "FmOhtDnhdwU"
+   }
+  },
+  {
+   "id": "HTSmsTD6RWu",
+   "name": "im Oguta LGA",
+   "level": 3,
+   "parent": {
+    "id": "FmOhtDnhdwU"
+   }
+  },
+  {
+   "id": "LaGTe2TftpL",
+   "name": "im Ohaji/Egbema LGA",
+   "level": 3,
+   "parent": {
+    "id": "FmOhtDnhdwU"
+   }
+  },
+  {
+   "id": "YDQ1yTnuGE6",
+   "name": "im Okigwe LGA",
+   "level": 3,
+   "parent": {
+    "id": "FmOhtDnhdwU"
+   }
+  },
+  {
+   "id": "FGATNURcgRD",
+   "name": "im Onuimo LGA",
+   "level": 3,
+   "parent": {
+    "id": "FmOhtDnhdwU"
+   }
+  },
+  {
+   "id": "YTOBS3ee2ll",
+   "name": "im Orlu LGA",
+   "level": 3,
+   "parent": {
+    "id": "FmOhtDnhdwU"
+   }
+  },
+  {
+   "id": "JUH2wt5h5Cr",
+   "name": "im Orsu LGA",
+   "level": 3,
+   "parent": {
+    "id": "FmOhtDnhdwU"
+   }
+  },
+  {
+   "id": "v1DmZeQ1Ea5",
+   "name": "im Oru East LGA",
+   "level": 3,
+   "parent": {
+    "id": "FmOhtDnhdwU"
+   }
+  },
+  {
+   "id": "FnIw4sdHgV1",
+   "name": "im Oru West LGA",
+   "level": 3,
+   "parent": {
+    "id": "FmOhtDnhdwU"
+   }
+  },
+  {
+   "id": "MUkiCoRWzAR",
+   "name": "im Owerri Municipal LGA",
+   "level": 3,
+   "parent": {
+    "id": "FmOhtDnhdwU"
+   }
+  },
+  {
+   "id": "B4QARayBAOR",
+   "name": "im Owerri North LGA",
+   "level": 3,
+   "parent": {
+    "id": "FmOhtDnhdwU"
+   }
+  },
+  {
+   "id": "x4yRobx6lnJ",
+   "name": "im Owerri West LGA",
+   "level": 3,
+   "parent": {
+    "id": "FmOhtDnhdwU"
+   }
+  },
+  {
+   "id": "MJVVi73YayJ",
+   "name": "ji Jigawa State",
+   "level": 2,
+   "parent": {
+    "id": "s5DPBsdoE8b"
+   }
+  },
+  {
+   "id": "dTPlMGOi706",
+   "name": "ji Auyo LGA",
+   "level": 3,
+   "parent": {
+    "id": "MJVVi73YayJ"
+   }
+  },
+  {
+   "id": "nc2QCpV0Gr3",
+   "name": "ji Babura LGA",
+   "level": 3,
+   "parent": {
+    "id": "MJVVi73YayJ"
+   }
+  },
+  {
+   "id": "bsPzMlaAVdl",
+   "name": "ji Birnin Kudu LGA",
+   "level": 3,
+   "parent": {
+    "id": "MJVVi73YayJ"
+   }
+  },
+  {
+   "id": "zJYLF1MyglI",
+   "name": "ji Birniwa LGA",
+   "level": 3,
+   "parent": {
+    "id": "MJVVi73YayJ"
+   }
+  },
+  {
+   "id": "xbsEPI1cyqA",
+   "name": "ji Buji LGA",
+   "level": 3,
+   "parent": {
+    "id": "MJVVi73YayJ"
+   }
+  },
+  {
+   "id": "S0A3Wd4WHNl",
+   "name": "ji Dutse LGA",
+   "level": 3,
+   "parent": {
+    "id": "MJVVi73YayJ"
+   }
+  },
+  {
+   "id": "aGGOzixsxuX",
+   "name": "ji Gagarawa LGA",
+   "level": 3,
+   "parent": {
+    "id": "MJVVi73YayJ"
+   }
+  },
+  {
+   "id": "qJLEZrc3JT1",
+   "name": "ji Garki LGA",
+   "level": 3,
+   "parent": {
+    "id": "MJVVi73YayJ"
+   }
+  },
+  {
+   "id": "v749FWA1SdV",
+   "name": "ji Gumel LGA",
+   "level": 3,
+   "parent": {
+    "id": "MJVVi73YayJ"
+   }
+  },
+  {
+   "id": "JwjMiREyIad",
+   "name": "ji Guri LGA",
+   "level": 3,
+   "parent": {
+    "id": "MJVVi73YayJ"
+   }
+  },
+  {
+   "id": "MRWEaS4TN0K",
+   "name": "ji Gwaram LGA",
+   "level": 3,
+   "parent": {
+    "id": "MJVVi73YayJ"
+   }
+  },
+  {
+   "id": "QDLaR2GEFYS",
+   "name": "ji Gwiwa LGA",
+   "level": 3,
+   "parent": {
+    "id": "MJVVi73YayJ"
+   }
+  },
+  {
+   "id": "RGiMttErs00",
+   "name": "ji Hadejia LGA",
+   "level": 3,
+   "parent": {
+    "id": "MJVVi73YayJ"
+   }
+  },
+  {
+   "id": "sp52JcKdOF0",
+   "name": "ji Jahun LGA",
+   "level": 3,
+   "parent": {
+    "id": "MJVVi73YayJ"
+   }
+  },
+  {
+   "id": "PZ8aIE1wuv2",
+   "name": "ji Kafin Hausa LGA",
+   "level": 3,
+   "parent": {
+    "id": "MJVVi73YayJ"
+   }
+  },
+  {
+   "id": "LxN83oY83cG",
+   "name": "ji Kaugama LGA",
+   "level": 3,
+   "parent": {
+    "id": "MJVVi73YayJ"
+   }
+  },
+  {
+   "id": "YDM0Y0Ht2rk",
+   "name": "ji Kazaure LGA",
+   "level": 3,
+   "parent": {
+    "id": "MJVVi73YayJ"
+   }
+  },
+  {
+   "id": "yux0FvkPjw9",
+   "name": "ji Kiri Kasamma LGA",
+   "level": 3,
+   "parent": {
+    "id": "MJVVi73YayJ"
+   }
+  },
+  {
+   "id": "srSIK3D7Vvx",
+   "name": "ji Kiyawa LGA",
+   "level": 3,
+   "parent": {
+    "id": "MJVVi73YayJ"
+   }
+  },
+  {
+   "id": "fGpG113LMaQ",
+   "name": "ji Maigatari LGA",
+   "level": 3,
+   "parent": {
+    "id": "MJVVi73YayJ"
+   }
+  },
+  {
+   "id": "l4yYhRGZHLj",
+   "name": "ji Malam Madori LGA",
+   "level": 3,
+   "parent": {
+    "id": "MJVVi73YayJ"
+   }
+  },
+  {
+   "id": "hr58wZFstRV",
+   "name": "ji Miga LGA",
+   "level": 3,
+   "parent": {
+    "id": "MJVVi73YayJ"
+   }
+  },
+  {
+   "id": "tqHXKPyFVcF",
+   "name": "ji Ringim LGA",
+   "level": 3,
+   "parent": {
+    "id": "MJVVi73YayJ"
+   }
+  },
+  {
+   "id": "ar4Wa0cbESE",
+   "name": "ji Roni LGA",
+   "level": 3,
+   "parent": {
+    "id": "MJVVi73YayJ"
+   }
+  },
+  {
+   "id": "pWSWYVroXmZ",
+   "name": "ji Sule-Tankarkar LGA",
+   "level": 3,
+   "parent": {
+    "id": "MJVVi73YayJ"
+   }
+  },
+  {
+   "id": "RAJZXaAAHTx",
+   "name": "ji Taura LGA",
+   "level": 3,
+   "parent": {
+    "id": "MJVVi73YayJ"
+   }
+  },
+  {
+   "id": "wM0KPVhZJGF",
+   "name": "ji Yankwashi LGA",
+   "level": 3,
+   "parent": {
+    "id": "MJVVi73YayJ"
+   }
+  },
+  {
+   "id": "tjLatcokcel",
+   "name": "kd Kaduna State",
+   "level": 2,
+   "parent": {
+    "id": "s5DPBsdoE8b"
+   }
+  },
+  {
+   "id": "S4EVTL7zNw6",
+   "name": "kd Birnin Gwari LGA",
+   "level": 3,
+   "parent": {
+    "id": "tjLatcokcel"
+   }
+  },
+  {
+   "id": "RzByRPx10L9",
+   "name": "kd Chikun LGA",
+   "level": 3,
+   "parent": {
+    "id": "tjLatcokcel"
+   }
+  },
+  {
+   "id": "pOZbc1gaTh5",
+   "name": "kd Giwa LGA",
+   "level": 3,
+   "parent": {
+    "id": "tjLatcokcel"
+   }
+  },
+  {
+   "id": "buCe7jA4YjI",
+   "name": "kd Igabi LGA",
+   "level": 3,
+   "parent": {
+    "id": "tjLatcokcel"
+   }
+  },
+  {
+   "id": "v4ePasyL51t",
+   "name": "kd Ikara LGA",
+   "level": 3,
+   "parent": {
+    "id": "tjLatcokcel"
+   }
+  },
+  {
+   "id": "VLdA5xmvCFf",
+   "name": "kd Jaba LGA",
+   "level": 3,
+   "parent": {
+    "id": "tjLatcokcel"
+   }
+  },
+  {
+   "id": "m63hCEwC23N",
+   "name": "kd Jema'a LGA",
+   "level": 3,
+   "parent": {
+    "id": "tjLatcokcel"
+   }
+  },
+  {
+   "id": "xFMIsK5LcPB",
+   "name": "kd Kachia LGA",
+   "level": 3,
+   "parent": {
+    "id": "tjLatcokcel"
+   }
+  },
+  {
+   "id": "qCEJn3OExhs",
+   "name": "kd Kaduna North LGA",
+   "level": 3,
+   "parent": {
+    "id": "tjLatcokcel"
+   }
+  },
+  {
+   "id": "nULF7So67j4",
+   "name": "kd Kaduna South LGA",
+   "level": 3,
+   "parent": {
+    "id": "tjLatcokcel"
+   }
+  },
+  {
+   "id": "OMlTjvyHnVp",
+   "name": "kd Kagarko LGA",
+   "level": 3,
+   "parent": {
+    "id": "tjLatcokcel"
+   }
+  },
+  {
+   "id": "dMzGqp2tLFP",
+   "name": "kd Kajuru LGA",
+   "level": 3,
+   "parent": {
+    "id": "tjLatcokcel"
+   }
+  },
+  {
+   "id": "lAWkjcTHfID",
+   "name": "kd Kaura LGA",
+   "level": 3,
+   "parent": {
+    "id": "tjLatcokcel"
+   }
+  },
+  {
+   "id": "aroIGJ7yApV",
+   "name": "kd Kauru LGA",
+   "level": 3,
+   "parent": {
+    "id": "tjLatcokcel"
+   }
+  },
+  {
+   "id": "go4Xaljo2hS",
+   "name": "kd Kubau LGA",
+   "level": 3,
+   "parent": {
+    "id": "tjLatcokcel"
+   }
+  },
+  {
+   "id": "PeWs80upank",
+   "name": "kd Kudan LGA",
+   "level": 3,
+   "parent": {
+    "id": "tjLatcokcel"
+   }
+  },
+  {
+   "id": "o8VtOTfh7wz",
+   "name": "kd Lere LGA",
+   "level": 3,
+   "parent": {
+    "id": "tjLatcokcel"
+   }
+  },
+  {
+   "id": "ZcsX5hixVIY",
+   "name": "kd Makarfi LGA",
+   "level": 3,
+   "parent": {
+    "id": "tjLatcokcel"
+   }
+  },
+  {
+   "id": "uR07mVodu4l",
+   "name": "kd Sabon Gari LGA",
+   "level": 3,
+   "parent": {
+    "id": "tjLatcokcel"
+   }
+  },
+  {
+   "id": "HuaFz2rC3BN",
+   "name": "kd Sanga LGA",
+   "level": 3,
+   "parent": {
+    "id": "tjLatcokcel"
+   }
+  },
+  {
+   "id": "JtWkpMfb1yO",
+   "name": "kd Soba LGA",
+   "level": 3,
+   "parent": {
+    "id": "tjLatcokcel"
+   }
+  },
+  {
+   "id": "PhvXcazezbw",
+   "name": "kd Zangon Kataf LGA",
+   "level": 3,
+   "parent": {
+    "id": "tjLatcokcel"
+   }
+  },
+  {
+   "id": "osmJYVHmXNe",
+   "name": "kd Zaria LGA",
+   "level": 3,
+   "parent": {
+    "id": "tjLatcokcel"
+   }
+  },
+  {
+   "id": "M689V9w3Gs3",
+   "name": "ke Kebbi State",
+   "level": 2,
+   "parent": {
+    "id": "s5DPBsdoE8b"
+   }
+  },
+  {
+   "id": "RzYyPLnF8t2",
+   "name": "ke Aleiro LGA",
+   "level": 3,
+   "parent": {
+    "id": "M689V9w3Gs3"
+   }
+  },
+  {
+   "id": "MHFArP5OdUN",
+   "name": "ke Arewa LGA",
+   "level": 3,
+   "parent": {
+    "id": "M689V9w3Gs3"
+   }
+  },
+  {
+   "id": "LF0mGdm34Jr",
+   "name": "ke Argungu LGA",
+   "level": 3,
+   "parent": {
+    "id": "M689V9w3Gs3"
+   }
+  },
+  {
+   "id": "AeNgbe9Q91U",
+   "name": "ke Augie LGA",
+   "level": 3,
+   "parent": {
+    "id": "M689V9w3Gs3"
+   }
+  },
+  {
+   "id": "bTj8CUr87F2",
+   "name": "ke Bagudo LGA",
+   "level": 3,
+   "parent": {
+    "id": "M689V9w3Gs3"
+   }
+  },
+  {
+   "id": "YldTv8Ge0V5",
+   "name": "ke Birnin Kebbi LGA",
+   "level": 3,
+   "parent": {
+    "id": "M689V9w3Gs3"
+   }
+  },
+  {
+   "id": "YBsCUURIR66",
+   "name": "ke Bunza LGA",
+   "level": 3,
+   "parent": {
+    "id": "M689V9w3Gs3"
+   }
+  },
+  {
+   "id": "nFfhYjl84Km",
+   "name": "ke Dandi LGA",
+   "level": 3,
+   "parent": {
+    "id": "M689V9w3Gs3"
+   }
+  },
+  {
+   "id": "j7SqTG50HZ0",
+   "name": "ke Danko/Wasagu LGA",
+   "level": 3,
+   "parent": {
+    "id": "M689V9w3Gs3"
+   }
+  },
+  {
+   "id": "ulQwPMPdXXe",
+   "name": "ke Fakai LGA",
+   "level": 3,
+   "parent": {
+    "id": "M689V9w3Gs3"
+   }
+  },
+  {
+   "id": "lXZ4phLjn7B",
+   "name": "ke Gwandu LGA",
+   "level": 3,
+   "parent": {
+    "id": "M689V9w3Gs3"
+   }
+  },
+  {
+   "id": "asxc1qtkyx0",
+   "name": "ke Jega LGA",
+   "level": 3,
+   "parent": {
+    "id": "M689V9w3Gs3"
+   }
+  },
+  {
+   "id": "eoKYouU9Pgv",
+   "name": "ke Kalgo LGA",
+   "level": 3,
+   "parent": {
+    "id": "M689V9w3Gs3"
+   }
+  },
+  {
+   "id": "MAo8bcqpSJk",
+   "name": "ke Koko/Besse LGA",
+   "level": 3,
+   "parent": {
+    "id": "M689V9w3Gs3"
+   }
+  },
+  {
+   "id": "qQPd1M3LIVP",
+   "name": "ke Maiyama LGA",
+   "level": 3,
+   "parent": {
+    "id": "M689V9w3Gs3"
+   }
+  },
+  {
+   "id": "PuOC2tYmsZf",
+   "name": "ke Ngaski LGA",
+   "level": 3,
+   "parent": {
+    "id": "M689V9w3Gs3"
+   }
+  },
+  {
+   "id": "Ebm9yoP7OMN",
+   "name": "ke Sakaba LGA",
+   "level": 3,
+   "parent": {
+    "id": "M689V9w3Gs3"
+   }
+  },
+  {
+   "id": "YGILGB7ITFX",
+   "name": "ke Shanga LGA",
+   "level": 3,
+   "parent": {
+    "id": "M689V9w3Gs3"
+   }
+  },
+  {
+   "id": "z9XtDJddSeT",
+   "name": "ke Suru LGA",
+   "level": 3,
+   "parent": {
+    "id": "M689V9w3Gs3"
+   }
+  },
+  {
+   "id": "bJ05HLVUa2v",
+   "name": "ke Yauri LGA",
+   "level": 3,
+   "parent": {
+    "id": "M689V9w3Gs3"
+   }
+  },
+  {
+   "id": "A73amffEO37",
+   "name": "ke Zuru LGA",
+   "level": 3,
+   "parent": {
+    "id": "M689V9w3Gs3"
+   }
+  },
+  {
+   "id": "cTIw3RXOLCQ",
+   "name": "kn Kano State",
+   "level": 2,
+   "parent": {
+    "id": "s5DPBsdoE8b"
+   }
+  },
+  {
+   "id": "X2cj3LQ8WOt",
+   "name": "kn Ajingi LGA",
+   "level": 3,
+   "parent": {
+    "id": "cTIw3RXOLCQ"
+   }
+  },
+  {
+   "id": "CUm7KkSSWhH",
+   "name": "kn Albasu LGA",
+   "level": 3,
+   "parent": {
+    "id": "cTIw3RXOLCQ"
+   }
+  },
+  {
+   "id": "KusqWyATdlE",
+   "name": "kn Bagwai LGA",
+   "level": 3,
+   "parent": {
+    "id": "cTIw3RXOLCQ"
+   }
+  },
+  {
+   "id": "P8HWPpRDwpO",
+   "name": "kn Bebeji LGA",
+   "level": 3,
+   "parent": {
+    "id": "cTIw3RXOLCQ"
+   }
+  },
+  {
+   "id": "XnEBtBWWCp8",
+   "name": "kn Bichi LGA",
+   "level": 3,
+   "parent": {
+    "id": "cTIw3RXOLCQ"
+   }
+  },
+  {
+   "id": "ZkVJyPPjDJ6",
+   "name": "kn Bunkure LGA",
+   "level": 3,
+   "parent": {
+    "id": "cTIw3RXOLCQ"
+   }
+  },
+  {
+   "id": "LUOd5x3vAlj",
+   "name": "kn Dala LGA",
+   "level": 3,
+   "parent": {
+    "id": "cTIw3RXOLCQ"
+   }
+  },
+  {
+   "id": "mOBSwJJc4wQ",
+   "name": "kn Danbatta LGA",
+   "level": 3,
+   "parent": {
+    "id": "cTIw3RXOLCQ"
+   }
+  },
+  {
+   "id": "tFMdkTJwKv9",
+   "name": "kn Dawakin Kudu LGA",
+   "level": 3,
+   "parent": {
+    "id": "cTIw3RXOLCQ"
+   }
+  },
+  {
+   "id": "lnAkfFZwy5a",
+   "name": "kn Dawakin Tofa LGA",
+   "level": 3,
+   "parent": {
+    "id": "cTIw3RXOLCQ"
+   }
+  },
+  {
+   "id": "xY5GshhWuI8",
+   "name": "kn Doguwa LGA",
+   "level": 3,
+   "parent": {
+    "id": "cTIw3RXOLCQ"
+   }
+  },
+  {
+   "id": "LZXjWS3unPe",
+   "name": "kn Fagge LGA",
+   "level": 3,
+   "parent": {
+    "id": "cTIw3RXOLCQ"
+   }
+  },
+  {
+   "id": "ms6BRTGOqNf",
+   "name": "kn Gabasawa LGA",
+   "level": 3,
+   "parent": {
+    "id": "cTIw3RXOLCQ"
+   }
+  },
+  {
+   "id": "BmNp8GNjRVC",
+   "name": "kn Garko LGA",
+   "level": 3,
+   "parent": {
+    "id": "cTIw3RXOLCQ"
+   }
+  },
+  {
+   "id": "YaTGQGpvhQe",
+   "name": "kn Garum Mallam LGA",
+   "level": 3,
+   "parent": {
+    "id": "cTIw3RXOLCQ"
+   }
+  },
+  {
+   "id": "lovFfU1GbcL",
+   "name": "kn Gaya LGA",
+   "level": 3,
+   "parent": {
+    "id": "cTIw3RXOLCQ"
+   }
+  },
+  {
+   "id": "o0rS6UcDdDM",
+   "name": "kn Gezawa LGA",
+   "level": 3,
+   "parent": {
+    "id": "cTIw3RXOLCQ"
+   }
+  },
+  {
+   "id": "nFVfE9rNCH8",
+   "name": "kn Gwale LGA",
+   "level": 3,
+   "parent": {
+    "id": "cTIw3RXOLCQ"
+   }
+  },
+  {
+   "id": "GrXFLZWdzC7",
+   "name": "kn Gwarzo LGA",
+   "level": 3,
+   "parent": {
+    "id": "cTIw3RXOLCQ"
+   }
+  },
+  {
+   "id": "EIrs6NHoofq",
+   "name": "kn Kabo LGA",
+   "level": 3,
+   "parent": {
+    "id": "cTIw3RXOLCQ"
+   }
+  },
+  {
+   "id": "Wbay68crACZ",
+   "name": "kn Kano Municipal LGA",
+   "level": 3,
+   "parent": {
+    "id": "cTIw3RXOLCQ"
+   }
+  },
+  {
+   "id": "stbH7SamUhJ",
+   "name": "kn Karaye LGA",
+   "level": 3,
+   "parent": {
+    "id": "cTIw3RXOLCQ"
+   }
+  },
+  {
+   "id": "ZVRGopZx7nN",
+   "name": "kn Kibiya LGA",
+   "level": 3,
+   "parent": {
+    "id": "cTIw3RXOLCQ"
+   }
+  },
+  {
+   "id": "KGR1IfcnCDO",
+   "name": "kn Kiru LGA",
+   "level": 3,
+   "parent": {
+    "id": "cTIw3RXOLCQ"
+   }
+  },
+  {
+   "id": "CvVBOwkASge",
+   "name": "kn Kumbotso LGA",
+   "level": 3,
+   "parent": {
+    "id": "cTIw3RXOLCQ"
+   }
+  },
+  {
+   "id": "VhazaBvvdoy",
+   "name": "kn Kunchi LGA",
+   "level": 3,
+   "parent": {
+    "id": "cTIw3RXOLCQ"
+   }
+  },
+  {
+   "id": "YPjYsjGDuf0",
+   "name": "kn Kura LGA",
+   "level": 3,
+   "parent": {
+    "id": "cTIw3RXOLCQ"
+   }
+  },
+  {
+   "id": "VmOE199sk8A",
+   "name": "kn Madobi LGA",
+   "level": 3,
+   "parent": {
+    "id": "cTIw3RXOLCQ"
+   }
+  },
+  {
+   "id": "o4GfUNB2oc0",
+   "name": "kn Makoda LGA",
+   "level": 3,
+   "parent": {
+    "id": "cTIw3RXOLCQ"
+   }
+  },
+  {
+   "id": "gQ5mFwRw3Oy",
+   "name": "kn Minjibir LGA",
+   "level": 3,
+   "parent": {
+    "id": "cTIw3RXOLCQ"
+   }
+  },
+  {
+   "id": "a6BfcY7O3xJ",
+   "name": "kn Nasarawa LGA",
+   "level": 3,
+   "parent": {
+    "id": "cTIw3RXOLCQ"
+   }
+  },
+  {
+   "id": "AGXqsKdBKI5",
+   "name": "kn Rano LGA",
+   "level": 3,
+   "parent": {
+    "id": "cTIw3RXOLCQ"
+   }
+  },
+  {
+   "id": "c2qbzubCJ7E",
+   "name": "kn Rimin Gado LGA",
+   "level": 3,
+   "parent": {
+    "id": "cTIw3RXOLCQ"
+   }
+  },
+  {
+   "id": "IKx6sLuS3s5",
+   "name": "kn Rogo LGA",
+   "level": 3,
+   "parent": {
+    "id": "cTIw3RXOLCQ"
+   }
+  },
+  {
+   "id": "g66Gyi7KJS4",
+   "name": "kn Shanono LGA",
+   "level": 3,
+   "parent": {
+    "id": "cTIw3RXOLCQ"
+   }
+  },
+  {
+   "id": "ATYISDsngqY",
+   "name": "kn Sumaila LGA",
+   "level": 3,
+   "parent": {
+    "id": "cTIw3RXOLCQ"
+   }
+  },
+  {
+   "id": "NEbyZhB0nQV",
+   "name": "kn Takai LGA",
+   "level": 3,
+   "parent": {
+    "id": "cTIw3RXOLCQ"
+   }
+  },
+  {
+   "id": "yKFcK8mEq7l",
+   "name": "kn Tarauni LGA",
+   "level": 3,
+   "parent": {
+    "id": "cTIw3RXOLCQ"
+   }
+  },
+  {
+   "id": "vf1VA0yVIoW",
+   "name": "kn Tofa LGA",
+   "level": 3,
+   "parent": {
+    "id": "cTIw3RXOLCQ"
+   }
+  },
+  {
+   "id": "QSptoZwoEX8",
+   "name": "kn Tsanyawa LGA",
+   "level": 3,
+   "parent": {
+    "id": "cTIw3RXOLCQ"
+   }
+  },
+  {
+   "id": "aULd7m3SpgK",
+   "name": "kn Tudun Wada LGA",
+   "level": 3,
+   "parent": {
+    "id": "cTIw3RXOLCQ"
+   }
+  },
+  {
+   "id": "WOOFzCQgigy",
+   "name": "kn Ungogo LGA",
+   "level": 3,
+   "parent": {
+    "id": "cTIw3RXOLCQ"
+   }
+  },
+  {
+   "id": "r3F9v2En2pq",
+   "name": "kn Warawa LGA",
+   "level": 3,
+   "parent": {
+    "id": "cTIw3RXOLCQ"
+   }
+  },
+  {
+   "id": "isWaZI66nAP",
+   "name": "kn Wudil LGA",
+   "level": 3,
+   "parent": {
+    "id": "cTIw3RXOLCQ"
+   }
+  },
+  {
+   "id": "S7Vs7ifJKlh",
+   "name": "ko Kogi State",
+   "level": 2,
+   "parent": {
+    "id": "s5DPBsdoE8b"
+   }
+  },
+  {
+   "id": "xEIG9jxhLMe",
+   "name": "ko Adavi LGA",
+   "level": 3,
+   "parent": {
+    "id": "S7Vs7ifJKlh"
+   }
+  },
+  {
+   "id": "qNQmdrmbtSj",
+   "name": "ko Ajaokuta LGA",
+   "level": 3,
+   "parent": {
+    "id": "S7Vs7ifJKlh"
+   }
+  },
+  {
+   "id": "ysQxSd3NNDT",
+   "name": "ko Ankpa LGA",
+   "level": 3,
+   "parent": {
+    "id": "S7Vs7ifJKlh"
+   }
+  },
+  {
+   "id": "xj7VKS0HSWO",
+   "name": "ko Bassa LGA",
+   "level": 3,
+   "parent": {
+    "id": "S7Vs7ifJKlh"
+   }
+  },
+  {
+   "id": "ssIxRFGlzbG",
+   "name": "ko Dekina LGA",
+   "level": 3,
+   "parent": {
+    "id": "S7Vs7ifJKlh"
+   }
+  },
+  {
+   "id": "zw8ev6p7mg0",
+   "name": "ko Ibaji LGA",
+   "level": 3,
+   "parent": {
+    "id": "S7Vs7ifJKlh"
+   }
+  },
+  {
+   "id": "ll1ynbwy5yC",
+   "name": "ko Idah LGA",
+   "level": 3,
+   "parent": {
+    "id": "S7Vs7ifJKlh"
+   }
+  },
+  {
+   "id": "Owr7QcReBth",
+   "name": "ko Igalamela-Odolu LGA",
+   "level": 3,
+   "parent": {
+    "id": "S7Vs7ifJKlh"
+   }
+  },
+  {
+   "id": "JXQA1I4VMNL",
+   "name": "ko Ijumu LGA",
+   "level": 3,
+   "parent": {
+    "id": "S7Vs7ifJKlh"
+   }
+  },
+  {
+   "id": "lwFDYO4ILmF",
+   "name": "ko Kabba/Bunu LGA",
+   "level": 3,
+   "parent": {
+    "id": "S7Vs7ifJKlh"
+   }
+  },
+  {
+   "id": "FzmxeM63QP7",
+   "name": "ko Kogi LGA",
+   "level": 3,
+   "parent": {
+    "id": "S7Vs7ifJKlh"
+   }
+  },
+  {
+   "id": "GdPEtVSft8z",
+   "name": "ko Lokoja LGA",
+   "level": 3,
+   "parent": {
+    "id": "S7Vs7ifJKlh"
+   }
+  },
+  {
+   "id": "CyptLXektJF",
+   "name": "ko Mopa-Muro LGA",
+   "level": 3,
+   "parent": {
+    "id": "S7Vs7ifJKlh"
+   }
+  },
+  {
+   "id": "g4bTQQ4sFxT",
+   "name": "ko Ofu LGA",
+   "level": 3,
+   "parent": {
+    "id": "S7Vs7ifJKlh"
+   }
+  },
+  {
+   "id": "RkhadUORCuH",
+   "name": "ko Ogori/Magongo LGA",
+   "level": 3,
+   "parent": {
+    "id": "S7Vs7ifJKlh"
+   }
+  },
+  {
+   "id": "FCNKfEQKHWR",
+   "name": "ko Okehi LGA",
+   "level": 3,
+   "parent": {
+    "id": "S7Vs7ifJKlh"
+   }
+  },
+  {
+   "id": "BNszdgYq8u6",
+   "name": "ko Okene LGA",
+   "level": 3,
+   "parent": {
+    "id": "S7Vs7ifJKlh"
+   }
+  },
+  {
+   "id": "N2RuHefhI4u",
+   "name": "ko Olamaboro LGA",
+   "level": 3,
+   "parent": {
+    "id": "S7Vs7ifJKlh"
+   }
+  },
+  {
+   "id": "JwOLFdDc2zO",
+   "name": "ko Omala LGA",
+   "level": 3,
+   "parent": {
+    "id": "S7Vs7ifJKlh"
+   }
+  },
+  {
+   "id": "Yxzrsl7SZyf",
+   "name": "ko Yagba East LGA",
+   "level": 3,
+   "parent": {
+    "id": "S7Vs7ifJKlh"
+   }
+  },
+  {
+   "id": "o2fuCwUa2tv",
+   "name": "ko Yagba West LGA",
+   "level": 3,
+   "parent": {
+    "id": "S7Vs7ifJKlh"
+   }
+  },
+  {
+   "id": "uKlacgs9ykR",
+   "name": "kt Katsina State",
+   "level": 2,
+   "parent": {
+    "id": "s5DPBsdoE8b"
+   }
+  },
+  {
+   "id": "uOot8sFGBCO",
+   "name": "kt Bakori LGA",
+   "level": 3,
+   "parent": {
+    "id": "uKlacgs9ykR"
+   }
+  },
+  {
+   "id": "P4dN1QAP8uW",
+   "name": "kt Batagarawa LGA",
+   "level": 3,
+   "parent": {
+    "id": "uKlacgs9ykR"
+   }
+  },
+  {
+   "id": "t1m9wCVn42T",
+   "name": "kt Batsari LGA",
+   "level": 3,
+   "parent": {
+    "id": "uKlacgs9ykR"
+   }
+  },
+  {
+   "id": "FpiE0CoYFWs",
+   "name": "kt Baure LGA",
+   "level": 3,
+   "parent": {
+    "id": "uKlacgs9ykR"
+   }
+  },
+  {
+   "id": "DGWzwB50l9Z",
+   "name": "kt Bindawa LGA",
+   "level": 3,
+   "parent": {
+    "id": "uKlacgs9ykR"
+   }
+  },
+  {
+   "id": "QliHjvkrmtM",
+   "name": "kt Charanchi LGA",
+   "level": 3,
+   "parent": {
+    "id": "uKlacgs9ykR"
+   }
+  },
+  {
+   "id": "CbwjcxAm5V5",
+   "name": "kt Dan Musa LGA",
+   "level": 3,
+   "parent": {
+    "id": "uKlacgs9ykR"
+   }
+  },
+  {
+   "id": "RzZ4gs7mTUe",
+   "name": "kt Dandume LGA",
+   "level": 3,
+   "parent": {
+    "id": "uKlacgs9ykR"
+   }
+  },
+  {
+   "id": "trFj7NJV7eb",
+   "name": "kt Danja LGA",
+   "level": 3,
+   "parent": {
+    "id": "uKlacgs9ykR"
+   }
+  },
+  {
+   "id": "hRltbf8FSQ8",
+   "name": "kt Daura LGA",
+   "level": 3,
+   "parent": {
+    "id": "uKlacgs9ykR"
+   }
+  },
+  {
+   "id": "QIbAQZP9QEQ",
+   "name": "kt Dutsi LGA",
+   "level": 3,
+   "parent": {
+    "id": "uKlacgs9ykR"
+   }
+  },
+  {
+   "id": "aaJyEPDTZPj",
+   "name": "kt Dutsin-Ma LGA",
+   "level": 3,
+   "parent": {
+    "id": "uKlacgs9ykR"
+   }
+  },
+  {
+   "id": "stOHRHYNjQA",
+   "name": "kt Faskari LGA",
+   "level": 3,
+   "parent": {
+    "id": "uKlacgs9ykR"
+   }
+  },
+  {
+   "id": "lNkaE8tKbia",
+   "name": "kt Funtua LGA",
+   "level": 3,
+   "parent": {
+    "id": "uKlacgs9ykR"
+   }
+  },
+  {
+   "id": "MPmqZjVQp94",
+   "name": "kt Ingawa LGA",
+   "level": 3,
+   "parent": {
+    "id": "uKlacgs9ykR"
+   }
+  },
+  {
+   "id": "pSaHShGscYU",
+   "name": "kt Jibia LGA",
+   "level": 3,
+   "parent": {
+    "id": "uKlacgs9ykR"
+   }
+  },
+  {
+   "id": "XdDRhSFKJc1",
+   "name": "kt Kafur LGA",
+   "level": 3,
+   "parent": {
+    "id": "uKlacgs9ykR"
+   }
+  },
+  {
+   "id": "eKvmCYAz2KE",
+   "name": "kt Kaita LGA",
+   "level": 3,
+   "parent": {
+    "id": "uKlacgs9ykR"
+   }
+  },
+  {
+   "id": "ii5UxOTIhhf",
+   "name": "kt Kankara LGA",
+   "level": 3,
+   "parent": {
+    "id": "uKlacgs9ykR"
+   }
+  },
+  {
+   "id": "fEF6lFmFMwR",
+   "name": "kt Kankia LGA",
+   "level": 3,
+   "parent": {
+    "id": "uKlacgs9ykR"
+   }
+  },
+  {
+   "id": "vOroOLCRNX3",
+   "name": "kt Katsina LGA",
+   "level": 3,
+   "parent": {
+    "id": "uKlacgs9ykR"
+   }
+  },
+  {
+   "id": "Na78DjtQkW5",
+   "name": "kt Kurfi LGA",
+   "level": 3,
+   "parent": {
+    "id": "uKlacgs9ykR"
+   }
+  },
+  {
+   "id": "SUj8G76mb6P",
+   "name": "kt Kusada LGA",
+   "level": 3,
+   "parent": {
+    "id": "uKlacgs9ykR"
+   }
+  },
+  {
+   "id": "rEms7tmbXXv",
+   "name": "kt Mai'Adua LGA",
+   "level": 3,
+   "parent": {
+    "id": "uKlacgs9ykR"
+   }
+  },
+  {
+   "id": "AZl0h4zsF4S",
+   "name": "kt Malumfashi LGA",
+   "level": 3,
+   "parent": {
+    "id": "uKlacgs9ykR"
+   }
+  },
+  {
+   "id": "FF9j3L8530y",
+   "name": "kt Mani LGA",
+   "level": 3,
+   "parent": {
+    "id": "uKlacgs9ykR"
+   }
+  },
+  {
+   "id": "xocoCjfh1XI",
+   "name": "kt Mashi LGA",
+   "level": 3,
+   "parent": {
+    "id": "uKlacgs9ykR"
+   }
+  },
+  {
+   "id": "dRcvOxeYPZO",
+   "name": "kt Matazu LGA",
+   "level": 3,
+   "parent": {
+    "id": "uKlacgs9ykR"
+   }
+  },
+  {
+   "id": "ELmWYbdB26H",
+   "name": "kt Musawa LGA",
+   "level": 3,
+   "parent": {
+    "id": "uKlacgs9ykR"
+   }
+  },
+  {
+   "id": "UxMbHQ4P4Zj",
+   "name": "kt Rimi LGA",
+   "level": 3,
+   "parent": {
+    "id": "uKlacgs9ykR"
+   }
+  },
+  {
+   "id": "t2bvrp7pTZX",
+   "name": "kt Sabuwa LGA",
+   "level": 3,
+   "parent": {
+    "id": "uKlacgs9ykR"
+   }
+  },
+  {
+   "id": "z4exsxsfk7Z",
+   "name": "kt Safana LGA",
+   "level": 3,
+   "parent": {
+    "id": "uKlacgs9ykR"
+   }
+  },
+  {
+   "id": "ZgjIjZDyWaO",
+   "name": "kt Sandamu LGA",
+   "level": 3,
+   "parent": {
+    "id": "uKlacgs9ykR"
+   }
+  },
+  {
+   "id": "tSiEbQBuWWK",
+   "name": "kt Zango LGA",
+   "level": 3,
+   "parent": {
+    "id": "uKlacgs9ykR"
+   }
+  },
+  {
+   "id": "jReUW6NCPkL",
+   "name": "kw Kwara State",
+   "level": 2,
+   "parent": {
+    "id": "s5DPBsdoE8b"
+   }
+  },
+  {
+   "id": "Y7GLlAfKbQD",
+   "name": "kw Asa LGA",
+   "level": 3,
+   "parent": {
+    "id": "jReUW6NCPkL"
+   }
+  },
+  {
+   "id": "GvD3rDOMSxB",
+   "name": "kw Baruten LGA",
+   "level": 3,
+   "parent": {
+    "id": "jReUW6NCPkL"
+   }
+  },
+  {
+   "id": "tJWObwCxuLw",
+   "name": "kw Edu LGA",
+   "level": 3,
+   "parent": {
+    "id": "jReUW6NCPkL"
+   }
+  },
+  {
+   "id": "BDOwNvZezWn",
+   "name": "kw Ekiti LGA",
+   "level": 3,
+   "parent": {
+    "id": "jReUW6NCPkL"
+   }
+  },
+  {
+   "id": "FJp0E7GOd9b",
+   "name": "kw Ifelodun LGA",
+   "level": 3,
+   "parent": {
+    "id": "jReUW6NCPkL"
+   }
+  },
+  {
+   "id": "kAF7VjmjTiO",
+   "name": "kw Ilorin East LGA",
+   "level": 3,
+   "parent": {
+    "id": "jReUW6NCPkL"
+   }
+  },
+  {
+   "id": "xzTeTvNkxNv",
+   "name": "kw Ilorin South LGA",
+   "level": 3,
+   "parent": {
+    "id": "jReUW6NCPkL"
+   }
+  },
+  {
+   "id": "sJUtkBkmnom",
+   "name": "kw Ilorin West LGA",
+   "level": 3,
+   "parent": {
+    "id": "jReUW6NCPkL"
+   }
+  },
+  {
+   "id": "XG6hCGkwc7a",
+   "name": "kw Irepodun LGA",
+   "level": 3,
+   "parent": {
+    "id": "jReUW6NCPkL"
+   }
+  },
+  {
+   "id": "sstF6F4tPWC",
+   "name": "kw Isin LGA",
+   "level": 3,
+   "parent": {
+    "id": "jReUW6NCPkL"
+   }
+  },
+  {
+   "id": "G1AcANnI3eg",
+   "name": "kw Kaiama LGA",
+   "level": 3,
+   "parent": {
+    "id": "jReUW6NCPkL"
+   }
+  },
+  {
+   "id": "wbhtzEnS1vn",
+   "name": "kw Moro LGA",
+   "level": 3,
+   "parent": {
+    "id": "jReUW6NCPkL"
+   }
+  },
+  {
+   "id": "N7zYxC4Iaxx",
+   "name": "kw Offa LGA",
+   "level": 3,
+   "parent": {
+    "id": "jReUW6NCPkL"
+   }
+  },
+  {
+   "id": "w2qY5iYVowl",
+   "name": "kw Oke-Ero LGA",
+   "level": 3,
+   "parent": {
+    "id": "jReUW6NCPkL"
+   }
+  },
+  {
+   "id": "rHmtMRedsdU",
+   "name": "kw Oyun LGA",
+   "level": 3,
+   "parent": {
+    "id": "jReUW6NCPkL"
+   }
+  },
+  {
+   "id": "cbt9hIgVTHw",
+   "name": "kw Pategi LGA",
+   "level": 3,
+   "parent": {
+    "id": "jReUW6NCPkL"
+   }
+  },
+  {
+   "id": "H2ZhSMudlMI",
+   "name": "la Lagos State",
+   "level": 2,
+   "parent": {
+    "id": "s5DPBsdoE8b"
+   }
+  },
+  {
+   "id": "ePAmwPgZitO",
+   "name": "la Agege LGA",
+   "level": 3,
+   "parent": {
+    "id": "H2ZhSMudlMI"
+   }
+  },
+  {
+   "id": "SZSJbgQp79d",
+   "name": "la Ajeromi/Ifelodun LGA",
+   "level": 3,
+   "parent": {
+    "id": "H2ZhSMudlMI"
+   }
+  },
+  {
+   "id": "fhB4ICWDhmX",
+   "name": "la Alimosho LGA",
+   "level": 3,
+   "parent": {
+    "id": "H2ZhSMudlMI"
+   }
+  },
+  {
+   "id": "Isx2W2hs7r0",
+   "name": "la Amuwo Odofin LGA",
+   "level": 3,
+   "parent": {
+    "id": "H2ZhSMudlMI"
+   }
+  },
+  {
+   "id": "yme7mbY3bAw",
+   "name": "la Apapa LGA",
+   "level": 3,
+   "parent": {
+    "id": "H2ZhSMudlMI"
+   }
+  },
+  {
+   "id": "x9npNF7jiEr",
+   "name": "la Badagry LGA",
+   "level": 3,
+   "parent": {
+    "id": "H2ZhSMudlMI"
+   }
+  },
+  {
+   "id": "SrU5MH6HMIM",
+   "name": "la Epe LGA",
+   "level": 3,
+   "parent": {
+    "id": "H2ZhSMudlMI"
+   }
+  },
+  {
+   "id": "FNBnbVdc4QR",
+   "name": "la Eti-Osa LGA",
+   "level": 3,
+   "parent": {
+    "id": "H2ZhSMudlMI"
+   }
+  },
+  {
+   "id": "Phmk9OjyhlF",
+   "name": "la Ibeju/Lekki LGA",
+   "level": 3,
+   "parent": {
+    "id": "H2ZhSMudlMI"
+   }
+  },
+  {
+   "id": "KOlYwQZTBzv",
+   "name": "la Ifako/Ijaye LGA",
+   "level": 3,
+   "parent": {
+    "id": "H2ZhSMudlMI"
+   }
+  },
+  {
+   "id": "UCclb3oBhbL",
+   "name": "la Ikeja LGA",
+   "level": 3,
+   "parent": {
+    "id": "H2ZhSMudlMI"
+   }
+  },
+  {
+   "id": "uhzcCCb85FB",
+   "name": "la Ikorodu LGA",
+   "level": 3,
+   "parent": {
+    "id": "H2ZhSMudlMI"
+   }
+  },
+  {
+   "id": "qCnM7T01dCn",
+   "name": "la Kosofe LGA",
+   "level": 3,
+   "parent": {
+    "id": "H2ZhSMudlMI"
+   }
+  },
+  {
+   "id": "ugACc96v8dR",
+   "name": "la Lagos Island LGA",
+   "level": 3,
+   "parent": {
+    "id": "H2ZhSMudlMI"
+   }
+  },
+  {
+   "id": "wvrTERNJ55l",
+   "name": "la Lagos Mainland LGA",
+   "level": 3,
+   "parent": {
+    "id": "H2ZhSMudlMI"
+   }
+  },
+  {
+   "id": "bz52b77hwoM",
+   "name": "la Mushin LGA",
+   "level": 3,
+   "parent": {
+    "id": "H2ZhSMudlMI"
+   }
+  },
+  {
+   "id": "LPvGvHdlvgi",
+   "name": "la Ojo LGA",
+   "level": 3,
+   "parent": {
+    "id": "H2ZhSMudlMI"
+   }
+  },
+  {
+   "id": "WgUVHd6LYlp",
+   "name": "la Oshodi/Isolo LGA",
+   "level": 3,
+   "parent": {
+    "id": "H2ZhSMudlMI"
+   }
+  },
+  {
+   "id": "WjXjgXuzaRw",
+   "name": "la Shomolu LGA",
+   "level": 3,
+   "parent": {
+    "id": "H2ZhSMudlMI"
+   }
+  },
+  {
+   "id": "O7v1DtGbdbK",
+   "name": "la Surulere LGA",
+   "level": 3,
+   "parent": {
+    "id": "H2ZhSMudlMI"
+   }
+  },
+  {
+   "id": "gzLOszDWdqM",
+   "name": "na Nasarawa State",
+   "level": 2,
+   "parent": {
+    "id": "s5DPBsdoE8b"
+   }
+  },
+  {
+   "id": "auWw09YIylu",
+   "name": "na Akwanga LGA",
+   "level": 3,
+   "parent": {
+    "id": "gzLOszDWdqM"
+   }
+  },
+  {
+   "id": "gBoEqmjQISC",
+   "name": "na Awe LGA",
+   "level": 3,
+   "parent": {
+    "id": "gzLOszDWdqM"
+   }
+  },
+  {
+   "id": "U0rxRCfmhBx",
+   "name": "na Doma LGA",
+   "level": 3,
+   "parent": {
+    "id": "gzLOszDWdqM"
+   }
+  },
+  {
+   "id": "hrLTQKfN8rb",
+   "name": "na Karu LGA",
+   "level": 3,
+   "parent": {
+    "id": "gzLOszDWdqM"
+   }
+  },
+  {
+   "id": "u9KlKSO3Xny",
+   "name": "na Keana LGA",
+   "level": 3,
+   "parent": {
+    "id": "gzLOszDWdqM"
+   }
+  },
+  {
+   "id": "mP2N6VKOvYd",
+   "name": "na Keffi LGA",
+   "level": 3,
+   "parent": {
+    "id": "gzLOszDWdqM"
+   }
+  },
+  {
+   "id": "kD80FrxnQgH",
+   "name": "na Kokona LGA",
+   "level": 3,
+   "parent": {
+    "id": "gzLOszDWdqM"
+   }
+  },
+  {
+   "id": "Z6DfzcIgiw1",
+   "name": "na Lafia LGA",
+   "level": 3,
+   "parent": {
+    "id": "gzLOszDWdqM"
+   }
+  },
+  {
+   "id": "inHSAkhFlTj",
+   "name": "na Nasarawa Eggon LGA",
+   "level": 3,
+   "parent": {
+    "id": "gzLOszDWdqM"
+   }
+  },
+  {
+   "id": "JbvjulVvoBo",
+   "name": "na Nasarawa LGA",
+   "level": 3,
+   "parent": {
+    "id": "gzLOszDWdqM"
+   }
+  },
+  {
+   "id": "K7pfZRLAmao",
+   "name": "na Obi LGA",
+   "level": 3,
+   "parent": {
+    "id": "gzLOszDWdqM"
+   }
+  },
+  {
+   "id": "DVVwoN4UVjn",
+   "name": "na Toto LGA",
+   "level": 3,
+   "parent": {
+    "id": "gzLOszDWdqM"
+   }
+  },
+  {
+   "id": "pBWv6aGTfdo",
+   "name": "na Wamba LGA",
+   "level": 3,
+   "parent": {
+    "id": "gzLOszDWdqM"
+   }
+  },
+  {
+   "id": "RYEnw3sMDyE",
+   "name": "ni Niger State",
+   "level": 2,
+   "parent": {
+    "id": "s5DPBsdoE8b"
+   }
+  },
+  {
+   "id": "ekBHRraQj62",
+   "name": "ni Agaie LGA",
+   "level": 3,
+   "parent": {
+    "id": "RYEnw3sMDyE"
+   }
+  },
+  {
+   "id": "HSfsrf0Aq4W",
+   "name": "ni Agwara LGA",
+   "level": 3,
+   "parent": {
+    "id": "RYEnw3sMDyE"
+   }
+  },
+  {
+   "id": "Md4qVvPVoCo",
+   "name": "ni Bida LGA",
+   "level": 3,
+   "parent": {
+    "id": "RYEnw3sMDyE"
+   }
+  },
+  {
+   "id": "Zr2iXI2nBIH",
+   "name": "ni Borgu LGA",
+   "level": 3,
+   "parent": {
+    "id": "RYEnw3sMDyE"
+   }
+  },
+  {
+   "id": "VhiigQRTln1",
+   "name": "ni Bosso LGA",
+   "level": 3,
+   "parent": {
+    "id": "RYEnw3sMDyE"
+   }
+  },
+  {
+   "id": "ug59RQyO4s6",
+   "name": "ni Chanchaga LGA",
+   "level": 3,
+   "parent": {
+    "id": "RYEnw3sMDyE"
+   }
+  },
+  {
+   "id": "WIGCGYIhZ4j",
+   "name": "ni Edati LGA",
+   "level": 3,
+   "parent": {
+    "id": "RYEnw3sMDyE"
+   }
+  },
+  {
+   "id": "OVoEJP3bePx",
+   "name": "ni Gbako LGA",
+   "level": 3,
+   "parent": {
+    "id": "RYEnw3sMDyE"
+   }
+  },
+  {
+   "id": "ovwRcmfA9y1",
+   "name": "ni Gurara LGA",
+   "level": 3,
+   "parent": {
+    "id": "RYEnw3sMDyE"
+   }
+  },
+  {
+   "id": "XBqmAuG1iVN",
+   "name": "ni Katcha LGA",
+   "level": 3,
+   "parent": {
+    "id": "RYEnw3sMDyE"
+   }
+  },
+  {
+   "id": "GezaSTY6nH7",
+   "name": "ni Kontagora LGA",
+   "level": 3,
+   "parent": {
+    "id": "RYEnw3sMDyE"
+   }
+  },
+  {
+   "id": "AVtfaD53jE5",
+   "name": "ni Lapai LGA",
+   "level": 3,
+   "parent": {
+    "id": "RYEnw3sMDyE"
+   }
+  },
+  {
+   "id": "ZYPU6LNGciz",
+   "name": "ni Lavun LGA",
+   "level": 3,
+   "parent": {
+    "id": "RYEnw3sMDyE"
+   }
+  },
+  {
+   "id": "ZbGjvf8F6Tl",
+   "name": "ni Magama LGA",
+   "level": 3,
+   "parent": {
+    "id": "RYEnw3sMDyE"
+   }
+  },
+  {
+   "id": "UKoHABg5Rcp",
+   "name": "ni Mariga LGA",
+   "level": 3,
+   "parent": {
+    "id": "RYEnw3sMDyE"
+   }
+  },
+  {
+   "id": "MunKqnmiDub",
+   "name": "ni Mashegu LGA",
+   "level": 3,
+   "parent": {
+    "id": "RYEnw3sMDyE"
+   }
+  },
+  {
+   "id": "jzHOyjb6lEH",
+   "name": "ni Mokwa LGA",
+   "level": 3,
+   "parent": {
+    "id": "RYEnw3sMDyE"
+   }
+  },
+  {
+   "id": "yRZ5tXoBTwc",
+   "name": "ni Muya LGA",
+   "level": 3,
+   "parent": {
+    "id": "RYEnw3sMDyE"
+   }
+  },
+  {
+   "id": "WXrQdLOar68",
+   "name": "ni Paikoro LGA",
+   "level": 3,
+   "parent": {
+    "id": "RYEnw3sMDyE"
+   }
+  },
+  {
+   "id": "TRFf216GuoU",
+   "name": "ni Rafi LGA",
+   "level": 3,
+   "parent": {
+    "id": "RYEnw3sMDyE"
+   }
+  },
+  {
+   "id": "gC5kbwMWdd8",
+   "name": "ni Rijau LGA",
+   "level": 3,
+   "parent": {
+    "id": "RYEnw3sMDyE"
+   }
+  },
+  {
+   "id": "fzrVi7CYFRo",
+   "name": "ni Shiroro LGA",
+   "level": 3,
+   "parent": {
+    "id": "RYEnw3sMDyE"
+   }
+  },
+  {
+   "id": "sEtKD9g1g1j",
+   "name": "ni Suleja LGA",
+   "level": 3,
+   "parent": {
+    "id": "RYEnw3sMDyE"
+   }
+  },
+  {
+   "id": "m7ezObOXiL2",
+   "name": "ni Tafa LGA",
+   "level": 3,
+   "parent": {
+    "id": "RYEnw3sMDyE"
+   }
+  },
+  {
+   "id": "fp7gsJSD6ZJ",
+   "name": "ni Wushishi LGA",
+   "level": 3,
+   "parent": {
+    "id": "RYEnw3sMDyE"
+   }
+  },
+  {
+   "id": "fBInDsbaQHO",
+   "name": "og Ogun State",
+   "level": 2,
+   "parent": {
+    "id": "s5DPBsdoE8b"
+   }
+  },
+  {
+   "id": "W4xs67vasmF",
+   "name": "og Abeokuta North LGA",
+   "level": 3,
+   "parent": {
+    "id": "fBInDsbaQHO"
+   }
+  },
+  {
+   "id": "zpWz706waQy",
+   "name": "og Abeokuta South LGA",
+   "level": 3,
+   "parent": {
+    "id": "fBInDsbaQHO"
+   }
+  },
+  {
+   "id": "cB4yUMszNfb",
+   "name": "og Ado Odo/Ota LGA",
+   "level": 3,
+   "parent": {
+    "id": "fBInDsbaQHO"
+   }
+  },
+  {
+   "id": "cX5UXLDwI80",
+   "name": "og Ewekoro LGA",
+   "level": 3,
+   "parent": {
+    "id": "fBInDsbaQHO"
+   }
+  },
+  {
+   "id": "yNFqc0mtELj",
+   "name": "og Ifo LGA",
+   "level": 3,
+   "parent": {
+    "id": "fBInDsbaQHO"
+   }
+  },
+  {
+   "id": "bzfIJPdFzfx",
+   "name": "og Ijebu East LGA",
+   "level": 3,
+   "parent": {
+    "id": "fBInDsbaQHO"
+   }
+  },
+  {
+   "id": "Gsht9w2YlgX",
+   "name": "og Ijebu North East LGA",
+   "level": 3,
+   "parent": {
+    "id": "fBInDsbaQHO"
+   }
+  },
+  {
+   "id": "tZljQffwSUE",
+   "name": "og Ijebu North LGA",
+   "level": 3,
+   "parent": {
+    "id": "fBInDsbaQHO"
+   }
+  },
+  {
+   "id": "S5DQ6kJu94x",
+   "name": "og Ijebu Ode LGA",
+   "level": 3,
+   "parent": {
+    "id": "fBInDsbaQHO"
+   }
+  },
+  {
+   "id": "WufjzrvlrSZ",
+   "name": "og Ikenne LGA",
+   "level": 3,
+   "parent": {
+    "id": "fBInDsbaQHO"
+   }
+  },
+  {
+   "id": "SPHxGts4MiU",
+   "name": "og Imeko Afon LGA",
+   "level": 3,
+   "parent": {
+    "id": "fBInDsbaQHO"
+   }
+  },
+  {
+   "id": "rzNZvXCjmGZ",
+   "name": "og Ipokia LGA",
+   "level": 3,
+   "parent": {
+    "id": "fBInDsbaQHO"
+   }
+  },
+  {
+   "id": "ufeoQtz2q78",
+   "name": "og Obafemi Owode LGA",
+   "level": 3,
+   "parent": {
+    "id": "fBInDsbaQHO"
+   }
+  },
+  {
+   "id": "ch3nxbPFL6a",
+   "name": "og Odeda LGA",
+   "level": 3,
+   "parent": {
+    "id": "fBInDsbaQHO"
+   }
+  },
+  {
+   "id": "RDhV3dbcNk0",
+   "name": "og Odogbolu LGA",
+   "level": 3,
+   "parent": {
+    "id": "fBInDsbaQHO"
+   }
+  },
+  {
+   "id": "JGrZtl3Tytu",
+   "name": "og Ogun Waterside LGA",
+   "level": 3,
+   "parent": {
+    "id": "fBInDsbaQHO"
+   }
+  },
+  {
+   "id": "gw9HZ1Tc17t",
+   "name": "og Remo North LGA",
+   "level": 3,
+   "parent": {
+    "id": "fBInDsbaQHO"
+   }
+  },
+  {
+   "id": "fNhA5TKBeUW",
+   "name": "og Sagamu LGA",
+   "level": 3,
+   "parent": {
+    "id": "fBInDsbaQHO"
+   }
+  },
+  {
+   "id": "zjTltK7sIXz",
+   "name": "og Yewa North LGA",
+   "level": 3,
+   "parent": {
+    "id": "fBInDsbaQHO"
+   }
+  },
+  {
+   "id": "DHKG4lUpV4W",
+   "name": "og Yewa South LGA",
+   "level": 3,
+   "parent": {
+    "id": "fBInDsbaQHO"
+   }
+  },
+  {
+   "id": "r3IK5qdHsZ6",
+   "name": "on Ondo State",
+   "level": 2,
+   "parent": {
+    "id": "s5DPBsdoE8b"
+   }
+  },
+  {
+   "id": "gRxqWCVSCXz",
+   "name": "on Akoko North East LGA",
+   "level": 3,
+   "parent": {
+    "id": "r3IK5qdHsZ6"
+   }
+  },
+  {
+   "id": "LvrZxDcArQI",
+   "name": "on Akoko North West LGA",
+   "level": 3,
+   "parent": {
+    "id": "r3IK5qdHsZ6"
+   }
+  },
+  {
+   "id": "G4VLEqVrFsu",
+   "name": "on Akoko South East LGA",
+   "level": 3,
+   "parent": {
+    "id": "r3IK5qdHsZ6"
+   }
+  },
+  {
+   "id": "ISEFrHAK9LG",
+   "name": "on Akoko South West LGA",
+   "level": 3,
+   "parent": {
+    "id": "r3IK5qdHsZ6"
+   }
+  },
+  {
+   "id": "y6VIc7od1Yd",
+   "name": "on Akure North LGA",
+   "level": 3,
+   "parent": {
+    "id": "r3IK5qdHsZ6"
+   }
+  },
+  {
+   "id": "TyEBP2vzJvJ",
+   "name": "on Akure South LGA",
+   "level": 3,
+   "parent": {
+    "id": "r3IK5qdHsZ6"
+   }
+  },
+  {
+   "id": "odiuYVmeZnE",
+   "name": "on Ese Odo LGA",
+   "level": 3,
+   "parent": {
+    "id": "r3IK5qdHsZ6"
+   }
+  },
+  {
+   "id": "TT2fGVpaX7U",
+   "name": "on Idanre LGA",
+   "level": 3,
+   "parent": {
+    "id": "r3IK5qdHsZ6"
+   }
+  },
+  {
+   "id": "fTGoVMFkcpf",
+   "name": "on Ifedore LGA",
+   "level": 3,
+   "parent": {
+    "id": "r3IK5qdHsZ6"
+   }
+  },
+  {
+   "id": "X3Onlw20L3g",
+   "name": "on Ilaje LGA",
+   "level": 3,
+   "parent": {
+    "id": "r3IK5qdHsZ6"
+   }
+  },
+  {
+   "id": "UpogOGgJguG",
+   "name": "on Ile-Oluji/Okeigbo LGA",
+   "level": 3,
+   "parent": {
+    "id": "r3IK5qdHsZ6"
+   }
+  },
+  {
+   "id": "ufHX2StLJDr",
+   "name": "on Irele LGA",
+   "level": 3,
+   "parent": {
+    "id": "r3IK5qdHsZ6"
+   }
+  },
+  {
+   "id": "qz30Qd5ETFE",
+   "name": "on Odigbo LGA",
+   "level": 3,
+   "parent": {
+    "id": "r3IK5qdHsZ6"
+   }
+  },
+  {
+   "id": "ajQEvijaUzB",
+   "name": "on Okitipupa LGA",
+   "level": 3,
+   "parent": {
+    "id": "r3IK5qdHsZ6"
+   }
+  },
+  {
+   "id": "WBbt0lsDrId",
+   "name": "on Ondo East LGA",
+   "level": 3,
+   "parent": {
+    "id": "r3IK5qdHsZ6"
+   }
+  },
+  {
+   "id": "Blrwg0JY7dP",
+   "name": "on Ondo West LGA",
+   "level": 3,
+   "parent": {
+    "id": "r3IK5qdHsZ6"
+   }
+  },
+  {
+   "id": "ZQnmF2llprC",
+   "name": "on Ose LGA",
+   "level": 3,
+   "parent": {
+    "id": "r3IK5qdHsZ6"
+   }
+  },
+  {
+   "id": "ESajEdAR6zX",
+   "name": "on Owo LGA",
+   "level": 3,
+   "parent": {
+    "id": "r3IK5qdHsZ6"
+   }
+  },
+  {
+   "id": "hfNPq5F4mjr",
+   "name": "os Osun State",
+   "level": 2,
+   "parent": {
+    "id": "s5DPBsdoE8b"
+   }
+  },
+  {
+   "id": "UJIF3OmraBX",
+   "name": "os Atakumosa East LGA",
+   "level": 3,
+   "parent": {
+    "id": "hfNPq5F4mjr"
+   }
+  },
+  {
+   "id": "xoG2GvtWVXW",
+   "name": "os Atakumosa West LGA",
+   "level": 3,
+   "parent": {
+    "id": "hfNPq5F4mjr"
+   }
+  },
+  {
+   "id": "Tg4RmGoR7uZ",
+   "name": "os Ayedaade LGA",
+   "level": 3,
+   "parent": {
+    "id": "hfNPq5F4mjr"
+   }
+  },
+  {
+   "id": "YXEicq3Jw6q",
+   "name": "os Ayedire LGA",
+   "level": 3,
+   "parent": {
+    "id": "hfNPq5F4mjr"
+   }
+  },
+  {
+   "id": "WQmrSMVYbl9",
+   "name": "os Boluwaduro LGA",
+   "level": 3,
+   "parent": {
+    "id": "hfNPq5F4mjr"
+   }
+  },
+  {
+   "id": "HqAnoqK5IDA",
+   "name": "os Boripe LGA",
+   "level": 3,
+   "parent": {
+    "id": "hfNPq5F4mjr"
+   }
+  },
+  {
+   "id": "TJeHzIBcYIJ",
+   "name": "os Ede North LGA",
+   "level": 3,
+   "parent": {
+    "id": "hfNPq5F4mjr"
+   }
+  },
+  {
+   "id": "xTHdjc7rEUx",
+   "name": "os Ede South LGA",
+   "level": 3,
+   "parent": {
+    "id": "hfNPq5F4mjr"
+   }
+  },
+  {
+   "id": "yXQxyPudYjf",
+   "name": "os Egbedore LGA",
+   "level": 3,
+   "parent": {
+    "id": "hfNPq5F4mjr"
+   }
+  },
+  {
+   "id": "VkcioIEAOeN",
+   "name": "os Ejigbo LGA",
+   "level": 3,
+   "parent": {
+    "id": "hfNPq5F4mjr"
+   }
+  },
+  {
+   "id": "sq5WGsTwNPs",
+   "name": "os Ife Central LGA",
+   "level": 3,
+   "parent": {
+    "id": "hfNPq5F4mjr"
+   }
+  },
+  {
+   "id": "Gdpdc67ieqk",
+   "name": "os Ife East LGA",
+   "level": 3,
+   "parent": {
+    "id": "hfNPq5F4mjr"
+   }
+  },
+  {
+   "id": "nP56ESL47wV",
+   "name": "os Ife North LGA",
+   "level": 3,
+   "parent": {
+    "id": "hfNPq5F4mjr"
+   }
+  },
+  {
+   "id": "xRNa9clyxMY",
+   "name": "os Ife South LGA",
+   "level": 3,
+   "parent": {
+    "id": "hfNPq5F4mjr"
+   }
+  },
+  {
+   "id": "bBzxWArEEzf",
+   "name": "os Ifedayo LGA",
+   "level": 3,
+   "parent": {
+    "id": "hfNPq5F4mjr"
+   }
+  },
+  {
+   "id": "rSo7ZKpa8v8",
+   "name": "os Ifelodun LGA",
+   "level": 3,
+   "parent": {
+    "id": "hfNPq5F4mjr"
+   }
+  },
+  {
+   "id": "z0rbVRgOGqg",
+   "name": "os Ila LGA",
+   "level": 3,
+   "parent": {
+    "id": "hfNPq5F4mjr"
+   }
+  },
+  {
+   "id": "XRgMxgayGSs",
+   "name": "os Ilesa East LGA",
+   "level": 3,
+   "parent": {
+    "id": "hfNPq5F4mjr"
+   }
+  },
+  {
+   "id": "FsJu3kv8JeQ",
+   "name": "os Ilesa West LGA",
+   "level": 3,
+   "parent": {
+    "id": "hfNPq5F4mjr"
+   }
+  },
+  {
+   "id": "BkU7EwMFz9Q",
+   "name": "os Irepodun LGA",
+   "level": 3,
+   "parent": {
+    "id": "hfNPq5F4mjr"
+   }
+  },
+  {
+   "id": "S3CdMCEeSaM",
+   "name": "os Irewole LGA",
+   "level": 3,
+   "parent": {
+    "id": "hfNPq5F4mjr"
+   }
+  },
+  {
+   "id": "rnRsuHcKFQB",
+   "name": "os Isokan LGA",
+   "level": 3,
+   "parent": {
+    "id": "hfNPq5F4mjr"
+   }
+  },
+  {
+   "id": "nbYyJGNZPVw",
+   "name": "os Iwo LGA",
+   "level": 3,
+   "parent": {
+    "id": "hfNPq5F4mjr"
+   }
+  },
+  {
+   "id": "DyCFmYXibro",
+   "name": "os Obokun LGA",
+   "level": 3,
+   "parent": {
+    "id": "hfNPq5F4mjr"
+   }
+  },
+  {
+   "id": "EfJDn3iMRaA",
+   "name": "os Odo Otin LGA",
+   "level": 3,
+   "parent": {
+    "id": "hfNPq5F4mjr"
+   }
+  },
+  {
+   "id": "JHLoPuFa094",
+   "name": "os Ola-Oluwa LGA",
+   "level": 3,
+   "parent": {
+    "id": "hfNPq5F4mjr"
+   }
+  },
+  {
+   "id": "WHxYJGY1xa1",
+   "name": "os Olorunda LGA",
+   "level": 3,
+   "parent": {
+    "id": "hfNPq5F4mjr"
+   }
+  },
+  {
+   "id": "KVRB5lZFgf8",
+   "name": "os Oriade LGA",
+   "level": 3,
+   "parent": {
+    "id": "hfNPq5F4mjr"
+   }
+  },
+  {
+   "id": "WV2VZ4SaqDN",
+   "name": "os Orolu LGA",
+   "level": 3,
+   "parent": {
+    "id": "hfNPq5F4mjr"
+   }
+  },
+  {
+   "id": "NtoDeIJfifx",
+   "name": "os Osogbo LGA",
+   "level": 3,
+   "parent": {
+    "id": "hfNPq5F4mjr"
+   }
+  },
+  {
+   "id": "yx3QJHm86vW",
+   "name": "oy Oyo State",
+   "level": 2,
+   "parent": {
+    "id": "s5DPBsdoE8b"
+   }
+  },
+  {
+   "id": "ciSH7WnJzxX",
+   "name": "oy Afijio LGA",
+   "level": 3,
+   "parent": {
+    "id": "yx3QJHm86vW"
+   }
+  },
+  {
+   "id": "MfADmzMw4RC",
+   "name": "oy Akinyele LGA",
+   "level": 3,
+   "parent": {
+    "id": "yx3QJHm86vW"
+   }
+  },
+  {
+   "id": "LEJ4gnlzGu2",
+   "name": "oy Atiba LGA",
+   "level": 3,
+   "parent": {
+    "id": "yx3QJHm86vW"
+   }
+  },
+  {
+   "id": "T0eYRHWKkDT",
+   "name": "oy Atisbo LGA",
+   "level": 3,
+   "parent": {
+    "id": "yx3QJHm86vW"
+   }
+  },
+  {
+   "id": "q3xyh0r6NOY",
+   "name": "oy Egbeda LGA",
+   "level": 3,
+   "parent": {
+    "id": "yx3QJHm86vW"
+   }
+  },
+  {
+   "id": "E1R9u4L0CbH",
+   "name": "oy Ibadan North East LGA",
+   "level": 3,
+   "parent": {
+    "id": "yx3QJHm86vW"
+   }
+  },
+  {
+   "id": "dExqRR1xrYG",
+   "name": "oy Ibadan North LGA",
+   "level": 3,
+   "parent": {
+    "id": "yx3QJHm86vW"
+   }
+  },
+  {
+   "id": "XxzWVpiPffH",
+   "name": "oy Ibadan North West LGA",
+   "level": 3,
+   "parent": {
+    "id": "yx3QJHm86vW"
+   }
+  },
+  {
+   "id": "bZZm8hVpxiE",
+   "name": "oy Ibadan South East LGA",
+   "level": 3,
+   "parent": {
+    "id": "yx3QJHm86vW"
+   }
+  },
+  {
+   "id": "JmyH0X5sfCv",
+   "name": "oy Ibadan South West LGA",
+   "level": 3,
+   "parent": {
+    "id": "yx3QJHm86vW"
+   }
+  },
+  {
+   "id": "p85EXp9R0no",
+   "name": "oy Ibarapa Central LGA",
+   "level": 3,
+   "parent": {
+    "id": "yx3QJHm86vW"
+   }
+  },
+  {
+   "id": "tovuJMMkdxT",
+   "name": "oy Ibarapa East LGA",
+   "level": 3,
+   "parent": {
+    "id": "yx3QJHm86vW"
+   }
+  },
+  {
+   "id": "X19EfdQc4oH",
+   "name": "oy Ibarapa North LGA",
+   "level": 3,
+   "parent": {
+    "id": "yx3QJHm86vW"
+   }
+  },
+  {
+   "id": "GbuxGIY5hOh",
+   "name": "oy Ido LGA",
+   "level": 3,
+   "parent": {
+    "id": "yx3QJHm86vW"
+   }
+  },
+  {
+   "id": "peJI9gxdrfl",
+   "name": "oy Irepo LGA",
+   "level": 3,
+   "parent": {
+    "id": "yx3QJHm86vW"
+   }
+  },
+  {
+   "id": "TzXoelSeQiK",
+   "name": "oy Iseyin LGA",
+   "level": 3,
+   "parent": {
+    "id": "yx3QJHm86vW"
+   }
+  },
+  {
+   "id": "av3PFc7Ow0Q",
+   "name": "oy Itesiwaju LGA",
+   "level": 3,
+   "parent": {
+    "id": "yx3QJHm86vW"
+   }
+  },
+  {
+   "id": "O9MmgxoWx9S",
+   "name": "oy Iwajowa LGA",
+   "level": 3,
+   "parent": {
+    "id": "yx3QJHm86vW"
+   }
+  },
+  {
+   "id": "WMq8ttehxbX",
+   "name": "oy Kajola LGA",
+   "level": 3,
+   "parent": {
+    "id": "yx3QJHm86vW"
+   }
+  },
+  {
+   "id": "dXiIdHcmvxY",
+   "name": "oy Lagelu LGA",
+   "level": 3,
+   "parent": {
+    "id": "yx3QJHm86vW"
+   }
+  },
+  {
+   "id": "gAXRQqo2dk8",
+   "name": "oy Ogbomosho North LGA",
+   "level": 3,
+   "parent": {
+    "id": "yx3QJHm86vW"
+   }
+  },
+  {
+   "id": "pdItGdtqkcM",
+   "name": "oy Ogbomosho South LGA",
+   "level": 3,
+   "parent": {
+    "id": "yx3QJHm86vW"
+   }
+  },
+  {
+   "id": "zKSuCNCcNh2",
+   "name": "oy Ogo Oluwa LGA",
+   "level": 3,
+   "parent": {
+    "id": "yx3QJHm86vW"
+   }
+  },
+  {
+   "id": "Yklm5eRK6d8",
+   "name": "oy Olorunsogo LGA",
+   "level": 3,
+   "parent": {
+    "id": "yx3QJHm86vW"
+   }
+  },
+  {
+   "id": "KZHw5oji2kd",
+   "name": "oy Oluyole LGA",
+   "level": 3,
+   "parent": {
+    "id": "yx3QJHm86vW"
+   }
+  },
+  {
+   "id": "NJZzxKwGI5I",
+   "name": "oy Ona Ara LGA",
+   "level": 3,
+   "parent": {
+    "id": "yx3QJHm86vW"
+   }
+  },
+  {
+   "id": "DWdHbGI0GQH",
+   "name": "oy Orelope LGA",
+   "level": 3,
+   "parent": {
+    "id": "yx3QJHm86vW"
+   }
+  },
+  {
+   "id": "WD6q765ObPv",
+   "name": "oy Ori Ire LGA",
+   "level": 3,
+   "parent": {
+    "id": "yx3QJHm86vW"
+   }
+  },
+  {
+   "id": "eVYnmE9y3JU",
+   "name": "oy Oyo East LGA",
+   "level": 3,
+   "parent": {
+    "id": "yx3QJHm86vW"
+   }
+  },
+  {
+   "id": "BgkqR26r3HY",
+   "name": "oy Oyo West LGA",
+   "level": 3,
+   "parent": {
+    "id": "yx3QJHm86vW"
+   }
+  },
+  {
+   "id": "frsSay5ZFcf",
+   "name": "oy Saki East LGA",
+   "level": 3,
+   "parent": {
+    "id": "yx3QJHm86vW"
+   }
+  },
+  {
+   "id": "Dkf7psyF1hW",
+   "name": "oy Saki West LGA",
+   "level": 3,
+   "parent": {
+    "id": "yx3QJHm86vW"
+   }
+  },
+  {
+   "id": "DSiIqD9lNmj",
+   "name": "oy Surulere LGA",
+   "level": 3,
+   "parent": {
+    "id": "yx3QJHm86vW"
+   }
+  },
+  {
+   "id": "TFY8aaVkCtV",
+   "name": "pl Plateau State",
+   "level": 2,
+   "parent": {
+    "id": "s5DPBsdoE8b"
+   }
+  },
+  {
+   "id": "ouLEEfhhUi4",
+   "name": "pl Barkin Ladi LGA",
+   "level": 3,
+   "parent": {
+    "id": "TFY8aaVkCtV"
+   }
+  },
+  {
+   "id": "Fz35hOhL9pl",
+   "name": "pl Bassa LGA",
+   "level": 3,
+   "parent": {
+    "id": "TFY8aaVkCtV"
+   }
+  },
+  {
+   "id": "yvLXnUSwnPx",
+   "name": "pl Bokkos LGA",
+   "level": 3,
+   "parent": {
+    "id": "TFY8aaVkCtV"
+   }
+  },
+  {
+   "id": "WCweExkr9Nf",
+   "name": "pl Jos East LGA",
+   "level": 3,
+   "parent": {
+    "id": "TFY8aaVkCtV"
+   }
+  },
+  {
+   "id": "ZC7cDSIQEw0",
+   "name": "pl Jos North LGA",
+   "level": 3,
+   "parent": {
+    "id": "TFY8aaVkCtV"
+   }
+  },
+  {
+   "id": "z2LEw3YBp0u",
+   "name": "pl Jos South LGA",
+   "level": 3,
+   "parent": {
+    "id": "TFY8aaVkCtV"
+   }
+  },
+  {
+   "id": "iJcU0vPunGi",
+   "name": "pl Kanam LGA",
+   "level": 3,
+   "parent": {
+    "id": "TFY8aaVkCtV"
+   }
+  },
+  {
+   "id": "wufV6CEmu7o",
+   "name": "pl Kanke LGA",
+   "level": 3,
+   "parent": {
+    "id": "TFY8aaVkCtV"
+   }
+  },
+  {
+   "id": "fdMXKhBXIT4",
+   "name": "pl Langtang North LGA",
+   "level": 3,
+   "parent": {
+    "id": "TFY8aaVkCtV"
+   }
+  },
+  {
+   "id": "RYznpyJVRmu",
+   "name": "pl Langtang South LGA",
+   "level": 3,
+   "parent": {
+    "id": "TFY8aaVkCtV"
+   }
+  },
+  {
+   "id": "lFlJklyemBS",
+   "name": "pl Mangu LGA",
+   "level": 3,
+   "parent": {
+    "id": "TFY8aaVkCtV"
+   }
+  },
+  {
+   "id": "QVQfyHG7wXY",
+   "name": "pl Mikang LGA",
+   "level": 3,
+   "parent": {
+    "id": "TFY8aaVkCtV"
+   }
+  },
+  {
+   "id": "z90ZXv7skHL",
+   "name": "pl Pankshin LGA",
+   "level": 3,
+   "parent": {
+    "id": "TFY8aaVkCtV"
+   }
+  },
+  {
+   "id": "E4YEDg43VnG",
+   "name": "pl Qua'an Pan LGA",
+   "level": 3,
+   "parent": {
+    "id": "TFY8aaVkCtV"
+   }
+  },
+  {
+   "id": "LdBp7gpkFZd",
+   "name": "pl Riyom LGA",
+   "level": 3,
+   "parent": {
+    "id": "TFY8aaVkCtV"
+   }
+  },
+  {
+   "id": "rvZY3X4clef",
+   "name": "pl Shendam LGA",
+   "level": 3,
+   "parent": {
+    "id": "TFY8aaVkCtV"
+   }
+  },
+  {
+   "id": "RpwlJf8M7mL",
+   "name": "pl Wase LGA",
+   "level": 3,
+   "parent": {
+    "id": "TFY8aaVkCtV"
+   }
+  },
+  {
+   "id": "BmWTbiMgEai",
+   "name": "ri Rivers State",
+   "level": 2,
+   "parent": {
+    "id": "s5DPBsdoE8b"
+   }
+  },
+  {
+   "id": "hRvlbPHGpCT",
+   "name": "ri Abua/Odual LGA",
+   "level": 3,
+   "parent": {
+    "id": "BmWTbiMgEai"
+   }
+  },
+  {
+   "id": "OaX5jg5snSa",
+   "name": "ri Ahoada East LGA",
+   "level": 3,
+   "parent": {
+    "id": "BmWTbiMgEai"
+   }
+  },
+  {
+   "id": "VeWw8Vnyf1c",
+   "name": "ri Ahoada West LGA",
+   "level": 3,
+   "parent": {
+    "id": "BmWTbiMgEai"
+   }
+  },
+  {
+   "id": "uX5lQnLugub",
+   "name": "ri Akuku Toru LGA",
+   "level": 3,
+   "parent": {
+    "id": "BmWTbiMgEai"
+   }
+  },
+  {
+   "id": "SIoNro0y3OX",
+   "name": "ri Andoni LGA",
+   "level": 3,
+   "parent": {
+    "id": "BmWTbiMgEai"
+   }
+  },
+  {
+   "id": "sUPYUBNIi9e",
+   "name": "ri Asari-Toru LGA",
+   "level": 3,
+   "parent": {
+    "id": "BmWTbiMgEai"
+   }
+  },
+  {
+   "id": "ibeAABe2n4q",
+   "name": "ri Bonny LGA",
+   "level": 3,
+   "parent": {
+    "id": "BmWTbiMgEai"
+   }
+  },
+  {
+   "id": "hqPBSOGDEzM",
+   "name": "ri Degema LGA",
+   "level": 3,
+   "parent": {
+    "id": "BmWTbiMgEai"
+   }
+  },
+  {
+   "id": "V44MZsBGH1s",
+   "name": "ri Eleme LGA",
+   "level": 3,
+   "parent": {
+    "id": "BmWTbiMgEai"
+   }
+  },
+  {
+   "id": "BhClHhh9Z47",
+   "name": "ri Emohua LGA",
+   "level": 3,
+   "parent": {
+    "id": "BmWTbiMgEai"
+   }
+  },
+  {
+   "id": "tA8QHhVaJV0",
+   "name": "ri Etche LGA",
+   "level": 3,
+   "parent": {
+    "id": "BmWTbiMgEai"
+   }
+  },
+  {
+   "id": "As3MjkIqRgV",
+   "name": "ri Gokana LGA",
+   "level": 3,
+   "parent": {
+    "id": "BmWTbiMgEai"
+   }
+  },
+  {
+   "id": "dBypaBcpopp",
+   "name": "ri Ikwerre LGA",
+   "level": 3,
+   "parent": {
+    "id": "BmWTbiMgEai"
+   }
+  },
+  {
+   "id": "pisdQsp5JhD",
+   "name": "ri Khana LGA",
+   "level": 3,
+   "parent": {
+    "id": "BmWTbiMgEai"
+   }
+  },
+  {
+   "id": "sJPsaF2kLrW",
+   "name": "ri Obio/Akpor LGA",
+   "level": 3,
+   "parent": {
+    "id": "BmWTbiMgEai"
+   }
+  },
+  {
+   "id": "JknfbWsgTzR",
+   "name": "ri Ogba/Egbema/Ndoni LGA",
+   "level": 3,
+   "parent": {
+    "id": "BmWTbiMgEai"
+   }
+  },
+  {
+   "id": "VCOO8TvzF7b",
+   "name": "ri Ogu/Bolo LGA",
+   "level": 3,
+   "parent": {
+    "id": "BmWTbiMgEai"
+   }
+  },
+  {
+   "id": "UBKGWhk0igZ",
+   "name": "ri Okrika LGA",
+   "level": 3,
+   "parent": {
+    "id": "BmWTbiMgEai"
+   }
+  },
+  {
+   "id": "pCfnyoQZsle",
+   "name": "ri Omumma LGA",
+   "level": 3,
+   "parent": {
+    "id": "BmWTbiMgEai"
+   }
+  },
+  {
+   "id": "zqKhnhIZtRD",
+   "name": "ri Opobo/Nkoro LGA",
+   "level": 3,
+   "parent": {
+    "id": "BmWTbiMgEai"
+   }
+  },
+  {
+   "id": "zH952ovyqnD",
+   "name": "ri Oyigbo LGA",
+   "level": 3,
+   "parent": {
+    "id": "BmWTbiMgEai"
+   }
+  },
+  {
+   "id": "jbyuLOmxaBo",
+   "name": "ri Port-Harcourt LGA",
+   "level": 3,
+   "parent": {
+    "id": "BmWTbiMgEai"
+   }
+  },
+  {
+   "id": "gtqG48g0DYD",
+   "name": "ri Tai LGA",
+   "level": 3,
+   "parent": {
+    "id": "BmWTbiMgEai"
+   }
+  },
+  {
+   "id": "Gq37IyyjUfj",
+   "name": "so Sokoto State",
+   "level": 2,
+   "parent": {
+    "id": "s5DPBsdoE8b"
+   }
+  },
+  {
+   "id": "DkdO55k5e1b",
+   "name": "so Binji LGA",
+   "level": 3,
+   "parent": {
+    "id": "Gq37IyyjUfj"
+   }
+  },
+  {
+   "id": "hQDqUz6VoJi",
+   "name": "so Bodinga LGA",
+   "level": 3,
+   "parent": {
+    "id": "Gq37IyyjUfj"
+   }
+  },
+  {
+   "id": "qLIC9sV2RXf",
+   "name": "so Dange-Shuni LGA",
+   "level": 3,
+   "parent": {
+    "id": "Gq37IyyjUfj"
+   }
+  },
+  {
+   "id": "t6muhWXVRjB",
+   "name": "so Gada LGA",
+   "level": 3,
+   "parent": {
+    "id": "Gq37IyyjUfj"
+   }
+  },
+  {
+   "id": "hW3Xnmf6bc1",
+   "name": "so Goronyo LGA",
+   "level": 3,
+   "parent": {
+    "id": "Gq37IyyjUfj"
+   }
+  },
+  {
+   "id": "L1P5UbZSL5W",
+   "name": "so Gudu LGA",
+   "level": 3,
+   "parent": {
+    "id": "Gq37IyyjUfj"
+   }
+  },
+  {
+   "id": "oJq1FJnNJca",
+   "name": "so Gwadabawa LGA",
+   "level": 3,
+   "parent": {
+    "id": "Gq37IyyjUfj"
+   }
+  },
+  {
+   "id": "cOXfSVoQY61",
+   "name": "so Illela LGA",
+   "level": 3,
+   "parent": {
+    "id": "Gq37IyyjUfj"
+   }
+  },
+  {
+   "id": "xWacoLXLfIQ",
+   "name": "so Isa LGA",
+   "level": 3,
+   "parent": {
+    "id": "Gq37IyyjUfj"
+   }
+  },
+  {
+   "id": "hD0cMZ5rnvy",
+   "name": "so Kebbe LGA",
+   "level": 3,
+   "parent": {
+    "id": "Gq37IyyjUfj"
+   }
+  },
+  {
+   "id": "UrQbcyC7ETp",
+   "name": "so Kware LGA",
+   "level": 3,
+   "parent": {
+    "id": "Gq37IyyjUfj"
+   }
+  },
+  {
+   "id": "pWmH5QvXLOO",
+   "name": "so Rabah LGA",
+   "level": 3,
+   "parent": {
+    "id": "Gq37IyyjUfj"
+   }
+  },
+  {
+   "id": "TT41b9ALeMJ",
+   "name": "so Sabon Birni LGA",
+   "level": 3,
+   "parent": {
+    "id": "Gq37IyyjUfj"
+   }
+  },
+  {
+   "id": "RejhrFRTR3j",
+   "name": "so Shagari LGA",
+   "level": 3,
+   "parent": {
+    "id": "Gq37IyyjUfj"
+   }
+  },
+  {
+   "id": "FBvTsFseeUW",
+   "name": "so Silame LGA",
+   "level": 3,
+   "parent": {
+    "id": "Gq37IyyjUfj"
+   }
+  },
+  {
+   "id": "avORuGgsXUB",
+   "name": "so Sokoto North LGA",
+   "level": 3,
+   "parent": {
+    "id": "Gq37IyyjUfj"
+   }
+  },
+  {
+   "id": "ymO9vBUrhKz",
+   "name": "so Sokoto South LGA",
+   "level": 3,
+   "parent": {
+    "id": "Gq37IyyjUfj"
+   }
+  },
+  {
+   "id": "g6sMYyM07Al",
+   "name": "so Tambuwal LGA",
+   "level": 3,
+   "parent": {
+    "id": "Gq37IyyjUfj"
+   }
+  },
+  {
+   "id": "ZjeR61Cy7Ku",
+   "name": "so Tangaza LGA",
+   "level": 3,
+   "parent": {
+    "id": "Gq37IyyjUfj"
+   }
+  },
+  {
+   "id": "W3v9lmNAfuL",
+   "name": "so Tureta LGA",
+   "level": 3,
+   "parent": {
+    "id": "Gq37IyyjUfj"
+   }
+  },
+  {
+   "id": "arJvk35XJiS",
+   "name": "so Wamako LGA",
+   "level": 3,
+   "parent": {
+    "id": "Gq37IyyjUfj"
+   }
+  },
+  {
+   "id": "p1KoM2nuUQ1",
+   "name": "so Wurno LGA",
+   "level": 3,
+   "parent": {
+    "id": "Gq37IyyjUfj"
+   }
+  },
+  {
+   "id": "dmnkWCgtXPA",
+   "name": "so Yabo LGA",
+   "level": 3,
+   "parent": {
+    "id": "Gq37IyyjUfj"
+   }
+  },
+  {
+   "id": "jXngIDniC8t",
+   "name": "ta Taraba State",
+   "level": 2,
+   "parent": {
+    "id": "s5DPBsdoE8b"
+   }
+  },
+  {
+   "id": "KeXsNtlnZBz",
+   "name": "ta Ardo-Kola LGA",
+   "level": 3,
+   "parent": {
+    "id": "jXngIDniC8t"
+   }
+  },
+  {
+   "id": "AaNOXtIkaRW",
+   "name": "ta Bali LGA",
+   "level": 3,
+   "parent": {
+    "id": "jXngIDniC8t"
+   }
+  },
+  {
+   "id": "QbXOFEqSvmW",
+   "name": "ta Donga LGA",
+   "level": 3,
+   "parent": {
+    "id": "jXngIDniC8t"
+   }
+  },
+  {
+   "id": "uCfN8gLOWni",
+   "name": "ta Gashaka LGA",
+   "level": 3,
+   "parent": {
+    "id": "jXngIDniC8t"
+   }
+  },
+  {
+   "id": "QBGYMl8ZlOu",
+   "name": "ta Gassol LGA",
+   "level": 3,
+   "parent": {
+    "id": "jXngIDniC8t"
+   }
+  },
+  {
+   "id": "OSRrQMUGYZm",
+   "name": "ta Ibi LGA",
+   "level": 3,
+   "parent": {
+    "id": "jXngIDniC8t"
+   }
+  },
+  {
+   "id": "NCmDHoh16Sd",
+   "name": "ta Jalingo LGA",
+   "level": 3,
+   "parent": {
+    "id": "jXngIDniC8t"
+   }
+  },
+  {
+   "id": "A49nOVVVRNQ",
+   "name": "ta Karim-Lamido LGA",
+   "level": 3,
+   "parent": {
+    "id": "jXngIDniC8t"
+   }
+  },
+  {
+   "id": "xeo1KPVCZRW",
+   "name": "ta Kurmi LGA",
+   "level": 3,
+   "parent": {
+    "id": "jXngIDniC8t"
+   }
+  },
+  {
+   "id": "x6AEMW3qkbC",
+   "name": "ta Lau LGA",
+   "level": 3,
+   "parent": {
+    "id": "jXngIDniC8t"
+   }
+  },
+  {
+   "id": "ISQWCvZ7hDs",
+   "name": "ta Sardauna LGA",
+   "level": 3,
+   "parent": {
+    "id": "jXngIDniC8t"
+   }
+  },
+  {
+   "id": "lbZRgmFOy4I",
+   "name": "ta Takum LGA",
+   "level": 3,
+   "parent": {
+    "id": "jXngIDniC8t"
+   }
+  },
+  {
+   "id": "zqIvvsnQyOl",
+   "name": "ta Ussa LGA",
+   "level": 3,
+   "parent": {
+    "id": "jXngIDniC8t"
+   }
+  },
+  {
+   "id": "tCWzHYQNq4r",
+   "name": "ta Wukari LGA",
+   "level": 3,
+   "parent": {
+    "id": "jXngIDniC8t"
+   }
+  },
+  {
+   "id": "FmeB6bXV375",
+   "name": "ta Yorro LGA",
+   "level": 3,
+   "parent": {
+    "id": "jXngIDniC8t"
+   }
+  },
+  {
+   "id": "whPk4TgNrwq",
+   "name": "ta Zing LGA",
+   "level": 3,
+   "parent": {
+    "id": "jXngIDniC8t"
+   }
+  },
+  {
+   "id": "Ym1fEhWFWYI",
+   "name": "yo Yobe State",
+   "level": 2,
+   "parent": {
+    "id": "s5DPBsdoE8b"
+   }
+  },
+  {
+   "id": "eC5QWisyqrk",
+   "name": "yo Bade LGA",
+   "level": 3,
+   "parent": {
+    "id": "Ym1fEhWFWYI"
+   }
+  },
+  {
+   "id": "McJvKAwwz3h",
+   "name": "yo Busari LGA",
+   "level": 3,
+   "parent": {
+    "id": "Ym1fEhWFWYI"
+   }
+  },
+  {
+   "id": "jJOZZJZI0x5",
+   "name": "yo Damaturu LGA",
+   "level": 3,
+   "parent": {
+    "id": "Ym1fEhWFWYI"
+   }
+  },
+  {
+   "id": "PppXufBemal",
+   "name": "yo Fika LGA",
+   "level": 3,
+   "parent": {
+    "id": "Ym1fEhWFWYI"
+   }
+  },
+  {
+   "id": "t0RDolQA7em",
+   "name": "yo Fune LGA",
+   "level": 3,
+   "parent": {
+    "id": "Ym1fEhWFWYI"
+   }
+  },
+  {
+   "id": "OkAAJ1l69I5",
+   "name": "yo Geidam LGA",
+   "level": 3,
+   "parent": {
+    "id": "Ym1fEhWFWYI"
+   }
+  },
+  {
+   "id": "GPSkNTesH0z",
+   "name": "yo Gujba LGA",
+   "level": 3,
+   "parent": {
+    "id": "Ym1fEhWFWYI"
+   }
+  },
+  {
+   "id": "ZuSJR4PHt7D",
+   "name": "yo Gulani LGA",
+   "level": 3,
+   "parent": {
+    "id": "Ym1fEhWFWYI"
+   }
+  },
+  {
+   "id": "JfOXYHCGfwI",
+   "name": "yo Jakusko LGA",
+   "level": 3,
+   "parent": {
+    "id": "Ym1fEhWFWYI"
+   }
+  },
+  {
+   "id": "i8YtTy6O8wI",
+   "name": "yo Karasuwa LGA",
+   "level": 3,
+   "parent": {
+    "id": "Ym1fEhWFWYI"
+   }
+  },
+  {
+   "id": "QxW4ptlRssk",
+   "name": "yo Machina LGA",
+   "level": 3,
+   "parent": {
+    "id": "Ym1fEhWFWYI"
+   }
+  },
+  {
+   "id": "qbhSGm1QHfx",
+   "name": "yo Nangere LGA",
+   "level": 3,
+   "parent": {
+    "id": "Ym1fEhWFWYI"
+   }
+  },
+  {
+   "id": "xZh7KbcdTaT",
+   "name": "yo Nguru LGA",
+   "level": 3,
+   "parent": {
+    "id": "Ym1fEhWFWYI"
+   }
+  },
+  {
+   "id": "Z3t6VtZEOA3",
+   "name": "yo Potiskum LGA",
+   "level": 3,
+   "parent": {
+    "id": "Ym1fEhWFWYI"
+   }
+  },
+  {
+   "id": "P3k1PNC42NK",
+   "name": "yo Tarmuwa LGA",
+   "level": 3,
+   "parent": {
+    "id": "Ym1fEhWFWYI"
+   }
+  },
+  {
+   "id": "SAoWW6ejgUv",
+   "name": "yo Yunusari LGA",
+   "level": 3,
+   "parent": {
+    "id": "Ym1fEhWFWYI"
+   }
+  },
+  {
+   "id": "OqEqHg7e3n4",
+   "name": "yo Yusufari LGA",
+   "level": 3,
+   "parent": {
+    "id": "Ym1fEhWFWYI"
+   }
+  },
+  {
+   "id": "FmH4buccgqx",
+   "name": "za Zamfara State",
+   "level": 2,
+   "parent": {
+    "id": "s5DPBsdoE8b"
+   }
+  },
+  {
+   "id": "u0NnMfOUKlC",
+   "name": "za Anka LGA",
+   "level": 3,
+   "parent": {
+    "id": "FmH4buccgqx"
+   }
+  },
+  {
+   "id": "YRy4ZnBtOEQ",
+   "name": "za Bakura LGA",
+   "level": 3,
+   "parent": {
+    "id": "FmH4buccgqx"
+   }
+  },
+  {
+   "id": "APqTXWa3kg0",
+   "name": "za Birnin Magaji LGA",
+   "level": 3,
+   "parent": {
+    "id": "FmH4buccgqx"
+   }
+  },
+  {
+   "id": "QHU4Pzbqiar",
+   "name": "za Bukkuyum LGA",
+   "level": 3,
+   "parent": {
+    "id": "FmH4buccgqx"
+   }
+  },
+  {
+   "id": "X4M9rGcCCsv",
+   "name": "za Bungudu LGA",
+   "level": 3,
+   "parent": {
+    "id": "FmH4buccgqx"
+   }
+  },
+  {
+   "id": "ZwnTd7lKkRd",
+   "name": "za Gummi LGA",
+   "level": 3,
+   "parent": {
+    "id": "FmH4buccgqx"
+   }
+  },
+  {
+   "id": "ZYzwZBDRgIR",
+   "name": "za Gusau LGA",
+   "level": 3,
+   "parent": {
+    "id": "FmH4buccgqx"
+   }
+  },
+  {
+   "id": "EXrCxzkRQip",
+   "name": "za Kaura Namoda LGA",
+   "level": 3,
+   "parent": {
+    "id": "FmH4buccgqx"
+   }
+  },
+  {
+   "id": "EvzrA8hQIo5",
+   "name": "za Maradun LGA",
+   "level": 3,
+   "parent": {
+    "id": "FmH4buccgqx"
+   }
+  },
+  {
+   "id": "YQy2N116URm",
+   "name": "za Maru LGA",
+   "level": 3,
+   "parent": {
+    "id": "FmH4buccgqx"
+   }
+  },
+  {
+   "id": "JCVmSy7JsnP",
+   "name": "za Shinkafi LGA",
+   "level": 3,
+   "parent": {
+    "id": "FmH4buccgqx"
+   }
+  },
+  {
+   "id": "mtSxoMwXYFN",
+   "name": "za Talata Mafara LGA",
+   "level": 3,
+   "parent": {
+    "id": "FmH4buccgqx"
+   }
+  },
+  {
+   "id": "XSUwO1IoRXf",
+   "name": "za Tsafe LGA",
+   "level": 3,
+   "parent": {
+    "id": "FmH4buccgqx"
+   }
+  },
+  {
+   "id": "IJqe4bVQq83",
+   "name": "za Zurmi LGA",
+   "level": 3,
+   "parent": {
+    "id": "FmH4buccgqx"
+   }
+  }
+ ]
+}

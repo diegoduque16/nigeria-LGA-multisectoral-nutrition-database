@@ -1,0 +1,22 @@
+name = "lga-reporting"
+main = "src/index.js"
+compatibility_date = "2026-10-01"
+keep_vars = true
+
+[assets]
+directory = "./public"
+binding = "ASSETS"
+not_found_handling = "single-page-application"
+run_worker_first = ["/api/*"]
+
+[[d1_databases]]
+binding = "DB"
+database_name = "lga-reporting"
+database_id = "REPLACE_WITH_D1_DATABASE_ID"
+migrations_dir = "migrations"
+
+[triggers]
+crons = ["23 2 * * *"]
+
+# Secret (add in the Cloudflare dashboard, type "Secret"):
+#   SETUP_KEY  - any long phrase; needed once to create the first system administrator.
