@@ -167,6 +167,7 @@ test('state review, state picture (sum counts, recompute rates) and coverage', a
   assert.ok(!(await state.c.get(`/api/status?dataset=${dsId}&period=${period}`)).data.lgas.some((l) => l.id === ABA_SOUTH));
   assert.equal((await admin.get(`/api/orgunits?parent=${ABIA}`)).data.children.find((c) => c.id === ABA_SOUTH).active, false);
   assert.equal((await admin.get('/api/orgunits')).data.states.find((x) => x.id === ABIA).lgas, 16);
+  assert.ok(!(await admin.get(`/api/reminders?dataset=${dsId}&period=${period}&ou=${ABIA}`)).data.places.some((x) => x.id === ABA_SOUTH)); // no reminder for it
   await admin.put('/api/rollout/lgas', { state: ABIA, active: lgaIds });
   // A sent report is locked for the LGA; only a system administrator can delete it.
   assert.equal((await lgaC.c.put('/api/entry', { dataset: dsId, ou: AROCHUKWU, period, values: { [den]: 50 } })).status, 409);
