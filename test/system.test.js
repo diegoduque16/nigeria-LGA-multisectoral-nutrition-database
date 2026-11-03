@@ -585,7 +585,7 @@ test('pivot: all sectors or one sector, area + one level down, units under an LG
   assert.equal((await st.c.get(`/api/pivot?period=${year}&ou=${NIGERIA}`)).status, 403);
 });
 
-test('self-registration by link/QR: request, pending sign-in message, approval by admin or state officer, rejection', async () => {
+test('self-registration by link/QR: account made at once, signs in straight away, unnamed links get a name', async () => {
   const env = makeEnv();
   const admin = await setupAdmin(env);
   const ds = (await admin.post('/api/datasets', { name: 'Health – monthly', sector: 'Health', frequency: 'MONTHLY' })).data;
@@ -608,34 +608,19 @@ test('self-registration by link/QR: request, pending sign-in message, approval b
   assert.equal((await anon.post('/api/register/' + token, { ...form, ouId: ADAMAWA })).status, 422);    // outside area
   assert.equal((await anon.post('/api/register/' + token, { ...form, password: 'short' })).status, 422);
   assert.equal((await anon.post('/api/register/' + token, form)).status, 201);
-  assert.equal((await anon.post('/api/register/' + token, form)).status, 409);                           // already pending
-  // Pending: sign-in explains (only with the right password).
-  const pend = await client(env).post('/api/auth/login', { email: form.email, password: PW });
-  assert.equal(pend.status, 403); assert.equal(pend.data.error.code, 'pending_approval');
-  assert.equal((await client(env).post('/api/auth/login', { email: form.email, password: 'wrong password!' })).status, 401);
-  // A state officer of another state does not see it; Abia's does and approves.
-  const ad = await addUser(env, admin, { name: 'A', email: 'a@ad.gov.ng', role: 'state', ouId: ADAMAWA });
-  assert.equal((await ad.c.get('/api/account-requests')).data.requests.length, 0);
-  const so = await addUser(env, admin, { name: 'S', email: 's@abia.gov.ng', role: 'state', ouId: ABIA });
-  const reqs = (await so.c.get('/api/account-requests')).data.requests;
-  assert.equal(reqs.length, 1); assert.equal(reqs[0].ou.name, 'ab Aba North LGA'); assert.equal(reqs[0].phone, '0803 000 0000'); assert.equal(reqs[0].sector, 'Health');
-  assert.equal((await so.c.post(`/api/account-requests/${reqs[0].id}/approve`, { role: 'state' })).status, 403);
-  assert.equal((await so.c.post(`/api/account-requests/${reqs[0].id}/approve`, {})).status, 200);
-  assert.equal((await so.c.post(`/api/account-requests/${reqs[0].id}/approve`, {})).status, 409);
-  // The person signs in with the password they chose; data set assigned.
+  assert.equal((await anon.post('/api/register/' + token, form)).status, 409);                           // account exists now
+  // No approval step: the person signs in straight away with the password they chose; data set assigned.
   const ng = client(env);
   assert.equal((await ng.post('/api/auth/login', { email: form.email, password: PW })).status, 200);
   const me = (await ng.get('/api/me')).data;
   assert.equal(me.user.role, 'lga'); assert.equal(me.ou.id, ABA_NORTH); assert.deepEqual(me.datasets.map((d) => d.id), [ds.id]);
-  // Rejection + message.
-  await anon.post('/api/register/' + token, { ...form, email: 'x@y.ng', name: 'Someone Else' });
-  const r2 = (await admin.get('/api/account-requests')).data.requests[0];
-  await admin.post(`/api/account-requests/${r2.id}/reject`, { note: 'Not a government employee' });
-  const rej = await client(env).post('/api/auth/login', { email: 'x@y.ng', password: PW });
-  assert.equal(rej.data.error.code, 'request_rejected'); assert.match(rej.data.error.message, /Not a government employee/);
+  assert.equal((await admin.get('/api/account-requests')).data.requests.length, 0); // nothing waits
   // Links list with counts; revoked link stops working.
   const links = (await admin.get('/api/registration-links')).data.links;
-  assert.deepEqual(links[0].requests, { pending: 0, approved: 1, total: 2 });
+  assert.deepEqual(links[0].requests, { pending: 0, approved: 1, total: 1 });
+  // A QR code without a name is named after its area and sector.
+  const unnamed = (await admin.post('/api/registration-links', { ouId: ABIA, role: 'lga' })).data.link;
+  assert.match(unnamed.name, /^ab Abia State · \d{4}-\d{2}-\d{2}$/);
   await admin.del('/api/registration-links/' + token);
   assert.equal((await anon.get('/api/register/' + token)).status, 404);
   // An LGA-scoped link only offers LGA-level and unit roles.
