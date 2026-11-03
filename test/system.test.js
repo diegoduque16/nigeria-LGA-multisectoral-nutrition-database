@@ -278,16 +278,40 @@ test('sign-in security: lockout, deactivation, CSRF, password links are single-u
   assert.ok(log.data.entries.some((e) => e.action === 'login_locked'));
 });
 
-test('state officers manage only LGA users in their state', async () => {
+test('state and LGA administrators manage the accounts below them; plain data entry does not', async () => {
   const { env, admin, dsId } = await world();
-  const st = await addUser(env, admin, { name: 'S', email: 's@abia.gov.ng', role: 'state', ouId: ABIA, datasets: [dsId] });
+  // Plain state data entry: no account management.
+  const plain = await addUser(env, admin, { name: 'P', email: 'p@abia.gov.ng', role: 'state', ouId: ABIA, datasets: [dsId] });
+  assert.equal((await plain.c.post('/api/users', { name: 'L', email: 'l1@abia.gov.ng', role: 'lga', ouId: ABA_SOUTH })).status, 403);
+  assert.equal((await plain.c.get('/api/users')).status, 403);
+  assert.equal((await plain.c.post('/api/registration-links', { ouId: ABIA, role: 'lga' })).status, 403);
+  // State administrator.
+  const st = await addUser(env, admin, { name: 'S', email: 's@abia.gov.ng', role: 'state', ouId: ABIA, datasets: [dsId], isAdmin: true });
+  const me = (await st.c.get('/api/me')).data.user;
+  assert.equal(me.roleName, 'Administrator — state'); assert.equal(me.canManageUsers, true); assert.deepEqual(me.adminRoles, ['lga']);
   const ok = await st.c.post('/api/users', { name: 'L', email: 'l2@abia.gov.ng', role: 'lga', ouId: ABA_SOUTH });
   assert.equal(ok.status, 201);
   assert.deepEqual(ok.data.user.datasets, [dsId]);
-  assert.equal((await st.c.post('/api/users', { name: 'X', email: 'x@ad.gov.ng', role: 'lga', ouId: 'OgjFloqKoqk' })).status, 422);
-  assert.equal((await st.c.post('/api/users', { name: 'X', email: 'x2@abia.gov.ng', role: 'state', ouId: ABIA })).status, 403);
+  assert.equal((await st.c.post('/api/users', { name: 'X', email: 'x@ad.gov.ng', role: 'lga', ouId: 'OgjFloqKoqk' })).status, 422);   // outside the state
+  assert.equal((await st.c.post('/api/users', { name: 'X', email: 'x2@abia.gov.ng', role: 'state', ouId: ABIA })).status, 201);    // state data entry: yes
+  assert.equal((await st.c.post('/api/users', { name: 'X', email: 'x3@abia.gov.ng', role: 'state', ouId: ABIA, isAdmin: true })).status, 403); // another state admin: no
+  assert.equal((await st.c.post('/api/users', { name: 'X', email: 'x4@abia.gov.ng', role: 'national', ouId: 'NGA00000000' })).status, 403);
+  // The state administrator makes an LGA administrator, who manages that LGA's accounts.
+  const la = await st.c.post('/api/users', { name: 'LA', email: 'la@abia.gov.ng', role: 'lga', ouId: ABA_NORTH, isAdmin: true });
+  assert.equal(la.status, 201); assert.equal(la.data.user.roleName, 'Administrator — LGA');
   const list = (await st.c.get('/api/users')).data.users;
-  assert.ok(list.every((u) => u.role === 'lga' || u.email === 's@abia.gov.ng'));
+  assert.ok(list.some((u) => u.email === 'la@abia.gov.ng') && !list.some((u) => u.email === 's@abia.gov.ng' && false));
+  assert.ok(list.every((u) => ['lga', 'state'].includes(u.role)));
+  assert.equal((await st.c.patch(`/api/users/${plain.user.id}`, { name: 'P2' })).status, 200);
+  assert.equal((await plain.c.patch(`/api/users/${st.user.id}`, { name: 'no' })).status, 403);
+  // LGA administrator: QR codes and accounts for its own LGA only; cannot make administrators.
+  const lga = await addUser(env, st.c, { name: 'LA2', email: 'la2@abia.gov.ng', role: 'lga', ouId: ABA_SOUTH, isAdmin: true });
+  assert.equal((await lga.c.post('/api/registration-links', { ouId: ABA_SOUTH, role: 'unit' })).status, 201);
+  assert.equal((await lga.c.post('/api/registration-links', { ouId: ABIA, role: 'unit' })).status, 403);
+  assert.equal((await lga.c.post('/api/users', { name: 'D', email: 'd@abia.gov.ng', role: 'lga', ouId: ABA_SOUTH })).status, 201);
+  assert.equal((await lga.c.post('/api/users', { name: 'D', email: 'd2@abia.gov.ng', role: 'lga', ouId: ABA_NORTH })).status, 403);
+  assert.equal((await lga.c.post('/api/users', { name: 'D', email: 'd3@abia.gov.ng', role: 'lga', ouId: ABA_SOUTH, isAdmin: true })).status, 403);
+  assert.equal((await lga.c.post('/api/users', { name: 'D', email: 'd4@abia.gov.ng', role: 'state', ouId: ABIA })).status, 403);
 });
 
 test('per-sector data sets and a shared yearly population data set used as denominator', async () => {
@@ -628,13 +652,18 @@ test('self-registration by link/QR: request, pending sign-in message, approval b
   const pend = await client(env).post('/api/auth/login', { email: form.email, password: PW });
   assert.equal(pend.status, 403); assert.equal(pend.data.error.code, 'pending_approval');
   assert.equal((await client(env).post('/api/auth/login', { email: form.email, password: 'wrong password!' })).status, 401);
-  // Only a system administrator sees and approves sign-ups (not state or national data entry).
+  // A system administrator or the administrator of that area approves sign-ups — not plain data entry, not another area.
   const so = await addUser(env, admin, { name: 'S', email: 's@abia.gov.ng', role: 'state', ouId: ABIA });
   assert.equal((await so.c.get('/api/account-requests')).status, 403);
-  const reqs = (await admin.get('/api/account-requests')).data.requests;
+  const other = await addUser(env, admin, { name: 'O', email: 'o@adamawa.gov.ng', role: 'state', ouId: ADAMAWA, isAdmin: true });
+  assert.equal((await other.c.get('/api/account-requests')).data.requests.length, 0);
+  const sa = await addUser(env, admin, { name: 'SA', email: 'sa@abia.gov.ng', role: 'state', ouId: ABIA, isAdmin: true });
+  const reqs = (await sa.c.get('/api/account-requests')).data.requests;
+  assert.equal((await admin.get('/api/account-requests')).data.requests.length, 1);
   assert.equal(reqs.length, 1); assert.equal(reqs[0].ou.name, 'ab Aba North LGA'); assert.equal(reqs[0].phone, '0803 000 0000'); assert.equal(reqs[0].sector, 'Health');
   assert.equal((await so.c.post(`/api/account-requests/${reqs[0].id}/approve`, {})).status, 403);
-  assert.equal((await admin.post(`/api/account-requests/${reqs[0].id}/approve`, {})).status, 200);
+  assert.equal((await other.c.post(`/api/account-requests/${reqs[0].id}/approve`, {})).status, 404);
+  assert.equal((await sa.c.post(`/api/account-requests/${reqs[0].id}/approve`, {})).status, 200);
   assert.equal((await admin.post(`/api/account-requests/${reqs[0].id}/approve`, {})).status, 409);
   // The person signs in with the password they chose; data set assigned.
   const ng = client(env);

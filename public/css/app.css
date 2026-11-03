@@ -24,10 +24,11 @@ h3 { font-size: .95rem; margin: 16px 0 6px; color: var(--muted); text-transform:
 .brand-sub { display: block; width: 100%; padding-left: 32px; margin-top: -2px; font-size: .74rem; font-weight: 500; color: var(--muted); line-height: 1.1; }
 .mark { width: 22px; height: 22px; border-radius: 5px; background: linear-gradient(90deg, var(--accent) 0 33%, #fff 33% 66%, var(--accent) 66%); border: 1px solid var(--accent); }
 nav { display: flex; gap: 0; flex-wrap: wrap; flex: 1; min-width: 0; }
+.top nav { flex: 1 0 auto; min-width: auto; flex-wrap: nowrap; justify-content: center; }
 nav a { padding: 7px 9px; font-size: .93rem; border-radius: 6px; text-decoration: none; color: var(--muted); white-space: nowrap; }
 nav a:hover { background: var(--bg); color: var(--ink); }
 nav a.on { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
-.who { display: flex; align-items: center; gap: 10px; font-size: .85rem; color: var(--muted); white-space: nowrap; }
+.who { display: flex; align-items: center; gap: 10px; margin-left: auto; font-size: .85rem; color: var(--muted); white-space: nowrap; }
 
 main { max-width: 1240px; margin: 0 auto; padding: 24px 20px 80px; }
 .head { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; flex-wrap: wrap; margin-bottom: 16px; }

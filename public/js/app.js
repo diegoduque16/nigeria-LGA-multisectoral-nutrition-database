@@ -109,6 +109,9 @@ function pref(k, v) { if (v === undefined) return state.prefs[k]; state.prefs[k]
 const go = (hash) => { if (location.hash !== hash) location.hash = hash; else route(); };
 const role = () => state.me && state.me.user.role;
 const is = (...roles) => roles.includes(role());
+// Area administrators (state / LGA) manage accounts below them; system administrators everything.
+const canManageUsers = () => !!(state.me && state.me.user.canManageUsers);
+const canApprove = () => is('sysadmin') || !!(state.me && state.me.user.isAdmin && is('state', 'lga'));
 
 // Pages are grouped by what people do. Data entry accounts (LGA, unit) get a short, simple menu;
 // everyone else gets a side menu with Reporting / Results / Set-up / People.
@@ -136,16 +139,17 @@ const PAGES = [
   { id: 'population', group: 'setup', name: 'Population figures', short: 'Yearly denominators', roles: ['sysadmin', 'setupadmin'], desc: 'Yearly numbers per LGA that indicators divide by: population, under-5s, expected pregnancies …' },
   { id: 'units', group: 'setup', name: 'Units below the LGA', short: 'Child org units: facilities, schools …', roles: ['sysadmin', 'setupadmin', 'national', 'state'], desc: 'The child org units of each LGA (DHIS2 level 4) that a sector reports on: health facilities, schools, water points, markets … Set them up per sector.' },
   { id: 'rollout', group: 'setup', name: 'States in use', short: 'Which states take part', roles: ['sysadmin'], desc: 'Choose which states use the system. The others are hidden everywhere.' },
-  { id: 'accounts', group: 'people', name: 'Users', short: 'Accounts, sign-up requests, QR codes', roles: ['sysadmin', 'national', 'state'], desc: 'Create accounts, approve sign-up requests and share registration QR codes.' },
+  { id: 'accounts', group: 'people', name: 'Users', short: 'Accounts, sign-up requests, QR codes', roles: ['sysadmin', 'national', 'state', 'lga'], nav: () => canManageUsers(), desc: 'Create accounts, approve sign-up requests and share registration QR codes.' },
   { id: 'audit', group: 'people', name: 'Activity log', short: 'Who did what, when', roles: ['sysadmin'], desc: 'Who signed in, changed, sent, approved or downloaded what, and when.' },
 ];
 const pageDesc = (p) => (typeof p.desc === 'function' ? p.desc() : p.desc);
 const pageName = (p) => (typeof p.name === 'function' ? p.name() : p.name);
+const ADMIN_HELP = ' As administrator, also creates the accounts below it, shares registration QR codes and approves the sign-ups for its area.';
 const ROLE_HELP = {
   sysadmin: 'Full control: sets up sectors and indicators, chooses the states in use, manages every user, and sees everything.',
   setupadmin: 'Adds sectors and indicators, sets up the population figures, and sees all results. Does not manage users.',
   national: 'Data entry for the whole country: can type in a report for any state’s LGAs, sees all results, and manages state, LGA and school data-entry accounts.',
-  state: 'Data entry for a whole state: can type in a report for any of its LGAs, sees the state’s results and manages LGA accounts there.',
+  state: 'Data entry for a whole state: can type in a report for any of its LGAs, sees the state’s results.',
   lga: 'Types in and sends the reports of one LGA (and of the org units below it, if a sector reports by unit).',
   unit: 'Types in and sends the reports of one school, health facility or other unit.',
   viewer: 'Only looks at results and downloads them. Enters nothing.',
@@ -194,9 +198,9 @@ function renderChrome(page) {
   }
   const setTop = () => document.documentElement.style.setProperty('--toph', `${top.offsetHeight}px`);
   setTop(); if (!window.__topWatch) { window.__topWatch = true; window.addEventListener('resize', () => { const t = $('#top'); if (t && !t.hidden) document.documentElement.style.setProperty('--toph', `${t.offsetHeight}px`); }); }
-  if (is('sysadmin')) {
+  if (canApprove()) {
     get('/api/account-requests').then(({ requests }) => {
-      const a = $('#side a[data-page="accounts"]');
+      const a = $('#side a[data-page="accounts"]') || $('#nav a[data-page="accounts"]');
       if (a && requests.length) a.append(h('span', { class: 'badge', title: 'Account requests waiting for approval' }, String(requests.length)));
     }).catch(() => {});
   }
@@ -394,7 +398,12 @@ async function renderMyReports() {
         h('td', {}, pill(st.counts.accepted + st.counts.submitted === st.total ? 'accepted' : 'draft', `${st.counts.accepted + st.counts.submitted} of ${st.total} ${placeWords(ds).many.toLowerCase()} sent`)),
         h('td', { class: 'n' }, h('button', {}, 'See which')))))));
   }
-  mount(h('div', {}, head, cards, unitCard));
+  let waiting = null;
+  if (canApprove()) {
+    const { requests } = await get('/api/account-requests').catch(() => ({ requests: [] }));
+    if (requests.length) waiting = h('div', { class: 'note warn' }, `${requests.length} ${requests.length === 1 ? 'person is' : 'people are'} waiting for you to approve their account. `, h('a', { href: '#/accounts' }, 'Open Users →'));
+  }
+  mount(h('div', {}, head, waiting, cards, unitCard));
 }
 
 // Everyone else: what is waiting, the set-up checklist (administrators) and a map of the system.
@@ -417,7 +426,7 @@ async function renderOverview() {
           h('td', { class: 'n' }, canSee ? h('button', {}, 'Who has sent ›') : null));
       })))));
   }
-  if (is('sysadmin')) {
+  if (canApprove()) {
     const { requests } = await get('/api/account-requests').catch(() => ({ requests: [] }));
     if (requests.length) blocks.push(h('div', { class: 'note warn' }, `${requests.length} ${requests.length === 1 ? 'person is' : 'people are'} waiting for you to approve their account. `, h('a', { href: '#/accounts' }, 'Open Users →')));
   }
@@ -443,7 +452,7 @@ async function renderOverview() {
   }
   if (!blocks.length) blocks.push(h('p', { class: 'muted' }, 'Use the menu on the left. Each page starts with a short “How this works”.'))
   mount(h('div', {},
-    pageHead({ title: `Welcome, ${state.me.user.name.split(' ')[0]}`, sub: `${state.me.user.roleName}${ou ? ' · ' + ou.name : ''}`, text: ROLE_HELP[role()] }),
+    pageHead({ title: `Welcome, ${state.me.user.name.split(' ')[0]}`, sub: `${state.me.user.roleName}${ou ? ' · ' + ou.name : ''}`, text: ROLE_HELP[role()] + (state.me.user.isAdmin ? ADMIN_HELP : '') }),
     blocks));
 }
 
@@ -2767,8 +2776,9 @@ async function checkAndImport(data, defaultTypeId, sourceName) {
 
 // ---------- accounts ----------
 async function renderAccounts() {
+  if (!canManageUsers()) return mount(h('div', { class: 'note info' }, 'Accounts are managed by your administrator.'));
   const [{ users, roles }, m] = await Promise.all([get('/api/users'), meta()]);
-  const [{ requests }, { links }] = await Promise.all([is('sysadmin') ? get('/api/account-requests') : { requests: [] }, get('/api/registration-links')]);
+  const [{ requests }, { links }] = await Promise.all([canApprove() ? get('/api/account-requests') : { requests: [] }, get('/api/registration-links')]);
   const roleFilter = pref('userRole') || '';
   const q = (pref('userQ') || '').toLowerCase();
   const shownUsers = users.filter((u) => (!roleFilter || u.role === roleFilter) && (!q || `${u.name} ${u.email} ${u.ou ? u.ou.name : ''}`.toLowerCase().includes(q)));
@@ -2784,7 +2794,7 @@ async function renderAccounts() {
     h('div', { class: 'choices' },
       choice('Add one person', 'Fill in their name, email, role and place. You get a one-time link to send them (email or WhatsApp); they choose their own password.',
         h('button', { class: 'primary', onclick: () => userDialog(null, roles, m) }, '+ New account')),
-      choice('Let many people sign up', 'Make a QR code for an area and sector, and print or share it. People scan it and ask for an account; a system administrator approves them here.',
+      choice('Let many people sign up', `Make a QR code for an area and sector, and print or share it. People scan it and ask for an account; ${is('sysadmin') ? 'you approve' : canApprove() ? 'you (or a system administrator) approve' : 'a system administrator approves'} them here.`,
         h('div', {}, h('button', { onclick: (e) => quickQr(e.currentTarget) }, '+ Registration QR code'),
           h('div', {}, h('a', { href: '#', class: 'small', onclick: (e) => { e.preventDefault(); linkDialog(m); } }, 'Only for one state, LGA or sector…')))),
       is('sysadmin') ? choice('Add an administrator', 'A System administrator can do everything you can: set-up, users, states in use. An Administrator adds sectors and indicators and sees the results, but does not manage users.',
@@ -2861,9 +2871,9 @@ async function linkDialog(m) {
     lgaPick.replaceChildren(h('option', { value: '' }, '— whole area —'), ...l.map((x) => h('option', { value: x.id }, x.name)));
   };
   area.addEventListener('change', fillLga); await fillLga();
-  const roleOpts = [{ id: '', name: 'Let them choose' }, { id: 'lga', name: 'Data entry — LGA' }, { id: 'unit', name: 'Data entry — school / facility' },
-    ...(is('sysadmin', 'national') ? [{ id: 'state', name: 'Data entry — state' }] : [])];
-  const roleSel = select(roleOpts, is('state') ? 'lga' : '');
+  const mine = state.me.user.manageRoles || [];
+  const roleOpts = [{ id: '', name: 'Let them choose' }, ...[{ id: 'state', name: 'Data entry — state' }, { id: 'lga', name: 'Data entry — LGA' }, { id: 'unit', name: 'Data entry — org unit below the LGA' }].filter((r) => mine.includes(r.id))];
+  const roleSel = select(roleOpts, is('state') ? 'lga' : is('lga') ? 'unit' : '');
   const days = h('input', { type: 'number', min: 1, max: 365, value: 30, size: 5 });
   const sectorPick = select([{ id: '', name: 'Any sector (they choose)' }, ...m.sectors.filter((x) => m.datasets.some((d) => d.sectorId === x.id && !d.shared))], '');
   const dsBoxes = m.datasets.filter((d) => !d.archived && !d.shared).map((d) => ({ d, box: h('input', { type: 'checkbox' }) }));
@@ -3009,7 +3019,7 @@ async function renderRegister(token) {
         note: note.value.trim() || undefined, password: pw.value,
       });
       mount(h('div', { class: 'panel card-narrow' }, h('h1', {}, 'Request sent'),
-        h('p', {}, 'Thank you. A system administrator will check your request. Once it is approved you can sign in with your email and the password you chose.'),
+        h('p', {}, 'Thank you. An administrator will check your request. Once it is approved you can sign in with your email and the password you chose.'),
         h('a', { href: '#/login', class: 'btn' }, 'Go to sign in')));
     } catch (e) { err.textContent = e.message; }
   }));
@@ -3022,31 +3032,43 @@ function assignedText(u, m) {
 }
 
 async function userDialog(u, roles, m, presetRole = null) {
-  const allowedRoles = (is('sysadmin') ? roles : is('national') ? roles.filter((r) => ['state', 'lga', 'unit'].includes(r.id)) : roles.filter((r) => ['lga', 'unit'].includes(r.id)))
+  const allowedRoles = roles.filter((r) => (state.me.user.manageRoles || []).includes(r.id) || (u && u.id === state.me.user.id && r.id === u.role))
     .filter((r) => presetRole !== 'admin' || ['sysadmin', 'setupadmin'].includes(r.id));
   const name = h('input', { value: u ? u.name : '', autocomplete: 'off' });
   const email = h('input', { type: 'email', value: u ? u.email : '', autocomplete: 'off' });
   const roleSel = select(allowedRoles, u ? u.role : presetRole === 'admin' ? 'sysadmin' : (allowedRoles.find((r) => r.id === 'lga') || allowedRoles[0]).id);
-  // Shown as three roles — System administrator, Administrator, Data entry (at a state, an LGA, or a school / facility).
+  // Shown as three kinds — System administrator, Administrator (whole country, a state or an LGA), Data entry (at a
+  // level). A state / LGA administrator is a state / LGA account that also manages the accounts below it.
   const ENTRY = ['national', 'state', 'lga', 'unit'];
   const has = (id) => allowedRoles.some((r) => r.id === id);
+  const adminLevels = [
+    has('setupadmin') ? { id: 'setupadmin', name: 'The whole country — adds sectors and indicators' } : null,
+    ...(state.me.user.adminRoles || []).map((id) => ({ id, name: id === 'state' ? 'A state — manages the accounts of its LGAs and org units, approves their sign-ups' : 'An LGA — manages the accounts of its org units, approves their sign-ups' })),
+  ].filter(Boolean);
   const kinds = [
     has('sysadmin') ? { id: 'sysadmin', name: 'System administrator' } : null,
-    has('setupadmin') ? { id: 'setupadmin', name: 'Administrator (adds sectors and indicators)' } : null,
+    adminLevels.length ? { id: 'admin', name: 'Administrator' } : null,
     ENTRY.some(has) ? { id: 'entry', name: 'Data entry' } : null,
     has('viewer') && u && u.role === 'viewer' ? { id: 'viewer', name: 'Viewer (only looks at results)' } : null,
   ].filter(Boolean);
-  const levelNames = { national: 'The whole country (any state)', state: 'A state (any of its LGAs)', lga: 'An LGA', unit: 'A school, facility or ward' };
-  const kindSel = select(kinds, ENTRY.includes(roleSel.value) ? 'entry' : roleSel.value);
+  const levelNames = { national: 'The whole country (any state)', state: 'A state (any of its LGAs)', lga: 'An LGA', unit: 'An org unit below the LGA (ward, facility, school …)' };
+  const startKind = u ? (u.isAdmin || u.role === 'setupadmin' ? 'admin' : ENTRY.includes(u.role) ? 'entry' : u.role) : presetRole === 'admin' ? (kinds[0] || {}).id : ENTRY.includes(roleSel.value) ? 'entry' : roleSel.value;
+  const kindSel = select(kinds, kinds.some((k) => k.id === startKind) ? startKind : (kinds.find((k) => k.id === 'entry') || kinds[0]).id);
   const levelSel = select(ENTRY.filter(has).map((id) => ({ id, name: levelNames[id] })), ENTRY.includes(roleSel.value) ? roleSel.value : 'lga');
   const levelField = field('Enters data for', levelSel);
+  const adminSel = select(adminLevels, u && (u.isAdmin || u.role === 'setupadmin') ? u.role : (adminLevels[adminLevels.length - 1] || {}).id);
+  const adminField = field('Administrator for', adminSel);
+  const isAdmin = () => kindSel.value === 'admin' && adminSel.value !== 'setupadmin';
   const syncRole = () => {
     levelField.hidden = kindSel.value !== 'entry';
-    roleSel.value = kindSel.value === 'entry' ? levelSel.value : kindSel.value;
+    adminField.hidden = kindSel.value !== 'admin';
+    roleSel.value = kindSel.value === 'entry' ? levelSel.value : kindSel.value === 'admin' ? adminSel.value : kindSel.value;
     roleSel.dispatchEvent(new Event('change'));
   };
+  adminSel.addEventListener('change', syncRole);
   kindSel.addEventListener('change', syncRole); levelSel.addEventListener('change', syncRole);
-  levelField.hidden = kindSel.value !== 'entry';
+  levelField.hidden = kindSel.value !== 'entry'; adminField.hidden = kindSel.value !== 'admin';
+  if (kindSel.value === 'admin') roleSel.value = adminSel.value;
   const o = await orgs();
   const stateSel = select(o.states, u && u.ou && u.ou.level >= 2 ? null : o.states[0].id);
   const lgaSel = h('select');
@@ -3087,7 +3109,7 @@ async function userDialog(u, roles, m, presetRole = null) {
   }
   roleSel.addEventListener('change', layoutWhere);
   await fillLgas(); layoutWhere();
-  const showRoleHelp = () => { const el = dlg && dlg.querySelector('.role-help'); if (el) el.textContent = ROLE_HELP[roleSel.value] || ''; };
+  const showRoleHelp = () => { const el = dlg && dlg.querySelector('.role-help'); if (el) el.textContent = (ROLE_HELP[roleSel.value] || '') + (isAdmin() ? ADMIN_HELP : ''); };
   roleSel.addEventListener('change', showRoleHelp);
 
   // Data sets and the numbers (numerators/denominators) the account may enter.
@@ -3116,7 +3138,7 @@ async function userDialog(u, roles, m, presetRole = null) {
   const reset = u ? h('button', {}, u.passwordSet ? 'New password link' : 'New invite link') : null;
   const dlg = h('dialog', {},
     h('h2', {}, u ? u.name : presetRole === 'admin' ? 'New administrator' : 'New account'),
-    h('div', { class: 'grid2' }, field('Full name', name), field('Email', email), field('Role', kindSel), levelField),
+    h('div', { class: 'grid2' }, field('Full name', name), field('Email', email), field('Role', kindSel), levelField, adminField),
     where,
     h('p', { class: 'muted small role-help' }),
     h('h3', {}, 'Reports this person works on'),
@@ -3141,7 +3163,7 @@ async function userDialog(u, roles, m, presetRole = null) {
     let ouId = lvl === 1 ? o.country.id : lvl === 2 ? (state.me.ou.level === 2 ? state.me.ou.id : stateSel.value) : lvl === 4 ? unitSel.value : lgaSel.value;
     if (lvl === null) ouId = lgaSel.value || (state.me.ou.level === 2 ? state.me.ou.id : stateSel.value) || o.country.id;
     const body = {
-      name: name.value.trim(), email: email.value.trim(), role: roleSel.value, ouId,
+      name: name.value.trim(), email: email.value.trim(), role: roleSel.value, ouId, isAdmin: isAdmin(),
       datasets: dsBoxes.filter((x) => x.box.checked).map((x) => x.d.id),
       dataElements: deBoxes.filter((b) => b.checked).map((b) => b.value),
     };

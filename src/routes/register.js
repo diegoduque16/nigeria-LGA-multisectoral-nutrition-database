@@ -4,7 +4,7 @@
 //   3. an administrator approves (an account is created) or rejects the request.
 import { HttpError, json, readJson, validate, v, uid, now, randomToken, EMAIL_RE } from '../lib/util.js';
 import { one, all, run, audit, rateLimit } from '../lib/db.js';
-import { hashPassword, checkPasswordStrength, ROLE_NAMES, ROLE_LEVEL, requireRole, inScope } from '../lib/auth.js';
+import { hashPassword, checkPasswordStrength, ROLE_NAMES, ROLE_LEVEL, requireRole, inScope, requireManager, rolesManagedBy } from '../lib/auth.js';
 
 // Roles people may ask for through a link (administrators are never self-registered).
 const SELF_ROLES = ['lga', 'unit', 'state', 'viewer'];
@@ -27,7 +27,7 @@ const linkOut = async (db, l, request) => {
 };
 
 export async function listLinks(request, env, ctx) {
-  requireRole(ctx, ['sysadmin', 'national', 'state']);
+  requireManager(ctx);
   const rows = await all(env.DB, 'SELECT l.*, o.path FROM registration_links l JOIN org_units o ON o.id = l.ou_id ORDER BY l.created_at DESC LIMIT 200');
   const out = [];
   for (const l of rows) if (inScope(ctx, l)) out.push(await linkOut(env.DB, l, request));
@@ -35,7 +35,7 @@ export async function listLinks(request, env, ctx) {
 }
 
 export async function createLink(request, env, ctx) {
-  requireRole(ctx, ['sysadmin', 'national', 'state']);
+  requireManager(ctx);
   const body = validate(v.object({
     name: v.string({ max: 120 }).optional(),
     ouId: v.string({ min: 11, max: 11 }),
@@ -48,8 +48,7 @@ export async function createLink(request, env, ctx) {
   const ou = await ouById(env.DB, body.ouId);
   if (!ou || ou.level > 3) throw new HttpError(422, 'invalid', 'Choose the country, a state or an LGA.', { field: 'ouId' });
   if (!inScope(ctx, ou)) throw new HttpError(403, 'out_of_scope', 'That area is outside your account.');
-  if (ctx.role === 'national' && body.role && !['state', 'lga', 'unit'].includes(body.role)) throw new HttpError(403, 'forbidden', 'National data entry can invite state, LGA and school data-entry users.');
-  if (ctx.role === 'state' && body.role && !['lga', 'unit'].includes(body.role)) throw new HttpError(403, 'forbidden', 'State officers can invite LGA and unit data-entry users.');
+  if (body.role && !rolesManagedBy(ctx).includes(body.role)) throw new HttpError(403, 'forbidden', 'You can invite data-entry users at your level and below.');
   for (const d of body.datasets || []) if (!(await one(env.DB, 'SELECT id FROM datasets WHERE id = ?', d))) throw new HttpError(422, 'invalid', 'Unknown data set.', { field: 'datasets' });
   if (body.sectorId && !(await one(env.DB, 'SELECT id FROM sectors WHERE id = ?', body.sectorId))) throw new HttpError(422, 'invalid', 'Unknown sector.', { field: 'sectorId' });
   // No name given: one is made from the area, the sector and the date.
@@ -65,7 +64,7 @@ export async function createLink(request, env, ctx) {
 }
 
 export async function revokeLink(request, env, ctx, { id }) {
-  requireRole(ctx, ['sysadmin', 'national', 'state']);
+  requireManager(ctx);
   const l = await one(env.DB, 'SELECT l.*, o.path FROM registration_links l JOIN org_units o ON o.id = l.ou_id WHERE l.id = ?', id);
   if (!l || !inScope(ctx, l)) throw new HttpError(404, 'not_found', 'Link not found.');
   await run(env.DB, 'UPDATE registration_links SET revoked_at = ? WHERE id = ?', now(), id);
@@ -179,17 +178,21 @@ export async function submitRegistration(request, env, ctx, { token }) {
   return json({ ok: true }, 201);
 }
 
-// ---------- approval (admin / state officer) ----------
+// ---------- approval ----------
+// Sign-ups are approved by a system administrator, or by the state / LGA administrator of that area.
+const isApprover = (ctx) => ctx.role === 'sysadmin' || (!!ctx.admin && ['state', 'lga'].includes(ctx.role));
+function requireApprover(ctx) { if (!isApprover(ctx)) throw new HttpError(403, 'forbidden', 'Sign-ups are approved by a system administrator or the administrator of that state or LGA.'); }
+const canApprove = (ctx, r) => isApprover(ctx) && inScope(ctx, r) && (ctx.role === 'sysadmin' || rolesManagedBy(ctx).includes(r.role));
 async function requestsInScope(db, ctx, status) {
   const rows = await all(db, `SELECT r.*, o.name AS ou_name, o.level AS ou_level, o.path, l.name AS link_name, u.name AS decided_by_name, s.name AS sector_name
       FROM account_requests r JOIN org_units o ON o.id = r.ou_id JOIN registration_links l ON l.id = r.link_id LEFT JOIN users u ON u.id = r.decided_by
       LEFT JOIN sectors s ON s.id = r.sector_id
      WHERE r.status = ? ORDER BY r.created_at ${status === 'pending' ? 'ASC' : 'DESC'} LIMIT 500`, status);
-  return rows.filter((r) => inScope(ctx, r) && (ctx.role === 'sysadmin' || ['lga', 'unit'].includes(r.role)));
+  return rows.filter((r) => canApprove(ctx, r));
 }
 
 export async function listRequests(request, env, ctx) {
-  requireRole(ctx, ['sysadmin']); // only a system administrator approves sign-ups
+  requireApprover(ctx);
   const status = new URL(request.url).searchParams.get('status') || 'pending';
   if (!['pending', 'approved', 'rejected'].includes(status)) throw new HttpError(422, 'invalid', 'Unknown status.');
   const rows = await requestsInScope(env.DB, ctx, status);
@@ -212,14 +215,14 @@ export async function listRequests(request, env, ctx) {
 
 async function loadPending(db, ctx, id) {
   const r = await one(db, 'SELECT r.*, o.path FROM account_requests r JOIN org_units o ON o.id = r.ou_id WHERE r.id = ?', id);
-  if (!r || !inScope(ctx, r) || (ctx.role !== 'sysadmin' && !['lga', 'unit'].includes(r.role))) throw new HttpError(404, 'not_found', 'Request not found.');
+  if (!r || !canApprove(ctx, r)) throw new HttpError(404, 'not_found', 'Request not found.');
   if (r.status !== 'pending') throw new HttpError(409, 'decided', 'This request has already been decided.');
   return r;
 }
 
 // POST /api/account-requests/:id/approve  { role?, datasets?, dataElements? }
 export async function approveRequest(request, env, ctx, { id }) {
-  requireRole(ctx, ['sysadmin']);
+  requireApprover(ctx);
   const r = await loadPending(env.DB, ctx, id);
   const body = validate(v.object({
     role: v.string({ oneOf: SELF_ROLES }).optional(),
@@ -227,8 +230,7 @@ export async function approveRequest(request, env, ctx, { id }) {
     dataElements: v.array(v.string({ min: 1, max: 20 }), { max: 500 }).optional(),
   }), await readJson(request));
   const role = body.role || r.role;
-  if (ctx.role === 'national' && !['state', 'lga', 'unit'].includes(role)) throw new HttpError(403, 'forbidden', 'National data entry can approve state, LGA and school data-entry accounts.');
-  if (ctx.role === 'state' && !['lga', 'unit'].includes(role)) throw new HttpError(403, 'forbidden', 'State officers can approve LGA and unit data-entry accounts.');
+  if (!canApprove(ctx, { ...r, role })) throw new HttpError(403, 'forbidden', 'You can approve data-entry accounts at your level and below.');
   const ou = await ouById(env.DB, r.ou_id);
   if (ROLE_LEVEL[role] && (ROLE_LEVEL[role] === 4 ? ou.level < 4 : ou.level !== ROLE_LEVEL[role])) throw new HttpError(422, 'invalid', `“${ROLE_NAMES[role]}” does not match where this person works (${ou.name}). Reject it and ask them to register again, or keep the requested role.`);
   if (await one(env.DB, 'SELECT id FROM users WHERE email = ?', r.email)) throw new HttpError(409, 'email_taken', 'An account with this email already exists.');
@@ -248,7 +250,7 @@ export async function approveRequest(request, env, ctx, { id }) {
 
 // POST /api/account-requests/:id/reject  { note }
 export async function rejectRequest(request, env, ctx, { id }) {
-  requireRole(ctx, ['sysadmin']);
+  requireApprover(ctx);
   await loadPending(env.DB, ctx, id);
   const body = validate(v.object({ note: v.string({ max: 500 }).optional() }), await readJson(request));
   await run(env.DB, "UPDATE account_requests SET status = 'rejected', decided_by = ?, decided_at = ?, decision_note = ? WHERE id = ?", ctx.user.id, now(), body.note || null, id);

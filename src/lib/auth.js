@@ -19,6 +19,9 @@ export const ROLE_NAMES = {
   unit: 'Data entry — school / facility',
   viewer: 'Viewer',
 };
+// A state or LGA account with the admin flag also manages the accounts below it.
+export const AREA_ADMIN_NAMES = { state: 'Administrator — state', lga: 'Administrator — LGA' };
+export const roleName = (role, admin) => (admin && AREA_ADMIN_NAMES[role]) || ROLE_NAMES[role];
 // Org-unit level each role is attached to.
 export const ROLE_LEVEL = { sysadmin: 1, setupadmin: 1, national: 1, state: 2, lga: 3, unit: 4, viewer: null };
 
@@ -78,8 +81,9 @@ async function userContext(db, row) {
   const datasets = (await all(db, 'SELECT dataset_id FROM user_datasets WHERE user_id = ?', row.id)).map((r) => r.dataset_id);
   const dataElements = (await all(db, 'SELECT de_id FROM user_data_elements WHERE user_id = ?', row.id)).map((r) => r.de_id);
   return {
-    user: { id: row.id, email: row.email, name: row.name, role: row.role },
+    user: { id: row.id, email: row.email, name: row.name, role: row.role, isAdmin: !!row.is_admin },
     role: row.role,
+    admin: !!row.is_admin,
     ou,
     datasets,      // empty list = all data sets
     dataElements,  // empty list = every numerator/denominator in those data sets
@@ -94,7 +98,7 @@ export async function loadContext(request, db) {
   if (!token || token.length > 100) return null;
   const id = await sha256(token);
   const row = await one(db,
-    `SELECT s.id AS sid, s.expires_at, s.last_seen_at, u.id, u.email, u.name, u.role, u.ou_id, u.active
+    `SELECT s.id AS sid, s.expires_at, s.last_seen_at, u.id, u.email, u.name, u.role, u.ou_id, u.active, u.is_admin
        FROM sessions s JOIN users u ON u.id = s.user_id WHERE s.id = ?`, id);
   if (!row) return null;
   const t = now();
@@ -116,6 +120,29 @@ async function loadApiToken(db, token) {
   const ou = await one(db, 'SELECT id, name, level, path FROM org_units WHERE id = ?', row.ou_id);
   return { user: { id: 'token:' + row.id.slice(0, 8), name: row.name, role: 'viewer' }, role: 'viewer', ou, datasets: [], dataElements: [], apiToken: true };
 }
+
+// Who manages accounts: system administrators, national accounts, and state / LGA administrators for their area.
+export const isManager = (ctx) => ctx.role === 'sysadmin' || ctx.role === 'national' || (!!ctx.admin && ['state', 'lga'].includes(ctx.role));
+export function requireManager(ctx) {
+  if (!isManager(ctx)) throw new HttpError(403, 'forbidden', 'You do not have permission to do that.');
+}
+// Roles a manager may give to people in its area (always data entry at its own level or below).
+export function rolesManagedBy(ctx) {
+  if (ctx.role === 'sysadmin') return ROLES;
+  if (ctx.role === 'national') return ['state', 'lga', 'unit'];
+  if (ctx.admin && ctx.role === 'state') return ['state', 'lga', 'unit'];
+  if (ctx.admin && ctx.role === 'lga') return ['lga', 'unit'];
+  return [];
+}
+// Who may make someone a state / LGA administrator: only from a level above.
+export function canGrantAdmin(ctx, role) {
+  if (!AREA_ADMIN_NAMES[role]) return false;
+  if (ctx.role === 'sysadmin' || ctx.role === 'national') return true;
+  return ctx.role === 'state' && !!ctx.admin && role === 'lga';
+}
+// target: { role, ou: {path}, admin }
+export const canManageUser = (ctx, target) => ctx.role === 'sysadmin'
+  || (rolesManagedBy(ctx).includes(target.role) && inScope(ctx, target.ou) && (!target.admin || canGrantAdmin(ctx, target.role)));
 
 export function requireRole(ctx, roles) {
   if (!roles.includes(ctx.role)) throw new HttpError(403, 'forbidden', 'You do not have permission to do that.');

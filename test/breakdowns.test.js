@@ -69,7 +69,8 @@ test('breakdowns: upgrading a database with existing data keeps every total', as
   const DB = new D1Shim();
   const dir = new URL('../migrations/', import.meta.url);
   const files = readdirSync(dir).sort();
-  for (const f of files.filter((f) => f < '0012')) DB.db.exec(readFileSync(new URL(f, dir), 'utf8'));
+  // (0016 only adds a column the sign-in code reads, so it goes in up front.)
+  for (const f of files.filter((f) => f < '0012' || f.startsWith('0016'))) DB.db.exec(readFileSync(new URL(f, dir), 'utf8'));
   const env = makeEnv({ DB });
   const admin = await setupAdmin(env);
   const ds = (await admin.post('/api/datasets', { name: 'Health – monthly', sector: 'Health', frequency: 'MONTHLY' })).data;
@@ -80,7 +81,7 @@ test('breakdowns: upgrading a database with existing data keeps every total', as
   DB.db.prepare("INSERT INTO reports (dataset_id, ou_id, period, status, updated_at) VALUES (?,?,?,'accepted',1)").run(ds.id, ABA_NORTH, period);
   DB.db.prepare('INSERT INTO data_values (de_id, ou_id, period, value, updated_at) VALUES (?,?,?,50,1)').run(de, ABA_NORTH, period);
   // Upgrade.
-  for (const f of files.filter((f) => f >= '0012')) DB.db.exec(readFileSync(new URL(f, dir), 'utf8'));
+  for (const f of files.filter((f) => f >= '0012' && !f.startsWith('0016'))) DB.db.exec(readFileSync(new URL(f, dir), 'utf8'));
   let pic = (await admin.get(`/api/picture?dataset=${ds.id}&ou=${ABIA}&period=${period}`)).data;
   assert.equal(pic.total.values[de], 50);
   // Switching a breakdown on later: old accepted totals still count; the form shows the earlier total.
