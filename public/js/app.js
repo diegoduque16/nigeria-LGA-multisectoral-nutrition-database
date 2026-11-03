@@ -1318,7 +1318,6 @@ async function renderSectors(m) {
     cards.length ? cards : h('div', { class: 'panel empty' },
       h('h2', {}, 'No sectors yet'),
       h('p', {}, 'Start with one, for example Health, reported monthly by each LGA.')),
-    admin ? breakdownsPanel(m) : null,
   ));
   const toOpen = openId && forms.find((d) => d.id === openId);
   if (toOpen) indicatorDialog(toOpen, m, null, true);
@@ -1384,7 +1383,7 @@ function denominatorPicker(m, ds, current) {
   for (const f of (ds.dataElements || []).filter((x) => !x.archived)) addUsed(f.name);
   addUsed(current);
   const opt = (value, label) => h('option', { value }, label);
-  const sel = h('select', {},
+  const sel = h('select', { style: 'width:100%;max-width:100%;box-sizing:border-box' },
     opt('', '— none: a plain count —'),
     pop.length ? h('optgroup', { label: 'Population figures (yearly, per LGA)' }, pop.map((f) => opt('pop:' + f.name, f.name))) : null,
     common.length ? h('optgroup', { label: 'Common population figures — set up when first used' }, common.map((c) => opt('common:' + c.name, c.share != null ? `${c.name} (${c.share}% of population)` : c.name))) : null,
@@ -1460,6 +1459,9 @@ async function indicatorDialog(ds, m, i, first = false) {
   const denPick = denominatorPicker(m, ds, i ? i.denominator : '');
   const source = h('input', { value: i ? i.source : '', placeholder: 'e.g. HMIS register, school census' });
   const showAs = select([{ id: '', name: '— choose —' }, ...m.showAs], i ? (i.showAs === 'number' && i.denominator ? 'number' : i.showAs) : '');
+  const splitNow = (boxId) => { const f = ds.dataElements.find((d) => d.id === boxId); return f ? [f.breakdownId, f.breakdown2Id].filter(Boolean).join('|') : ''; };
+  const curSplit = i ? splitNow(i.numeratorId) : '';
+  const split = select(splitChoices(curSplit), curSplit);
   const sector = sectorSelect(m, i ? i.sector : ds.sector);
   const id = h('input', { class: 'mono', placeholder: 'made automatically', maxlength: 11 });
   const err = h('div', { class: 'err' });
@@ -1493,12 +1495,21 @@ async function indicatorDialog(ds, m, i, first = false) {
       field('Numerator — what is counted *', num, 'Becomes a box people fill in. The same name means the same box.'),
       denWrap,
       field('Show as *', showAs, 'Percentage and per 1,000 need a denominator; a whole number is a plain count.'),
+      field('Count the numerator separately by', split, h('span', {}, 'People type it per group; the total adds itself up. ', h('a', { href: '#', onclick: (e) => { e.preventDefault(); breakdownsDialog(m); } }, 'Lists…'))),
       field('Sector', sector, 'Usually this sector; another one if the indicator belongs elsewhere.')),
     i ? h('p', { class: 'muted small' }, 'ID ', idTag(i.id)) : h('details', {}, h('summary', { class: 'small' }, 'Advanced: existing DHIS2 ID'), field('DHIS2 ID (only if the indicator already exists in DHIS2)', id)),
     err, h('p'), h('div', { class: 'actions' }, save, again, h('button', { onclick: () => dlg.close() }, i ? 'Close' : 'Cancel'), del));
   dlg.addEventListener('close', () => { dlg.remove(); state.meta = null; route(); });
   let denName = '';
   const vals = () => ({ sector: sector.value, name: name.value.trim(), numerator: num.value.trim(), denominator: denName, source: source.value.trim(), showAs: showAs.value });
+  // Sets the split on the numerator's box after saving (only when it changed).
+  const applySplit = async (ind) => {
+    const box = ind && ind.numeratorId;
+    if (!box || split.value === splitNow(box)) return;
+    if (splitNow(box) && !confirm('Change how this number is counted? Parts typed in before stay stored but are no longer shown; reports not yet sent will ask for the new parts.')) return;
+    const [b1, b2] = split.value ? split.value.split('|') : [];
+    await api('PATCH', '/api/fields/' + box, { breakdownId: b1 || null, breakdown2Id: b2 || null });
+  };
   const chosen = () => (pick && pick.value ? pick.value : null);
   const submit = async (keepOpen) => {
     err.textContent = '';
@@ -1508,11 +1519,13 @@ async function indicatorDialog(ds, m, i, first = false) {
     }
     try {
       if (!chosen()) denName = await denPick.value();
+      let ind;
       if (i) {
-        await api('PATCH', '/api/indicators/' + i.id, vals());
+        ind = (await api('PATCH', '/api/indicators/' + i.id, vals())).data.indicator;
         if (myDef && code.value.trim() !== (myDef.code || '')) await api('PATCH', '/api/dictionary/' + myDef.id, { code: code.value.trim() });
-      } else if (chosen()) await api('POST', `/api/datasets/${ds.id}/indicators`, { defId: chosen(), sector: sector.value || undefined });
-      else { const body = vals(); if (id.value.trim()) body.id = id.value.trim(); if (code.value.trim()) body.code = code.value.trim(); await api('POST', `/api/datasets/${ds.id}/indicators`, body); }
+      } else if (chosen()) ind = (await api('POST', `/api/datasets/${ds.id}/indicators`, { defId: chosen(), sector: sector.value || undefined })).data.indicator;
+      else { const body = vals(); if (id.value.trim()) body.id = id.value.trim(); if (code.value.trim()) body.code = code.value.trim(); ind = (await api('POST', `/api/datasets/${ds.id}/indicators`, body)).data.indicator; }
+      await applySplit(ind);
     } catch (e) {
       err.textContent = e.message;
       // Same name, another calculation: offer the dictionary's one.
@@ -1595,11 +1608,24 @@ async function renderDictionary() {
 }
 
 // ---------- breakdowns: sex, age groups … ----------
+// The ways a counted number can be split: none, one list, or two lists crossed (Sex × Age).
+function splitChoices(cur) {
+  const bds = (state.meta && state.meta.breakdowns) || [];
+  const combos = [{ id: '', name: 'No — one total' }, ...bds.map((x) => ({ id: x.id, name: x.name })),
+    ...bds.flatMap((x, i) => bds.slice(i + 1).map((y) => ({ id: `${x.id}|${y.id}`, name: `${x.name} × ${y.name}` })))];
+  if (cur && !combos.some((c) => c.id === cur)) combos.push({ id: cur, name: cur.split('|').map((x) => (bds.find((b) => b.id === x) || { name: x }).name).join(' × ') });
+  return combos;
+}
+function breakdownsDialog(m) {
+  const dlg = h('dialog', { class: 'wide' }, breakdownsPanel(m), h('div', { class: 'actions' }, h('button', { onclick: () => dlg.close() }, 'Close')));
+  dlg.addEventListener('close', () => dlg.remove());
+  document.body.append(dlg); dlg.showModal();
+}
 function breakdownsPanel(m) {
   const list = m.breakdowns || [];
-  return h('details', { class: 'panel' },
-    h('summary', {}, 'Splitting counts by sex or age (optional)'),
-    h('p', { class: 'muted small' }, 'For numbers people count, e.g. “Children screened”: ask them per sex or age group, so results can be split the same way everywhere. This is not about denominators — those are on ', h('a', { href: '#/population' }, 'Population figures'), '. Turn a split on for a number in a sector’s “Edit as a table” → “Boxes people fill in”. Sex and Age (under 5) are built in.'),
+  return h('div', {},
+    h('h2', {}, 'Lists for counting separately'),
+    h('p', { class: 'muted small' }, 'A counted number can be asked per sex or age group (choose it on the indicator). Sex and Age (under 5) are built in; add your own list here, e.g. school age groups. Renaming an option keeps the values already typed in.'),
     h('div', { class: 'scroll' }, h('table', {},
       h('thead', {}, h('tr', {}, h('th', {}, 'Breakdown'), h('th', {}, 'Options'), h('th', {}, 'ID'))),
       h('tbody', {}, list.map((b) => h('tr', { class: 'click', onclick: () => breakdownDialog(b) },
@@ -1896,18 +1922,14 @@ function fieldsPanel(ds) {
   const list = ds.dataElements.filter((d) => !d.archived);
   if (!list.length) return null;
   return h('details', { class: 'panel' }, h('summary', {}, `Boxes people fill in (${list.length})`),
-    h('p', { class: 'muted small' }, 'Made from the numerators and denominators above. Rename one here to fix a typo everywhere; numbers already reported are kept. “Whole numbers” refuses decimals; “Max” refuses anything larger. “Broken down by” asks for the number per sex, age group or both; the total adds itself up, so indicators keep working. Manage the lists under Setup → Indicator dictionary.'),
+    h('p', { class: 'muted small' }, 'Made from the numerators and denominators above. Rename one here to fix a typo everywhere; numbers already reported are kept. “Whole numbers” refuses decimals; “Max” refuses anything larger. “Broken down by” asks for the number per sex, age group or both; the total adds itself up, so indicators keep working. The lists themselves: “Lists…” in the indicator form.'),
     h('div', { class: 'scroll' }, h('table', {}, h('thead', {}, h('tr', {}, h('th', {}, 'Name'), h('th', {}, 'Whole numbers'), h('th', {}, 'Max'), h('th', {}, 'Broken down by'), h('th', {}, 'ID'), h('th'))),
       h('tbody', {}, list.map((d) => {
         const name = h('input', { value: d.name, size: 28 });
         const whole = h('input', { type: 'checkbox', checked: d.valueType === 'INTEGER' });
         const max = h('input', { type: 'number', value: d.max ?? '', placeholder: 'none', size: 8 });
-        const bds = (state.meta && state.meta.breakdowns) || [];
-        const combos = [{ id: '', name: 'Not broken down' }, ...bds.map((x) => ({ id: x.id, name: x.name })),
-          ...bds.flatMap((x, i) => bds.slice(i + 1).map((y) => ({ id: `${x.id}|${y.id}`, name: `${x.name} × ${y.name}` })))];
         const cur = [d.breakdownId, d.breakdown2Id].filter(Boolean).join('|');
-        if (cur && !combos.some((c) => c.id === cur)) combos.push({ id: cur, name: cur.split('|').map((x) => (bds.find((b) => b.id === x) || { name: x }).name).join(' × ') });
-        const bd = select(combos, cur);
+        const bd = select(splitChoices(cur), cur);
         const b = h('button', {}, 'Save');
         b.addEventListener('click', busy(b, async () => {
           const [b1, b2] = bd.value ? bd.value.split('|') : [];
