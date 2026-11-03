@@ -883,7 +883,7 @@ async function renderReview() {
     how: [
       'Choose the report and the period at the top.',
       national ? 'Start with the states. Click a state to see its LGAs' + (byUnit ? `, then an LGA to see each ${lc(pw.one)}.` : '.') : byUnit && role() !== 'lga' ? `Click an LGA to see each ${lc(pw.one)}.` : 'Those not sent yet are at the top.',
-      'In the full list, click one not sent yet to type it in on their behalf, or press “Remind those not sent”. To correct a sent report, a system administrator deletes it and it is typed in again.',
+      role() === 'lga' ? `Click one not sent yet to type it in on its behalf, or contact the ${lc(pw.one)}. To correct a sent report, ask your system administrator to delete it; it is then typed in again.` : 'In the full list, click one not sent yet to type it in on their behalf, or press “Remind those not sent”. To correct a sent report, a system administrator deletes it and it is typed in again.',
     ],
   });
   // Reminders go to one state at a time: the button shows once a state is open.
@@ -926,9 +926,9 @@ async function renderReview() {
   mount(h('div', {}, head, filters, crumbBar,
     h('div', { class: 'note ' + (sent < st.total ? 'warn' : 'ok') }, h('strong', {}, `${pct == null ? '—' : pct + '%'} reported · ${st.total} ${what}: `), summary),
     list.length ? h('div', { class: 'scroll' }, h('table', {},
-      h('thead', {}, h('tr', {}, byUnit && !lgaId ? h('th', {}, 'LGA') : null, h('th', {}, pw.one), h('th', {}, 'Status'), h('th', {}, 'Sent on'), h('th', {}, ''))),
+      h('thead', {}, h('tr', {}, byUnit && !lgaId && role() !== 'lga' ? h('th', {}, 'LGA') : null, h('th', {}, pw.one), h('th', {}, 'Status'), h('th', {}, 'Sent on'), h('th', {}, ''))),
       h('tbody', {}, list.map((l) => h('tr', { class: 'click', onclick: () => open(l) },
-        byUnit && !lgaId ? h('td', { class: 'small' }, l.lgaName) : null,
+        byUnit && !lgaId && role() !== 'lga' ? h('td', { class: 'small' }, l.lgaName) : null,
         h('td', {}, l.name, l.type ? h('span', { class: 'muted small' }, ` · ${l.type}`) : null), h('td', {}, pill(l.status, STATUS_PLAIN[l.status]), l.late ? h('span', { class: 'late' }, 'Late') : null),
         h('td', {}, fmtDate(l.submittedAt)),
         h('td', { class: 'n' }, ['submitted', 'accepted'].includes(l.status) ? h('button', {}, 'View') : h('button', { class: 'primary' }, 'Type it in')))))))
