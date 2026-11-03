@@ -1901,7 +1901,8 @@ function sharedPanel(ds) {
   const lc = (x) => String(x || '').trim().toLowerCase();
   const total = all_.find((d) => lc(d.name) === 'total population');
   const imported = all_.filter((d) => !d.calcBase);
-  const others = imported.filter((d) => d !== total);
+  // Standard denominators show in step 2 (even before they are switched to calculated), not here.
+  const others = imported.filter((d) => d !== total && !COMMON_DENOMINATORS.some((c) => c.share != null && lc(c.name) === lc(d.name)));
   const admin = is('sysadmin');
 
   // Step 2: the denominators calculated from Total population (standard ones, plus any already set up).
@@ -1967,7 +1968,8 @@ function sharedPanel(ds) {
     admin ? h('div', { class: 'actions' }, save) : null, err,
     h('p', { class: 'muted small' }, '“Split by months” suits yearly flows such as pregnancies and births: a monthly indicator divides by one twelfth. Head counts (children, women, households) use the yearly figure as is.'),
 
-    h('details', { class: 'panel' }, h('summary', {}, `3 · Other numbers you import or type (optional${others.length ? ': ' + others.length : ''})`),
+    // Other numbers (counts of schools …) only appear when there are some; an Excel file with extra columns adds them.
+    !others.length ? null : h('details', { class: 'panel' }, h('summary', {}, `3 · Other numbers you import or type (${others.length})`),
       h('p', { class: 'muted small' }, 'For numbers that are not a share of the population — e.g. number of schools or health facilities. They are filled with the Excel import in step 1, or typed by each LGA once a year.'),
       h('div', { class: 'scroll' }, h('table', {},
         h('thead', {}, h('tr', {}, h('th', {}, 'Number'), h('th', {}, 'For monthly / quarterly indicators'), h('th', {}, 'ID'), h('th'))),
