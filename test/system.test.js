@@ -794,3 +794,14 @@ test('units: own-system codes, coordinates, duplicate warnings, codes and locati
   assert.equal(m.code, 'ab/001');
   assert.deepEqual(m.geometry, { type: 'Point', coordinates: [7.38, 5.13] });
 });
+
+test('indicators: a percentage or a rate per 1,000 needs a denominator', async () => {
+  const env = makeEnv();
+  const admin = await setupAdmin(env);
+  const ds = (await admin.post('/api/datasets', { name: 'Health – monthly', sector: 'Health', frequency: 'MONTHLY' })).data;
+  const no = await admin.post(`/api/datasets/${ds.id}/indicators`, { name: 'ANC coverage', numerator: 'ANC visits', source: 'HMIS', showAs: 'percent' });
+  assert.equal(no.status, 422);
+  assert.equal((await admin.post(`/api/datasets/${ds.id}/indicators`, { name: 'Deaths per 1,000', numerator: 'Deaths', source: 'HMIS', showAs: 'per1000', denominator: '' })).status, 422);
+  assert.equal((await admin.post(`/api/datasets/${ds.id}/indicators`, { name: 'ANC coverage', numerator: 'ANC visits', denominator: 'Expected pregnancies', source: 'HMIS', showAs: 'percent' })).status, 201);
+  assert.equal((await admin.post(`/api/datasets/${ds.id}/indicators`, { name: 'Clinics open', numerator: 'Clinics open', source: 'Register', showAs: 'number' })).status, 201);
+});

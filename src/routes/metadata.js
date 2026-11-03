@@ -89,7 +89,7 @@ export async function getMetadata(request, env, ctx) {
     breakdowns: breakdowns.map((b) => ({ id: b.id, name: b.name, options: JSON.parse(b.options), builtIn: b.id.startsWith('bd_') })),
     unitTypes: unitTypes.map((t) => ({ id: t.id, name: t.name, isWard: !!t.is_ward })),
     frequencies: Object.entries(FREQUENCY_NAMES).map(([id, name]) => ({ id, name })),
-    showAs: [{ id: 'percent', name: 'Percentage' }, { id: 'per1000', name: 'Per 1,000' }, { id: 'number', name: 'Number' }],
+    showAs: [{ id: 'percent', name: 'Percentage' }, { id: 'per1000', name: 'Per 1,000' }, { id: 'number', name: 'Whole number (a count)' }],
     sectors: sectors.map((s) => ({ id: s.id, name: s.name, indicators: inds.filter((i) => i.sector_id === s.id && !i.archived_at).length })),
     datasets: datasets.map((s) => ({
       id: s.id, name: s.name, sectorId: s.sector_id, sector: sectorNames[s.sector_id] || '', shared: !!s.shared, reportLevel: s.report_level === 4 ? 'UNIT' : 'LGA', frequency: s.frequency, frequencyName: FREQUENCY_NAMES[s.frequency], dueDay: s.due_day,
@@ -420,6 +420,7 @@ export async function createIndicator(request, env, ctx, { datasetId }) {
   if (body.name && await one(env.DB, 'SELECT id FROM indicators WHERE dataset_id = ? AND lower(name) = lower(?) AND archived_at IS NULL', datasetId, body.name)) {
     throw new HttpError(409, 'name_taken', 'This data set already has an indicator with that name.');
   }
+  if (!body.defId && ['percent', 'per1000'].includes(body.showAs) && !(body.denominator || '').trim()) throw new HttpError(422, 'invalid', 'A percentage or a rate per 1,000 needs a denominator.', { field: 'denominator' });
   if (ds.shared) throw new HttpError(422, 'invalid', 'The shared denominators data set holds numbers only. Add its numbers with “Add number”, then use them as denominators in other data sets.');
   if (!body.sector && !ds.sector_id) throw new HttpError(422, 'invalid', 'Choose a sector for this indicator.', { field: 'sector' });
   // The dictionary decides the definition: an existing entry (by id, or by the same name) is used as it is;
