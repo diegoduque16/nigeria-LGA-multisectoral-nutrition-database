@@ -300,3 +300,7 @@ tr.part td { border-bottom: 0; padding-top: .2rem; padding-bottom: .2rem; }
 .mt8 { margin-top: 8px; }
 pre.wrap { white-space: pre-wrap; }
 table.glance td { vertical-align: middle; }
+
+/* Reminder email preview */
+.panel.mail .mail-head { border: 1px solid var(--line); border-bottom: 0; border-radius: 6px 6px 0 0; padding: 10px 14px; background: var(--bg); display: grid; gap: 3px; font-size: .9rem; }
+.panel.mail .mail-body { margin: 0; border: 1px solid var(--line); border-radius: 0 0 6px 6px; padding: 14px; background: #fff; white-space: pre-wrap; font: .92rem/1.5 var(--font); color: var(--ink); }

@@ -101,6 +101,7 @@ export async function reminderList(request, env, ctx) {
     dataset: { id: ds.id, name: ds.name }, period, periodName: periodName(period), due: dueAt(period, ds.due_day), area: { id: area.id, name: area.name },
     link, places, lgaContacts,
     sample: message(ds, period, { name: '[name]' }, link, q.note || '').text,
+    subject: message(ds, period, { name: '' }, link, '').subject, from: env.EMAIL_FROM || null,
   });
 }
 

@@ -778,12 +778,22 @@ async function renderReminders() {
     out.replaceChildren(h('div', { class: 'note ' + (bad.length ? 'warn' : 'ok') }, `${data.sent} reminder${data.sent === 1 ? '' : 's'} sent.`, bad.length ? ` ${bad.length} not sent: ${bad.map((b) => `${(people.find((x) => x.u.id === b.id) || { u: { name: b.id } }).u.name} (${b.message})`).join('; ')}` : ''));
     toast(`${data.sent} reminder${data.sent === 1 ? '' : 's'} sent`);
   }));
-  const copyMsg = (u) => {
+  const msgFor = (u) => {
     let t = r.sample.replace('[name]', u.name);
     if (u.places) t = t.replace('\n\nTwo ways', `\n\nThese places in your LGA have no account of their own, so please make sure their reports are sent: ${u.places.join(', ')}.\n\nTwo ways`);
     if (note.value.trim()) t = t.replace('\n\nThank you.', `\n\n${note.value.trim()}\n\nThank you.`);
-    copy(t);
+    return t;
   };
+  const copyMsg = (u) => copy(msgFor(u));
+  // The proposed email, as the first ticked person will get it; follows the note as it is typed.
+  const pvTo = h('span'); const pvBody = h('pre', { class: 'mail-body' });
+  const preview = () => {
+    const first = (people.find((x) => x.box.checked) || people[0] || { u: { name: '[name]', email: '' } }).u;
+    pvTo.textContent = first.email ? `${first.name} <${first.email}>` : first.name;
+    pvBody.textContent = msgFor(first);
+  };
+  note.addEventListener('input', preview);
+  people.forEach((x) => x.box.addEventListener('change', preview));
   mount(h('div', {},
     pageHead({
       title: 'Send reminders',
@@ -810,7 +820,16 @@ async function renderReminders() {
         h('p', { class: 'muted small' }, 'Create accounts for them on the Users page, or share a registration QR code.')) : null,
       h('p'), h('div', { class: 'f' }, h('span', {}, 'Note in the email (optional)'), note), h('p'),
       h('div', { class: 'actions' }, send, h('button', { onclick: () => copy(r.link) }, 'Copy upload link')), out),
-    h('details', { class: 'panel' }, h('summary', {}, 'See the email text'), h('pre', { class: 'small wrap' }, r.sample))));
+    h('div', { class: 'panel mail' },
+      h('h2', {}, 'The email they get'),
+      h('p', { class: 'muted small' }, people.length > 1 ? 'Shown for the first person ticked; each person gets it with their own name. ' : '', 'Your note appears as you type it. Their own Excel template is attached.'),
+      h('div', { class: 'mail-head' },
+        h('div', {}, h('span', { class: 'muted' }, 'From: '), r.from || 'LGA Scorecard (once email is connected)'),
+        h('div', {}, h('span', { class: 'muted' }, 'To: '), pvTo),
+        h('div', {}, h('span', { class: 'muted' }, 'Subject: '), h('strong', {}, r.subject || '')),
+        h('div', {}, h('span', { class: 'muted' }, 'Attachment: '), '📎 Excel template, filled with what they saved so far')),
+      pvBody)));
+  preview();
 }
 
 // ---------- review (status of every LGA) ----------
