@@ -109,7 +109,7 @@ test('accounts: assignment to data sets and to specific numerators/denominators'
   await educ.c.put('/api/entry', { dataset: dsId, ou: ABA_NORTH, period, values: { [field('Pupils enrolled in primary')]: 900 } });
   const sub = await educ.c.post('/api/entry/submit', { dataset: dsId, ou: ABA_NORTH, period });
   assert.equal(sub.status, 200, JSON.stringify(sub.data));
-  assert.equal(sub.data.report.status, 'submitted');
+  assert.equal(sub.data.report.status, 'accepted'); // no approval step: sent = counts
   assert.equal(sub.data.indicators.find((i) => i.name === 'ANC 4+ coverage').value, 40);
   // Locked after submit.
   const locked = await health.c.put('/api/entry', { dataset: dsId, ou: ABA_NORTH, period, values: { [field('Expected pregnancies')]: 1 } });
@@ -148,25 +148,17 @@ test('state review, state picture (sum counts, recompute rates) and coverage', a
   await report(lgaB.c, dsId, ABA_SOUTH, period, { [num]: 90, [den]: 100, [pup]: 70 });
   await report(lgaC.c, dsId, AROCHUKWU, period, { [num]: 1, [den]: 1, [pup]: 1 });
 
-  // State officer sees statuses, accepts two, sends one back.
+  // No approval step: the three sent reports count straight away.
   const st = (await state.c.get(`/api/status?dataset=${dsId}&period=${period}`)).data;
   assert.equal(st.total, 17);
-  assert.equal(st.counts.submitted, 3);
-  for (const ou of [ABA_NORTH, ABA_SOUTH]) {
-    const r = await state.c.post('/api/entry/review', { dataset: dsId, ou, period, action: 'accept' });
-    assert.equal(r.data.report.status, 'accepted');
-  }
-  const noComment = await state.c.post('/api/entry/review', { dataset: dsId, ou: AROCHUKWU, period, action: 'return' });
-  assert.equal(noComment.status, 422);
-  const back = await state.c.post('/api/entry/review', { dataset: dsId, ou: AROCHUKWU, period, action: 'return', comment: 'Denominator looks wrong' });
-  assert.equal(back.data.report.status, 'returned');
-  // LGA user can't review; LGA can now correct.
-  assert.equal((await lgaC.c.post('/api/entry/review', { dataset: dsId, ou: AROCHUKWU, period, action: 'accept' })).status, 403);
-  const fixed = await lgaC.c.put('/api/entry', { dataset: dsId, ou: AROCHUKWU, period, values: { [den]: 50 } });
-  assert.equal(fixed.data.report.status, 'returned');
-  // A state officer from another state cannot review Abia.
-  const ad = await addUser(env, admin, { name: 'D', email: 'd@adamawa.gov.ng', role: 'state', ouId: ADAMAWA });
-  assert.equal((await ad.c.post('/api/entry/review', { dataset: dsId, ou: AROCHUKWU, period, action: 'accept' })).status, 403);
+  assert.equal(st.counts.accepted, 3);
+  // A sent report is locked for the LGA; only a system administrator can delete it.
+  assert.equal((await lgaC.c.put('/api/entry', { dataset: dsId, ou: AROCHUKWU, period, values: { [den]: 50 } })).status, 409);
+  const del = `/api/entry?dataset=${dsId}&ou=${AROCHUKWU}&period=${period}`;
+  assert.equal((await lgaC.c.del(del)).status, 403);
+  assert.equal((await state.c.del(del)).status, 403);
+  const gone = await admin.del(del);
+  assert.equal(gone.status, 200); assert.equal(gone.data.report.status, 'none');
 
   // Picture: accepted only -> 2 LGAs; ANC = (10+90)/(100+100) = 50%, not the average of LGA rates.
   const pic = (await state.c.get(`/api/picture?dataset=${dsId}&period=${period}`)).data;

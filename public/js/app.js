@@ -124,7 +124,7 @@ const GROUPS = [
 const hasUnitSets = () => myDatasets().some((d) => d.reportLevel === 'UNIT');
 const PAGES = [
   { id: 'home', name: () => (is(...ENTRY_ROLES) ? 'My reports' : 'Home'), short: 'What needs doing now', roles: ALL, desc: 'Start here: what needs doing and where to find everything.' },
-  { id: 'review', group: 'report', name: () => (is('lga') ? 'Check school reports' : 'Approve reports'), short: 'Accept or send back what was sent', roles: ['sysadmin', 'state', 'lga'], nav: () => !is('lga') || hasUnitSets(),
+  { id: 'review', group: 'report', name: () => (is('lga') ? 'Check school reports' : 'Approve reports'), short: 'Accept or send back what was sent', roles: ['sysadmin', 'state', 'lga'], nav: () => false,
     desc: () => (is('lga') ? 'Your schools / facilities send their reports to you. Check each one: Accept it (it then counts) or Send it back with a note.' : 'When an LGA presses Send, its report waits here. Check each one: Accept it (it then counts in the results) or Send it back with a note saying what to correct.') },
   { id: 'reminders', group: 'report', name: 'Send reminders', short: 'Email those who have not sent', roles: ['sysadmin', 'state'], desc: 'Remind the people whose report is not sent yet: an email with their Excel template attached and a link to upload it.' },
   { id: 'upload', name: 'Upload a report', roles: ['sysadmin', 'state', 'lga', 'unit'], nav: () => false, desc: 'Upload a filled Excel template.' },
@@ -144,9 +144,9 @@ const pageDesc = (p) => (typeof p.desc === 'function' ? p.desc() : p.desc);
 const pageName = (p) => (typeof p.name === 'function' ? p.name() : p.name);
 const ROLE_HELP = {
   sysadmin: 'Full control: sets up sectors and indicators, chooses the states in use, manages every user, and sees everything.',
-  setupadmin: 'Sets up sectors and indicators, and sees all results. Does not manage users.',
-  state: 'Approves (or sends back) the reports of the LGAs in one state, sees the state’s results, and manages LGA accounts there.',
-  lga: 'Types in and sends the reports of one LGA. Also checks the reports of its schools / facilities, if a sector reports by unit.',
+  setupadmin: 'Adds sectors and indicators, sets up the population figures, and sees all results. Does not manage users.',
+  state: 'Data entry for a whole state: can type in a report for any of its LGAs, sees the state’s results and manages LGA accounts there.',
+  lga: 'Types in and sends the reports of one LGA (and of its schools / facilities, if a sector reports by unit).',
   unit: 'Types in and sends the reports of one school, health facility or other unit.',
   viewer: 'Only looks at results and downloads them. Enters nothing.',
 };
@@ -336,8 +336,8 @@ async function pickState(value, onChange) {
 const STATUS_PLAIN = {
   none: 'Not started',
   draft: 'Started — not sent yet',
-  submitted: 'Sent — waiting to be checked',
-  accepted: 'Accepted',
+  submitted: 'Sent',
+  accepted: 'Sent',
   returned: 'Sent back — please correct',
 };
 const ACTION_FOR = { none: 'Start', draft: 'Continue', returned: 'Correct and send again', submitted: 'View', accepted: 'View' };
@@ -402,8 +402,8 @@ async function renderOverview() {
   const m = await meta();
   const ou = state.me.ou;
   const blocks = [];
-  // Reports waiting for approval (state officers; administrators when few states are in use).
-  if (is('state', 'sysadmin')) {
+  // (No approval step: sent reports count straight away, so nothing waits for approval.)
+  if (false) {
     const o = await orgs();
     const states = is('state') ? [{ id: ou.id, name: ou.name }] : o.states.length <= 6 ? o.states : [];
     const sets = myDatasets().filter((d) => !d.shared && !d.archived);
@@ -577,7 +577,7 @@ function entryView(form, sets, pickers) {
   }
   const saveBtn = h('button', {}, 'Save, send later');
   saveBtn.addEventListener('click', busy(saveBtn, async () => { const d = await save(); main().replaceChildren(entryView(d, sets, pickers)); }));
-  const submitBtn = h('button', { class: 'primary big' }, toUnit ? 'Send' : 'Send to the state');
+  const submitBtn = h('button', { class: 'primary big' }, 'Send');
   submitBtn.addEventListener('click', busy(submitBtn, async () => {
     if (form.can.edit && (dirty || r.status === 'none' || r.status === 'returned')) await save(true);
     try {
@@ -586,15 +586,15 @@ function entryView(form, sets, pickers) {
     } catch (e) { err.textContent = e.message; }
   }));
 
-  const reviewBox = form.can.review ? reviewControls(form, (d) => main().replaceChildren(entryView(d, sets, pickers))) : null;
+  
 
   // One plain sentence on where this report stands and what to do next.
   const statusNote = {
-    none: form.can.edit ? h('div', { class: 'note info' }, h('strong', {}, 'Not started. '), 'Type the numbers below, then press ', h('strong', {}, toUnit ? 'Send' : 'Send to the state'), '.') : null,
-    draft: form.can.edit ? h('div', { class: 'note info' }, h('strong', {}, 'Saved but not sent yet. '), `Finish the numbers and press ${toUnit ? 'Send' : 'Send to the state'}.`) : null,
+    none: form.can.edit ? h('div', { class: 'note info' }, h('strong', {}, 'Not started. '), 'Type the numbers below, then press ', h('strong', {}, 'Send'), '.') : null,
+    draft: form.can.edit ? h('div', { class: 'note info' }, h('strong', {}, 'Saved but not sent yet. '), 'Finish the numbers and press Send.') : null,
     returned: h('div', { class: 'note bad' }, h('strong', {}, 'Sent back for correction. '), r.comment ? `Note from ${r.reviewedBy || 'the reviewer'}: “${r.comment}”. ` : '', form.can.edit ? 'Correct the numbers and send again.' : ''),
-    submitted: h('div', { class: 'note warn' }, h('strong', {}, 'Sent. '), `${fmtDate(r.submittedAt)}${r.submittedBy ? ' by ' + r.submittedBy : ''}. Waiting for ${checker} to check it. It can no longer be changed unless it is sent back.`),
-    accepted: h('div', { class: 'note ok' }, h('strong', {}, 'Accepted. '), `${fmtDate(r.reviewedAt)}${r.reviewedBy ? ' by ' + r.reviewedBy : ''}. These numbers now count in the results.`),
+    submitted: h('div', { class: 'note ok' }, h('strong', {}, 'Sent. '), `${fmtDate(r.submittedAt)}${r.submittedBy ? ' by ' + r.submittedBy : ''}. These numbers count in the results.`),
+    accepted: h('div', { class: 'note ok' }, h('strong', {}, 'Sent. '), `${fmtDate(r.submittedAt || r.reviewedAt)}${(r.submittedBy || r.reviewedBy) ? ' by ' + (r.submittedBy || r.reviewedBy) : ''}. These numbers count in the results. To correct them, ask a system administrator to delete this report, then type it in again.`),
   }[r.status];
 
   const results = [
@@ -608,10 +608,10 @@ function entryView(form, sets, pickers) {
 
   return h('div', {},
     pageHead({
-      back: simple ? (toUnit && is('lga') ? ['#/review', 'Check school reports'] : ['#/home', 'My reports']) : form.can.review ? ['#/review', 'Approve reports'] : null,
+      back: simple ? ['#/home', 'My reports'] : null,
       title: `${form.dataset.name} — ${form.periodName}`,
       sub: [form.ou.type, form.ou.name, form.ou.lga].filter(Boolean).join(' · '),
-      text: simple ? null : form.can.review && ['submitted', 'accepted'].includes(r.status) ? 'Check the numbers, then decide at the bottom: Accept or Send back.' : 'Type in a report on behalf of an LGA (or a school / facility).',
+      text: simple ? null : 'Type in a report on behalf of an LGA (or a school / facility).',
       actions: [pill(r.status, STATUS_PLAIN[r.status]), r.late ? h('span', { class: 'late' }, 'Sent late') : null],
     }),
     h('div', { class: 'bar' + (simple ? ' bar-simple' : '') }, sets.length > 1 || !simple ? field(simple ? 'Report' : 'Report', dsSel) : null, pickers, field(periodWord(form.dataset.frequency), peSel)),
@@ -622,13 +622,24 @@ function entryView(form, sets, pickers) {
         : h('div', { class: 'empty' }, 'This report has no indicators yet.'),
       err,
       form.can.edit ? h('div', { class: 'sendbar' },
-        h('div', { class: 'sendbtn' }, submitBtn, h('span', { class: 'hint' }, `Sends it to ${checker} to check. Every box must have a number — put 0 if there were none.`)),
+        h('div', { class: 'sendbtn' }, submitBtn, h('span', { class: 'hint' }, 'It counts in the results straight away and can no longer be changed. Every box must have a number — put 0 if there were none.')),
         h('div', { class: 'sendbtn' }, saveBtn, h('span', { class: 'hint' }, 'Keeps what you typed. Nothing is sent.'))) : null),
-    reviewBox,
+    is('sysadmin') && r.status !== 'none' ? h('div', { class: 'actions' }, deleteReportBtn(form, (d) => main().replaceChildren(entryView(d, sets, pickers)))) : null,
     results.length ? h('details', { class: 'panel', open: !simple || undefined }, h('summary', {}, 'See the results these numbers give'), results) : null,
     is('sysadmin', 'state', 'lga', 'unit') ? excelEntryBar(form) : null,
     r.updatedAt ? h('p', { class: 'muted small' }, `Last saved ${fmtDate(r.updatedAt)}${r.updatedBy ? ' by ' + r.updatedBy : ''}.`) : null,
   );
+}
+
+// A system administrator removes a report (its numbers and its status), e.g. to have it typed in again.
+function deleteReportBtn(form, after) {
+  const b = h('button', { class: 'link danger-link' }, 'Delete this report');
+  b.addEventListener('click', busy(b, async () => {
+    if (!confirm(`Delete the ${form.dataset.name} report of ${form.ou.name} for ${form.periodName}? Its numbers are removed and it no longer counts in the results. This cannot be undone.`)) return;
+    const { data } = await api('DELETE', '/api/entry' + qs({ dataset: form.dataset.id, ou: form.ou.id, period: form.period }));
+    toast('Report deleted'); after(data);
+  }));
+  return b;
 }
 
 // ---------- Excel data-entry template ----------
@@ -917,13 +928,13 @@ async function renderPicture() {
   mount(h('div', {},
     pageHead({
       title: `Results table — ${p.ou.name}, ${p.periodName}`,
-      sub: `${p.dataset.name} · ${byUnit ? `${p.total.unitsReporting} of ${p.total.expectedUnits} schools / facilities reporting` : `${p.total.reportingUnits} of ${p.total.totalUnits} LGAs reporting`} · ${provisional ? 'includes reports not yet accepted' : 'accepted reports only'}`,
+      sub: `${p.dataset.name} · ${byUnit ? `${p.total.unitsReporting} of ${p.total.expectedUnits} schools / facilities reporting` : `${p.total.reportingUnits} of ${p.total.totalUnits} LGAs reporting`} · ${'sent reports'}`,
       text: 'The indicators of one report for one period. The first row is the total for the whole area; then one row per place.',
       how: [
         'Choose the form, the area and the period.',
         'Totals add up the numbers of the places that reported, then recalculate each rate. They never average percentages.',
         'Point at a value to see the two numbers it is calculated from.',
-        'Only accepted reports count, unless you tick “Include reports not yet accepted”.',
+        'Every report counts as soon as it is sent.',
       ],
       actions: [h('button', { onclick: () => window.print() }, 'Print')],
     }),
@@ -936,7 +947,7 @@ async function renderPicture() {
       } })) : null,
       field('Period', select(choices, period, { onchange: (e) => { pref('ppe:' + ds.id, e.target.value); renderPicture(); } })),
       field('Sector', select([{ id: '', name: 'All sectors' }, ...sectors], sector, { onchange: (e) => { pref('sector', e.target.value); renderPicture(); } })),
-      h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: provisional, onchange: (e) => { pref('prov', e.target.checked); renderPicture(); } }), 'Include reports not yet accepted')),
+      false && h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: provisional, onchange: (e) => { pref('prov', e.target.checked); renderPicture(); } }), 'Include reports not yet accepted')),
     p.indicators.length ? null : h('div', { class: 'note info' }, 'No indicators for this selection.'),
     h('h2', {}, 'Indicators'),
     h('p', { class: 'muted small' }, byUnit ? 'Each LGA adds up the numbers of its units that reported; totals then recompute each rate. The reporting rate counts units. Hover a value to see its numerator / denominator.' : 'Totals add up the numerators and denominators of the LGAs that reported, then recompute each rate. Hover a value to see its numerator / denominator.'),
@@ -1002,7 +1013,7 @@ async function renderPivot() {
       field('Columns (across the top)', select([{ id: 'ou', name: 'Places' }, { id: 'dx', name: 'Indicators' }, { id: 'pe', name: 'Periods' }].filter((x) => x.id !== rowsDim), colsDim, { onchange: (e) => setP('cols', e.target.value) })),
       h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: shade, onchange: (e) => setP('shade', e.target.checked) }), 'Shade values'),
       h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: hideEmpty, onchange: (e) => setP('hideEmpty', e.target.checked) }), 'Hide empty rows/columns'),
-      h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: prov, onchange: (e) => setP('prov', e.target.checked) }), 'Include reports not yet accepted')));
+      false && h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: prov, onchange: (e) => setP('prov', e.target.checked) }), 'Include reports not yet accepted')));
   mount(h('div', {},
     pageHead({
       title: is(...ENTRY_ROLES) ? 'Results' : 'Pivot table',
@@ -1078,7 +1089,7 @@ async function renderPivot() {
   status.textContent = all_.skipped.size ? `Not shown for these periods (different reporting frequency): ${[...all_.skipped].join(', ')}.` : '';
   holder.replaceChildren(
     h('div', { class: 'bar' }, dims[filterDim].length ? field(filterNames[filterDim], select(dims[filterDim].map((x) => ({ id: x.id, name: x.name })), filterVal, { onchange: (e) => setP('f.' + filterDim, e.target.value) })) : null, xls,
-      h('span', { class: 'muted small' }, `${rowsList.length} rows × ${colsList.length} columns · ${prov ? 'includes reports not yet accepted' : 'accepted reports only'} · hover a value for numerator / denominator`)),
+      h('span', { class: 'muted small' }, `${rowsList.length} rows × ${colsList.length} columns · ${'sent reports'} · hover a value for numerator / denominator`)),
     rowsList.length && colsList.length ? h('div', { class: 'scroll' }, table) : h('div', { class: 'panel empty' }, 'No data for this selection.'));
 }
 
@@ -1140,7 +1151,7 @@ async function renderExport() {
       h('h3', {}, 'Step 2 · The numbers (data values file)'),
       h('div', { class: 'bar' }, field('Period type', typeSel), field('From', from), field('To', to),
         h('div', { class: 'chips' }, h('span', { class: 'muted small' }, 'Levels:'), ['Country', 'State', 'LGA', 'Units below the LGA (one state)'].map((n, i) => h('label', { class: 'check' }, lv[i], n)))),
-      h('label', { class: 'check' }, prov, 'Include reports not yet accepted'),
+      false && h('label', { class: 'check' }, prov, 'Include reports not yet accepted'),
       h('p', { class: 'muted small' }, 'dataValues_<period>.json — one row per indicator, period and org unit. Periods use DHIS2 codes: 202601, 2026Q1, 2026.'),
       dataBtn),
     tokens,
@@ -2744,11 +2755,11 @@ async function renderAccounts() {
         h('button', { class: 'primary', onclick: () => userDialog(null, roles, m) }, '+ New account')),
       choice('Let many people sign up', 'Make a QR code for an area and sector, and print or share it. People scan it and ask for an account; you approve them here.',
         h('button', { onclick: () => linkDialog(m) }, '+ Registration QR code')),
-      is('sysadmin') ? choice('Add an administrator', 'A System administrator can do everything you can: set-up, users, states in use. A Data set administrator only sets up sectors, forms and indicators, and sees the results.',
+      is('sysadmin') ? choice('Add an administrator', 'A System administrator can do everything you can: set-up, users, states in use. An Administrator adds sectors and indicators and sees the results, but does not manage users.',
         h('button', { onclick: () => userDialog(null, roles, m, 'admin') }, '+ New administrator')) : null),
     linksPanel(links),
     h('details', { class: 'panel roles' }, h('summary', {}, 'What each role can do'),
-      h('table', {}, h('tbody', {}, roles.map((r) => h('tr', {}, h('td', {}, h('strong', {}, r.name)), h('td', { class: 'small' }, ROLE_HELP[r.id] || '')))))),
+      h('table', {}, h('tbody', {}, roles.filter((r) => r.id !== 'viewer').map((r) => h('tr', {}, h('td', {}, h('strong', {}, r.name)), h('td', { class: 'small' }, ROLE_HELP[r.id] || '')))))),
     h('h2', {}, `All users (${users.length})`),
     h('div', { class: 'bar' },
       field('Role', select([{ id: '', name: 'All roles' }, ...roles.filter((r) => users.some((u) => u.role === r.id))], roleFilter, { onchange: (e) => { pref('userRole', e.target.value); renderAccounts(); } })),
@@ -2818,8 +2829,8 @@ async function linkDialog(m) {
     lgaPick.replaceChildren(h('option', { value: '' }, '— whole area —'), ...l.map((x) => h('option', { value: x.id }, x.name)));
   };
   area.addEventListener('change', fillLga); await fillLga();
-  const roleOpts = [{ id: '', name: 'Let them choose' }, { id: 'lga', name: 'LGA data entry' }, { id: 'unit', name: 'Unit data entry (school, facility …)' },
-    ...(is('sysadmin') ? [{ id: 'state', name: 'State officer' }, { id: 'viewer', name: 'Viewer' }] : [])];
+  const roleOpts = [{ id: '', name: 'Let them choose' }, { id: 'lga', name: 'Data entry — LGA' }, { id: 'unit', name: 'Data entry — school / facility' },
+    ...(is('sysadmin') ? [{ id: 'state', name: 'Data entry — state' }] : [])];
   const roleSel = select(roleOpts, is('state') ? 'lga' : '');
   const days = h('input', { type: 'number', min: 1, max: 365, value: 30, size: 5 });
   const sectorPick = select([{ id: '', name: 'Any sector (they choose)' }, ...m.sectors.filter((x) => m.datasets.some((d) => d.sectorId === x.id && !d.shared))], '');
@@ -2977,6 +2988,26 @@ async function userDialog(u, roles, m, presetRole = null) {
   const name = h('input', { value: u ? u.name : '', autocomplete: 'off' });
   const email = h('input', { type: 'email', value: u ? u.email : '', autocomplete: 'off' });
   const roleSel = select(allowedRoles, u ? u.role : presetRole === 'admin' ? 'sysadmin' : (allowedRoles.find((r) => r.id === 'lga') || allowedRoles[0]).id);
+  // Shown as three roles — System administrator, Administrator, Data entry (at a state, an LGA, or a school / facility).
+  const ENTRY = ['state', 'lga', 'unit'];
+  const has = (id) => allowedRoles.some((r) => r.id === id);
+  const kinds = [
+    has('sysadmin') ? { id: 'sysadmin', name: 'System administrator' } : null,
+    has('setupadmin') ? { id: 'setupadmin', name: 'Administrator (adds sectors and indicators)' } : null,
+    ENTRY.some(has) ? { id: 'entry', name: 'Data entry' } : null,
+    has('viewer') && u && u.role === 'viewer' ? { id: 'viewer', name: 'Viewer (only looks at results)' } : null,
+  ].filter(Boolean);
+  const levelNames = { state: 'A state (any of its LGAs)', lga: 'An LGA', unit: 'A school, facility or ward' };
+  const kindSel = select(kinds, ENTRY.includes(roleSel.value) ? 'entry' : roleSel.value);
+  const levelSel = select(ENTRY.filter(has).map((id) => ({ id, name: levelNames[id] })), ENTRY.includes(roleSel.value) ? roleSel.value : 'lga');
+  const levelField = field('Enters data for', levelSel);
+  const syncRole = () => {
+    levelField.hidden = kindSel.value !== 'entry';
+    roleSel.value = kindSel.value === 'entry' ? levelSel.value : kindSel.value;
+    roleSel.dispatchEvent(new Event('change'));
+  };
+  kindSel.addEventListener('change', syncRole); levelSel.addEventListener('change', syncRole);
+  levelField.hidden = kindSel.value !== 'entry';
   const o = await orgs();
   const stateSel = select(o.states, u && u.ou && u.ou.level >= 2 ? null : o.states[0].id);
   const lgaSel = h('select');
@@ -3046,7 +3077,7 @@ async function userDialog(u, roles, m, presetRole = null) {
   const reset = u ? h('button', {}, u.passwordSet ? 'New password link' : 'New invite link') : null;
   const dlg = h('dialog', {},
     h('h2', {}, u ? u.name : presetRole === 'admin' ? 'New administrator' : 'New account'),
-    h('div', { class: 'grid2' }, field('Full name', name), field('Email', email), field('Role', roleSel)),
+    h('div', { class: 'grid2' }, field('Full name', name), field('Email', email), field('Role', kindSel), levelField),
     where,
     h('p', { class: 'muted small role-help' }),
     h('h3', {}, 'Reports this person works on'),

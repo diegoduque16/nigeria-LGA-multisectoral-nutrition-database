@@ -12,10 +12,10 @@ export const LOCK_MS = 15 * 60000;
 export const ROLES = ['sysadmin', 'setupadmin', 'state', 'lga', 'unit', 'viewer'];
 export const ROLE_NAMES = {
   sysadmin: 'System administrator',
-  setupadmin: 'Data set administrator',
-  state: 'State officer',
-  lga: 'LGA data entry',
-  unit: 'Unit data entry (school, facility …)',
+  setupadmin: 'Administrator',
+  state: 'Data entry — state',
+  lga: 'Data entry — LGA',
+  unit: 'Data entry — school / facility',
   viewer: 'Viewer',
 };
 // Org-unit level each role is attached to.

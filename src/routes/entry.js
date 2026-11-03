@@ -279,9 +279,29 @@ export async function submitEntry(request, env, ctx) {
     throw new HttpError(422, 'incomplete', `Every value is needed before submitting (enter 0 if there were none). Missing: ${list}.`, { missing: missing.map((m) => m.name) });
   }
   const t = now();
-  await run(env.DB, "UPDATE reports SET status = 'submitted', submitted_by = ?, submitted_at = ?, version = version + 1 WHERE dataset_id = ? AND ou_id = ? AND period = ?",
-    ctx.user.id, t, ds.id, ou.id, body.period);
+  // No approval step: a sent report counts straight away (a system administrator can delete it).
+  await run(env.DB, "UPDATE reports SET status = 'accepted', submitted_by = ?, submitted_at = ?, reviewed_by = ?, reviewed_at = ?, review_comment = NULL, version = version + 1 WHERE dataset_id = ? AND ou_id = ? AND period = ?",
+    ctx.user.id, t, ctx.user.id, t, ds.id, ou.id, body.period);
   await audit(env.DB, ctx, 'report_submitted', 'report', `${ds.id}/${ou.id}/${body.period}`, { late: t > dueAt(body.period, ds.due_day) });
+  return json(await formFor(env.DB, ctx, ds, ou, body.period));
+}
+
+// DELETE /api/entry?dataset=&ou=&period=  — a system administrator removes a report: its numbers and its status.
+export async function deleteEntry(request, env, ctx) {
+  requireRole(ctx, ['sysadmin']);
+  const q = new URL(request.url).searchParams;
+  const body = validate(v.object(keySchema), { dataset: q.get('dataset') || '', ou: q.get('ou') || '', period: q.get('period') || '' });
+  const ds = await loadDataset(env.DB, body.dataset);
+  const ou = await loadReportingOu(env.DB, ctx, body.ou, ds);
+  const des = `SELECT id FROM data_elements WHERE dataset_id = ?`;
+  const n = await one(env.DB, `SELECT COUNT(*) AS n FROM data_values WHERE ou_id = ? AND period = ? AND de_id IN (${des})`, ou.id, body.period, ds.id);
+  await env.DB.batch([
+    env.DB.prepare(`DELETE FROM data_values WHERE ou_id = ? AND period = ? AND de_id IN (${des})`).bind(ou.id, body.period, ds.id),
+    env.DB.prepare(`DELETE FROM data_value_parts WHERE ou_id = ? AND period = ? AND de_id IN (${des})`).bind(ou.id, body.period, ds.id),
+    env.DB.prepare('DELETE FROM reports WHERE dataset_id = ? AND ou_id = ? AND period = ?').bind(ds.id, ou.id, body.period),
+  ]);
+  if (ds.shared) await recalc(env.DB, ds.id, { ouIds: [ou.id], period: body.period, userId: ctx.user.id });
+  await audit(env.DB, ctx, 'report_deleted', 'report', `${ds.id}/${ou.id}/${body.period}`, { values: n.n });
   return json(await formFor(env.DB, ctx, ds, ou, body.period));
 }
 
@@ -299,6 +319,7 @@ export async function reviewEntry(request, env, ctx) {
   if (!canReview(ctx, ou)) throw new HttpError(403, 'forbidden', 'You cannot review this report.');
   const rep = await reportOf(env.DB, ds.id, ou.id, body.period);
   const status = rep ? rep.status : 'none';
+  if (body.action === 'accept' && status === 'accepted') return json(await formFor(env.DB, ctx, ds, ou, body.period)); // sent reports count already
   if (body.action === 'accept' && status !== 'submitted') throw new HttpError(409, 'bad_status', 'Only a submitted report can be accepted.');
   if (body.action === 'return') {
     if (!['submitted', 'accepted'].includes(status)) throw new HttpError(409, 'bad_status', 'Only a submitted or accepted report can be sent back.');

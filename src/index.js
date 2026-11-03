@@ -88,6 +88,7 @@ const ROUTES = [
   ['GET', '/api/reminders', rem.reminderList, 'session'],
   ['POST', '/api/reminders', rem.sendReminders, 'session'],
   ['PUT', '/api/entry', entry.saveEntry, 'session'],
+  ['DELETE', '/api/entry', entry.deleteEntry, 'session'],
   ['POST', '/api/entry/submit', entry.submitEntry, 'session'],
   ['POST', '/api/entry/review', entry.reviewEntry, 'session'],
   ['GET', '/api/status', entry.reportStatus, 'session'],
