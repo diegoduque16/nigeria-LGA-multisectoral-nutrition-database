@@ -658,7 +658,9 @@ function excelEntryBar(form) {
   dl.addEventListener('click', busy(dl, async () => {
     const t = await get('/api/entry/sheet' + qs({ dataset: ds.id, period: form.period, ou: area }));
     const [{ writeWorkbook }, { entryTemplateSheets, templateFileName }] = await Promise.all([import('./xlsx.js'), import('./template.js')]);
-    saveBlob(writeWorkbook(entryTemplateSheets(t)), templateFileName(t));
+    const save = (rows) => saveBlob(writeWorkbook(entryTemplateSheets({ ...t, rows })), templateFileName(t));
+    if (t.rows.length <= 1) return save(t.rows);
+    templatePicker(t, byUnit, save);
   }));
   const fileIn = h('input', { type: 'file', accept: '.xlsx,.csv', hidden: true });
   fileIn.addEventListener('change', async () => {
@@ -669,6 +671,32 @@ function excelEntryBar(form) {
     h('summary', {}, 'Many places at once? Use an Excel template'),
     h('p', { class: 'muted small' }, `Download a sheet with one row per ${byUnit ? 'unit' : 'LGA'} you report for (${form.periodName}), fill it in — offline if you like — and upload it. The numbers are saved as drafts; you can send the complete ones in the same step.`),
     h('div', { class: 'actions' }, dl, h('button', { onclick: () => fileIn.click() }, 'Upload filled Excel'), fileIn));
+}
+
+// Choose which places go in the Excel template: all ticked to start; Select none, then tick the ones wanted.
+function templatePicker(t, byUnit, save) {
+  const multiLga = new Set(t.rows.map((r) => r.lga)).size > 1;
+  const items = t.rows.map((r) => ({ r, box: h('input', { type: 'checkbox', checked: true }),
+    label: `${r.name}${byUnit && r.ward ? ' · ' + r.ward : ''}${multiLga && byUnit ? ' · ' + r.lga : ''}` }));
+  const count = h('span', { class: 'muted small' });
+  const go_ = h('button', { class: 'primary' });
+  const upd = () => { const n = items.filter((x) => x.box.checked).length; count.textContent = `${n} of ${items.length} ticked`; go_.textContent = `Download (${n})`; go_.disabled = !n; };
+  items.forEach((x) => x.box.addEventListener('change', upd));
+  const rowsEl = items.map((x) => h('label', { class: 'check pick-row' }, x.box, x.label, h('span', { class: 'muted small' }, ` — ${STATUS_PLAIN[x.r.status] || x.r.status}`)));
+  const search = h('input', { type: 'search', placeholder: 'Find by name' });
+  search.addEventListener('input', () => { const q = search.value.trim().toLowerCase(); items.forEach((x, i) => { rowsEl[i].hidden = !!q && !x.label.toLowerCase().includes(q); }); });
+  const setAll = (fn) => () => { items.forEach((x, i) => { if (!rowsEl[i].hidden) x.box.checked = fn(x); }); upd(); };
+  const dlg = h('dialog', { class: 'wide' }, h('h2', {}, 'Which places go in the template?'),
+    h('p', { class: 'muted small' }, `${t.dataset.name} · ${t.periodName}. One row per ${byUnit ? 'place' : 'LGA'} you tick.`),
+    h('div', { class: 'actions' }, search,
+      h('button', { class: 'link', onclick: setAll(() => true) }, 'Select all'),
+      h('button', { class: 'link', onclick: setAll(() => false) }, 'Select none'),
+      h('button', { class: 'link', onclick: setAll((x) => ['none', 'draft', 'returned'].includes(x.r.status)) }, 'Only not sent'), count),
+    h('div', { class: 'pick-list' }, rowsEl),
+    h('div', { class: 'actions' }, go_, h('button', { onclick: () => dlg.close() }, 'Cancel')));
+  dlg.addEventListener('close', () => dlg.remove());
+  go_.addEventListener('click', () => { save(items.filter((x) => x.box.checked).map((x) => x.r)); dlg.close(); });
+  upd(); document.body.append(dlg); dlg.showModal();
 }
 
 async function uploadEntryExcel(file) {

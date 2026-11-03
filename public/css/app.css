@@ -304,3 +304,8 @@ table.glance td { vertical-align: middle; }
 /* Reminder email preview */
 .panel.mail .mail-head { border: 1px solid var(--line); border-bottom: 0; border-radius: 6px 6px 0 0; padding: 10px 14px; background: var(--bg); display: grid; gap: 3px; font-size: .9rem; }
 .panel.mail .mail-body { margin: 0; border: 1px solid var(--line); border-radius: 0 0 6px 6px; padding: 14px; background: #fff; white-space: pre-wrap; font: .92rem/1.5 var(--font); color: var(--ink); }
+
+/* Excel template: choose places */
+.pick-list { max-height: 50vh; overflow: auto; border: 1px solid var(--line); border-radius: 6px; padding: 6px 10px; margin: 10px 0; display: grid; gap: 2px; }
+.pick-row { padding: 3px 0; }
+dialog.wide { width: min(720px, calc(100vw - 32px)); }
