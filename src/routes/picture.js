@@ -88,7 +88,8 @@ function summarize(r, inds, fields) {
     reported: r.reported, expected: r.expected,
     reportingRate: r.reportingRate === null ? null : round(r.reportingRate, 1),
     indicators: Object.fromEntries(inds.map((i) => [i.id, r.reported ? cell(i, r.values) : null])),
-    values: Object.fromEntries(fields.map((f) => [f.id, r.reported ? (r.values[f.id] ?? 0) : null])),
+    // Parts never typed (e.g. reports from before a breakdown was switched on) stay empty, not 0.
+    values: Object.fromEntries(fields.map((f) => [f.id, r.reported ? (r.values[f.id] ?? (f.partOf ? null : 0)) : null])),
   };
 }
 

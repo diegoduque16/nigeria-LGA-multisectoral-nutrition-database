@@ -199,8 +199,14 @@ export async function saveEntry(request, env, ctx) {
     const f = fields.get(deId);
     if (!f) { errors[deId] = 'Unknown field.'; continue; }
     if (!canEnterElement(ctx, deId)) { if ((old[deId] ?? null) !== val) errors[deId] = 'You are not assigned to enter this value.'; continue; }
-    if (val === null || val === '') { if (deId in old) changes.push([deId, null]); continue; }
+    // A broken-down number takes its total from its parts only (e.g. an old template's total column is refused).
+    const split = !touched.has(deId) && partsOf(f, bmap).length;
+    if (val === null || val === '') {
+      if (split && deId in old) { errors[deId] = 'This number is split into parts; type each part instead of the total.'; continue; }
+      if (deId in old) changes.push([deId, null]); continue;
+    }
     const n = typeof val === 'number' ? val : Number(String(val).replace(/,/g, '').trim());
+    if (split && old[deId] !== n) { errors[deId] = 'This number is split into parts; type each part instead of the total (download a new template).'; continue; }
     if (!Number.isFinite(n)) { errors[deId] = 'Enter a number.'; continue; }
     if (f.value_type === 'INTEGER' && !Number.isInteger(n)) { errors[deId] = 'Enter a whole number.'; continue; }
     if (f.min_value !== null && n < f.min_value) { errors[deId] = `Must be at least ${f.min_value}.`; continue; }
