@@ -386,6 +386,69 @@ export async function reportStatus(request, env, ctx) {
   });
 }
 
+// GET /api/status/summary?dataset=&period=&state=  — how many places sent this report, grouped by state (no state
+// given) or by LGA (state given). Places are LGAs, or the schools / facilities for unit-reported data sets.
+export async function statusSummary(request, env, ctx) {
+  const q = new URL(request.url).searchParams;
+  const ds = await loadDataset(env.DB, q.get('dataset') || '');
+  if (!datasetAllowed(ctx, ds.id)) throw new HttpError(403, 'forbidden', 'You are not assigned to this data set.');
+  const period = q.get('period') || lastCompletedPeriod(ds.frequency);
+  checkPeriod(ds, period);
+  const unitLevel = ds.report_level === 4;
+  const stateId = q.get('state') || '';
+  let parent = null;
+  if (stateId) {
+    parent = await one(env.DB, 'SELECT * FROM org_units WHERE id = ? AND level = 2', stateId);
+    if (!parent) throw new HttpError(422, 'invalid', 'Choose a state.', { field: 'state' });
+    if (!inScope(ctx, parent) && !inScope({ ou: parent }, ctx.ou)) throw new HttpError(403, 'out_of_scope', 'That state is outside your area.');
+  }
+  const SENT = "r.status IN ('accepted','submitted')";
+  let rows;
+  if (!stateId) {
+    // One row per active state.
+    if (unitLevel) {
+      const f = unitsOf(ds, 'o');
+      rows = await all(env.DB,
+        `SELECT s.id, s.name, s.path, COUNT(o.id) AS total, SUM(CASE WHEN ${SENT} THEN 1 ELSE 0 END) AS sent,
+                COUNT(DISTINCT l.id) AS groups, COUNT(DISTINCT CASE WHEN ${SENT} THEN l.id END) AS groups_sent
+           FROM org_units s JOIN org_units l ON l.parent_id = s.id AND l.level = 3
+           JOIN org_units o ON o.lga_id = l.id AND o.closed_at IS NULL AND ${f.sql}
+           LEFT JOIN reports r ON r.ou_id = o.id AND r.dataset_id = ? AND r.period = ?
+          WHERE s.level = 2 AND s.inactive = 0 GROUP BY s.id ORDER BY s.name`, ...f.args, ds.id, period);
+    } else {
+      rows = await all(env.DB,
+        `SELECT s.id, s.name, s.path, COUNT(o.id) AS total, SUM(CASE WHEN ${SENT} THEN 1 ELSE 0 END) AS sent
+           FROM org_units s JOIN org_units o ON o.parent_id = s.id AND o.level = 3 AND o.closed_at IS NULL
+           LEFT JOIN reports r ON r.ou_id = o.id AND r.dataset_id = ? AND r.period = ?
+          WHERE s.level = 2 AND s.inactive = 0 GROUP BY s.id ORDER BY s.name`, ds.id, period);
+    }
+  } else if (unitLevel) {
+    // One row per LGA of the state, counting its schools / facilities.
+    const f = unitsOf(ds, 'o');
+    rows = await all(env.DB,
+      `SELECT l.id, l.name, l.path, COUNT(o.id) AS total, SUM(CASE WHEN ${SENT} THEN 1 ELSE 0 END) AS sent
+         FROM org_units l LEFT JOIN org_units o ON o.lga_id = l.id AND o.closed_at IS NULL AND ${f.sql}
+         LEFT JOIN reports r ON r.ou_id = o.id AND r.dataset_id = ? AND r.period = ?
+        WHERE l.parent_id = ? AND l.level = 3 AND l.closed_at IS NULL GROUP BY l.id ORDER BY l.name`, ...f.args, ds.id, period, stateId);
+  } else {
+    throw new HttpError(422, 'invalid', 'This report is sent by LGAs: open the state to see each LGA.');
+  }
+  const visible = rows.filter((r) => inScope(ctx, r) || inScope({ ou: r }, ctx.ou));
+  const out = visible.map((r) => ({
+    id: r.id, name: r.name, total: r.total || 0, sent: r.sent || 0,
+    percent: r.total ? Math.round((100 * (r.sent || 0)) / r.total) : null,
+    ...(r.groups !== undefined ? { lgas: r.groups, lgasSent: r.groups_sent || 0 } : {}),
+  }));
+  const total = out.reduce((a, r) => a + r.total, 0); const sent = out.reduce((a, r) => a + r.sent, 0);
+  return json({
+    dataset: { id: ds.id, name: ds.name, frequency: ds.frequency, reportLevel: unitLevel ? 'UNIT' : 'LGA' },
+    groupBy: stateId ? 'lga' : 'state', state: parent ? { id: parent.id, name: parent.name } : null,
+    period, periodName: periodName(period), due: dueAt(period, ds.due_day),
+    periods: recentPeriods(ds.frequency, 12).map((p) => ({ id: p, name: periodName(p) })),
+    total, sent, percent: total ? Math.round((100 * sent) / total) : null, rows: out,
+  });
+}
+
 // GET /api/entry/sheet?dataset=&period=&ou=  — for the Excel data-entry template: every place the caller can report
 // for on this data set (LGAs, or units below the LGA) inside ou, with the values already saved and the report status.
 export async function entrySheet(request, env, ctx) {

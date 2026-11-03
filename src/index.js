@@ -92,6 +92,7 @@ const ROUTES = [
   ['POST', '/api/entry/submit', entry.submitEntry, 'session'],
   ['POST', '/api/entry/review', entry.reviewEntry, 'session'],
   ['GET', '/api/status', entry.reportStatus, 'session'],
+  ['GET', '/api/status/summary', entry.statusSummary, 'session'],
 
   ['GET', '/api/picture', pic.picture, 'session'],
   ['GET', '/api/pivot', pv.pivot, 'session'],

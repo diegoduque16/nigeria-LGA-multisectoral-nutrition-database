@@ -286,3 +286,11 @@ tr.parent td { border-bottom: 0; }
 tr.part td { border-bottom: 0; padding-top: .2rem; padding-bottom: .2rem; }
 .bd-opts { display: flex; flex-wrap: wrap; gap: .3rem; }
 .bd-opts span { background: #eef2f0; border-radius: 999px; padding: .1rem .55rem; font-size: .82rem; }
+
+/* "Who has sent" drill-down */
+.crumbs { margin: 4px 0 12px; font-size: 15px; }
+.crumbs a { text-decoration: none; }
+.pcell { white-space: nowrap; min-width: 150px; }
+.pcell .n { display: inline-block; width: 42px; margin-left: 8px; }
+.pbar { display: inline-block; vertical-align: middle; width: 100px; height: 8px; border-radius: 4px; background: var(--line, #e3e6ea); overflow: hidden; }
+.pbar span { display: block; height: 100%; background: var(--ok, #2e7d4f); }

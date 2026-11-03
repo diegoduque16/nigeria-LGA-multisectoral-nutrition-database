@@ -818,6 +818,8 @@ function reviewControls(form, after) {
 }
 
 // ---------- review (status of every LGA) ----------
+// "Who has sent": a drill-down. Whole country → one row per state (% sent); a state → its LGAs; for reports sent by
+// schools / facilities, an LGA → each school / facility. State and LGA users start at their own level.
 async function renderReview() {
   const sets = myDatasets();
   if (!sets.length) return mount(noDatasets());
@@ -826,46 +828,87 @@ async function renderReview() {
   if (!usable.length) return mount(h('div', { class: 'note info' }, 'None of your reports come from schools or facilities.'));
   const ds = usable.find((d) => d.id === pref('ds')) || usable[0];
   const byUnit = ds.reportLevel === 'UNIT';
-  const sp = ['state', 'lga'].includes(role()) ? { value: state.me.ou.path ? state.me.ou.path.split('/')[2] : state.me.ou.id } : await pickState(pref('state'), (v) => { pref('state', v); pref('rlga', ''); renderReview(); });
+  const national = state.me.ou.level === 1;
+  const myState = ['state', 'lga'].includes(role()) ? (state.me.ou.path ? state.me.ou.path.split('/')[2] : state.me.ou.id) : '';
+  const o = national ? await orgs() : null;
+  const states = o ? o.states.filter((x) => x.active !== false) : [];
+  // Where we are in the drill-down.
+  let stateId = myState || (states.some((x) => x.id === pref('rstate')) ? pref('rstate') : '');
+  if (national && states.length === 1) stateId = states[0].id;
+  const lgaId = byUnit ? (role() === 'lga' ? '' : pref('rlga') || '') : '';
   const period = pref('pe:' + ds.id);
-  const lgaFilter = byUnit && role() !== 'lga' ? pref('rlga') || '' : '';
-  const params = { dataset: ds.id, state: sp.value, lga: lgaFilter, period };
-  const st = await get('/api/status' + qs(params)).catch(async (e) => {
-    if (e.body && e.body.error && e.body.error.field === 'period') { pref('pe:' + ds.id, null); return get('/api/status' + qs({ ...params, period: undefined })); } throw e;
+  const retry = (url, params) => get(url + qs(params)).catch((e) => {
+    if (e.body && e.body.error && e.body.error.field === 'period') { pref('pe:' + ds.id, null); return get(url + qs({ ...params, period: undefined })); } throw e;
   });
+  const goState = (id) => { pref('rstate', id); pref('rlga', ''); renderReview(); };
+  const goLga = (id) => { pref('rlga', id); renderReview(); };
+  // Which view: 'states' (country), 'lgas' (a state, unit report), 'list' (LGAs of a state, or units).
+  const view = !stateId ? 'states' : byUnit && !lgaId && role() !== 'lga' ? 'lgas' : 'list';
+  const st = view === 'list'
+    ? await retry('/api/status', { dataset: ds.id, state: stateId, lga: lgaId, period })
+    : await retry('/api/status/summary', { dataset: ds.id, state: view === 'lgas' ? stateId : undefined, period });
   await meta();
+  const what = byUnit ? 'schools / facilities' : 'LGAs';
+  const stateName = st.state ? st.state.name : '';
+  const lgaName = lgaId && st.lgaOptions ? (st.lgaOptions.find((l) => l.id === lgaId) || {}).name : '';
+  // Breadcrumb.
+  const crumbs = [];
+  if (national && states.length > 1) crumbs.push(view === 'states' ? h('strong', {}, 'All states') : h('a', { href: '#/review', onclick: (e) => { e.preventDefault(); goState(''); } }, 'All states'));
+  if (stateId) crumbs.push(view === 'lgas' || !byUnit ? h('strong', {}, stateName) : role() === 'lga' ? h('strong', {}, state.me.ou.name) : h('a', { href: '#/review', onclick: (e) => { e.preventDefault(); goLga(''); } }, stateName));
+  if (lgaId) crumbs.push(h('strong', {}, lgaName || 'LGA'));
+  const crumbBar = crumbs.length > 1 ? h('div', { class: 'crumbs' }, crumbs.flatMap((c, i) => (i ? [h('span', { class: 'muted' }, ' › '), c] : [c]))) : null;
+  const bar = (pct) => { const fill = h('span', {}); fill.style.width = `${pct || 0}%`; return h('div', { class: 'pbar' }, fill); };
+  const pctCell = (r) => h('td', { class: 'pcell' }, bar(r.percent), h('span', { class: 'n' }, r.percent == null ? '—' : `${r.percent}%`));
+  const head = pageHead({
+    title: role() === 'lga' ? 'School / facility reports' : 'Who has sent',
+    sub: `${view === 'states' ? 'All states' : role() === 'lga' ? state.me.ou.name : lgaName ? `${lgaName}, ${stateName}` : stateName} · ${st.dataset.name} · ${st.periodName} · due ${fmtDay(st.due)}`,
+    text: `How many ${what} have sent this report. A report counts as soon as it is sent.`,
+    how: [
+      'Choose the report and the period at the top.',
+      national ? 'Start with the states. Click a state to see its LGAs' + (byUnit ? ', then an LGA to see each school / facility.' : '.') : byUnit && role() !== 'lga' ? 'Click an LGA to see each school / facility.' : 'Those not sent yet are at the top.',
+      'In the full list, click one not sent yet to type it in on their behalf, or use Send reminders. To correct a sent report, a system administrator deletes it and it is typed in again.',
+    ],
+  });
+  const filters = h('div', { class: 'bar' },
+    field('Report', select(usable.map((d) => ({ id: d.id, name: dsLabel(d) })), ds.id, { onchange: (e) => { pref('ds', e.target.value); pref('rlga', ''); renderReview(); } })),
+    field(periodWord(ds.frequency), select(st.periods, st.period, { onchange: (e) => { pref('pe:' + ds.id, e.target.value); renderReview(); } })));
+
+  if (view !== 'list') {
+    // Summary table: states, or the LGAs of one state.
+    const unitsWord = byUnit ? 'Schools / facilities' : 'LGAs';
+    const rows = st.rows;
+    const note = h('div', { class: 'note ' + (st.sent < st.total ? 'warn' : 'ok') }, h('strong', {}, `${st.percent == null ? '—' : st.percent + '%'} reported: `),
+      `${st.sent} of ${st.total} ${what} have sent${view === 'states' ? ` across ${rows.length} state${rows.length === 1 ? '' : 's'}` : ` in ${stateName}`}.`);
+    const table = rows.length ? h('div', { class: 'scroll' }, h('table', { class: 'summary' },
+      h('thead', {}, h('tr', {}, h('th', {}, view === 'states' ? 'State' : 'LGA'),
+        view === 'states' && byUnit ? h('th', { class: 'n' }, 'LGAs with a report') : null,
+        h('th', { class: 'n' }, unitsWord), h('th', { class: 'n' }, 'Sent'), h('th', { class: 'n' }, 'Not sent'), h('th', {}, '% reported'), h('th', {}, ''))),
+      h('tbody', {}, rows.map((r) => h('tr', { class: r.total ? 'click' : '', onclick: r.total ? () => (view === 'states' ? goState(r.id) : goLga(r.id)) : null },
+        h('td', {}, r.name),
+        view === 'states' && byUnit ? h('td', { class: 'n' }, `${r.lgasSent} of ${r.lgas}`) : null,
+        h('td', { class: 'n' }, r.total), h('td', { class: 'n' }, r.sent), h('td', { class: 'n' }, r.total - r.sent), pctCell(r),
+        h('td', { class: 'n' }, r.total ? h('button', {}, 'Open ›') : h('span', { class: 'muted small' }, byUnit ? 'none listed' : '')))))))
+      : h('div', { class: 'panel empty' }, view === 'states' ? 'No states are in use yet.' : 'No LGAs.');
+    return mount(h('div', {}, head, filters, crumbBar, note, table));
+  }
+
+  // Full list: each LGA, or each school / facility.
   const open = (l) => {
-    pref('ds', ds.id); pref('state', sp.value); pref('pe:' + ds.id, st.period);
+    pref('ds', ds.id); pref('state', stateId); pref('pe:' + ds.id, st.period);
     if (byUnit) { pref('lga', l.lgaId); pref('unit', l.id); } else pref('lga', l.id);
     go('#/entry');
   };
-  const what = byUnit ? 'schools / facilities' : 'LGAs';
   const order = { none: 0, draft: 1, returned: 2, submitted: 3, accepted: 3 };
   const list = [...st.lgas].sort((a, b) => order[a.status] - order[b.status] || a.name.localeCompare(b.name));
-  const todo = { submitted: 'Sent', returned: 'Not sent', draft: 'Being typed in', none: 'Not started yet', accepted: 'Sent' };
   const sent = st.counts.accepted + st.counts.submitted;
+  const pct = st.total ? Math.round((100 * sent) / st.total) : null;
   const summary = `${sent} sent · ${st.total - sent} not sent yet${st.counts.draft ? ` (${st.counts.draft} being typed in)` : ''}`;
-  mount(h('div', {},
-    pageHead({
-      title: role() === 'lga' ? 'School / facility reports' : 'Who has sent',
-      sub: `${role() === 'lga' ? state.me.ou.name : st.state.name} · ${st.dataset.name} · ${st.periodName} · due ${fmtDay(st.due)}`,
-      text: `Which ${byUnit ? 'schools / facilities' : 'LGAs'} have sent this report, and which have not. A report counts as soon as it is sent.`,
-      how: [
-        'Choose the report and the period at the top.',
-        'Those not sent yet are at the top. Click one to type it in on their behalf, or use Send reminders.',
-        'Click a sent one to see its numbers. To correct a sent report, a system administrator deletes it and it is typed in again.',
-      ],
-    }),
-    h('div', { class: 'bar' },
-      field('Report', select(usable.map((d) => ({ id: d.id, name: dsLabel(d) })), ds.id, { onchange: (e) => { pref('ds', e.target.value); renderReview(); } })),
-      role() === 'state' || role() === 'lga' ? null : sp.el,
-      byUnit && role() !== 'lga' ? field('LGA', select([{ id: '', name: 'All LGAs' }, ...st.lgaOptions], lgaFilter, { onchange: (e) => { pref('rlga', e.target.value); renderReview(); } })) : null,
-      field(periodWord(ds.frequency), select(st.periods, st.period, { onchange: (e) => { pref('pe:' + ds.id, e.target.value); renderReview(); } }))),
-    h('div', { class: 'note ' + (sent < st.total ? 'warn' : 'ok') }, h('strong', {}, `${st.total} ${what}: `), summary),
+  mount(h('div', {}, head, filters, crumbBar,
+    h('div', { class: 'note ' + (sent < st.total ? 'warn' : 'ok') }, h('strong', {}, `${pct == null ? '—' : pct + '%'} reported · ${st.total} ${what}: `), summary),
     list.length ? h('div', { class: 'scroll' }, h('table', {},
-      h('thead', {}, h('tr', {}, byUnit ? h('th', {}, 'LGA') : null, h('th', {}, byUnit ? 'School / facility' : 'LGA'), h('th', {}, 'Status'), h('th', {}, 'Sent on'), h('th', {}, ''))),
+      h('thead', {}, h('tr', {}, byUnit && !lgaId ? h('th', {}, 'LGA') : null, h('th', {}, byUnit ? 'School / facility' : 'LGA'), h('th', {}, 'Status'), h('th', {}, 'Sent on'), h('th', {}, ''))),
       h('tbody', {}, list.map((l) => h('tr', { class: 'click', onclick: () => open(l) },
-        byUnit ? h('td', { class: 'small' }, l.lgaName) : null,
+        byUnit && !lgaId ? h('td', { class: 'small' }, l.lgaName) : null,
         h('td', {}, l.name, l.type ? h('span', { class: 'muted small' }, ` · ${l.type}`) : null), h('td', {}, pill(l.status, STATUS_PLAIN[l.status]), l.late ? h('span', { class: 'late' }, 'Late') : null),
         h('td', {}, fmtDate(l.submittedAt)),
         h('td', { class: 'n' }, ['submitted', 'accepted'].includes(l.status) ? h('button', {}, 'View') : h('button', { class: 'primary' }, 'Type it in')))))))

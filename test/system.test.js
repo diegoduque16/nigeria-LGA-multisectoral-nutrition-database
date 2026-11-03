@@ -152,6 +152,12 @@ test('state review, state picture (sum counts, recompute rates) and coverage', a
   const st = (await state.c.get(`/api/status?dataset=${dsId}&period=${period}`)).data;
   assert.equal(st.total, 17);
   assert.equal(st.counts.accepted, 3);
+  // State-level summary: % of LGAs that reported, per state; a state user sees only their state.
+  const sumAll = (await admin.get(`/api/status/summary?dataset=${dsId}&period=${period}`)).data;
+  const abia = sumAll.rows.find((r) => r.id === ABIA);
+  assert.equal(sumAll.groupBy, 'state'); assert.equal(abia.total, 17); assert.equal(abia.sent, 3); assert.equal(abia.percent, 18);
+  const sumState = (await state.c.get(`/api/status/summary?dataset=${dsId}&period=${period}`)).data;
+  assert.deepEqual(sumState.rows.map((r) => r.id), [ABIA]);
   // A sent report is locked for the LGA; only a system administrator can delete it.
   assert.equal((await lgaC.c.put('/api/entry', { dataset: dsId, ou: AROCHUKWU, period, values: { [den]: 50 } })).status, 409);
   const del = `/api/entry?dataset=${dsId}&ou=${AROCHUKWU}&period=${period}`;
@@ -446,6 +452,12 @@ test('reporting by facilities under wards: chosen unit types report and add up t
   const st = (await admin.get(`/api/status?dataset=${ds.id}&state=${ABIA}&lga=${ABA_NORTH}&period=${year}`)).data;
   assert.equal(st.total, 2);
   assert.equal(st.lgas.find((u) => u.id === 'FacA0000001').ward, 'Ward 1');
+  // Drill-down by LGA for unit reports.
+  const byLga = (await admin.get(`/api/status/summary?dataset=${ds.id}&state=${ABIA}&period=${year}`)).data;
+  const anRow = byLga.rows.find((r) => r.id === ABA_NORTH);
+  assert.equal(byLga.groupBy, 'lga'); assert.equal(anRow.sent, 2); assert.equal(anRow.percent, 100);
+  const byState = (await admin.get(`/api/status/summary?dataset=${ds.id}&period=${year}`)).data.rows.find((r) => r.id === ABIA);
+  assert.equal(byState.lgasSent, 1);
   const pic = (await admin.get(`/api/picture?dataset=${ds.id}&ou=${ABIA}&period=${year}`)).data;
   const an = pic.rows.find((r) => r.id === ABA_NORTH);
   assert.equal(an.values[fid], 42); assert.equal(an.unitsReporting, 2); assert.equal(an.expectedUnits, 2);
