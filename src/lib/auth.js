@@ -9,17 +9,18 @@ export const COOKIE = 'lga_session';
 export const MAX_FAILED = 5;
 export const LOCK_MS = 15 * 60000;
 
-export const ROLES = ['sysadmin', 'setupadmin', 'state', 'lga', 'unit', 'viewer'];
+export const ROLES = ['sysadmin', 'setupadmin', 'national', 'state', 'lga', 'unit', 'viewer'];
 export const ROLE_NAMES = {
   sysadmin: 'System administrator',
   setupadmin: 'Administrator',
+  national: 'Data entry — national',
   state: 'Data entry — state',
   lga: 'Data entry — LGA',
   unit: 'Data entry — school / facility',
   viewer: 'Viewer',
 };
 // Org-unit level each role is attached to.
-export const ROLE_LEVEL = { sysadmin: 1, setupadmin: 1, state: 2, lga: 3, unit: 4, viewer: null };
+export const ROLE_LEVEL = { sysadmin: 1, setupadmin: 1, national: 1, state: 2, lga: 3, unit: 4, viewer: null };
 
 export function checkPasswordStrength(pw) {
   if (typeof pw !== 'string' || pw.length < 10) throw new HttpError(422, 'weak_password', 'Password must be at least 10 characters.');

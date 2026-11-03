@@ -878,3 +878,24 @@ test('population per ward: rows named by LGA and ward are matched to the wards l
   const v = await env.DB.prepare('SELECT value FROM data_values WHERE de_id = ? AND ou_id = ? AND period = ?').bind(total, 'WardUmuog01', '2026').first();
   assert.equal(v.value, 20000);
 });
+
+test('national data entry: types in for any state, sees all results, manages state/LGA accounts only', async () => {
+  const env = makeEnv();
+  const admin = await setupAdmin(env);
+  const ds = (await admin.post('/api/datasets', { name: 'Health – yearly', sector: 'Health', frequency: 'YEARLY' })).data;
+  await admin.post(`/api/datasets/${ds.id}/indicators`, { name: 'SAM cure rate', numerator: 'SAM cured', denominator: 'SAM discharged', source: 'CMAM', showAs: 'percent' });
+  const nat = await addUser(env, admin, { name: 'Federal desk', email: 'fed@example.ng', role: 'national', ouId: NIGERIA });
+  const year = String(new Date().getFullYear() - 1);
+  for (const [ou, a, b] of [[ABA_NORTH, 8, 10], ['agAcarLl8in', 3, 4]]) {
+    const form = (await nat.c.get(`/api/entry?dataset=${ds.id}&ou=${ou}&period=${year}`)).data;
+    const [f1, f2] = form.fields.map((f) => f.id);
+    assert.equal((await nat.c.put('/api/entry', { dataset: ds.id, ou, period: year, values: { [f1]: a, [f2]: b } })).status, 200);
+    assert.equal((await nat.c.post('/api/entry/submit', { dataset: ds.id, ou, period: year })).data.report.status, 'accepted');
+  }
+  const pic = (await nat.c.get(`/api/picture?dataset=${ds.id}&ou=${NIGERIA}&period=${year}`)).data;
+  assert.equal(Object.values(pic.total.indicators)[0].value, Math.round((11 / 14) * 1000) / 10);
+  // May add state data entry, not administrators; cannot delete reports.
+  assert.equal((await nat.c.post('/api/users', { name: 'S', email: 's@abia.ng', role: 'state', ouId: ABIA, datasets: [], dataElements: [] })).status, 201);
+  assert.equal((await nat.c.post('/api/users', { name: 'X', email: 'x@x.ng', role: 'setupadmin', ouId: NIGERIA, datasets: [], dataElements: [] })).status, 403);
+  assert.equal((await nat.c.del(`/api/entry?dataset=${ds.id}&ou=${ABA_NORTH}&period=${year}`)).status, 403);
+});

@@ -112,7 +112,7 @@ const is = (...roles) => roles.includes(role());
 
 // Pages are grouped by what people do. Data entry accounts (LGA, unit) get a short, simple menu;
 // everyone else gets a side menu with Reporting / Results / Set-up / People.
-const ALL = ['sysadmin', 'setupadmin', 'state', 'lga', 'unit', 'viewer'];
+const ALL = ['sysadmin', 'setupadmin', 'national', 'state', 'lga', 'unit', 'viewer'];
 const ENTRY_ROLES = ['lga', 'unit'];
 // Day-to-day work first; the two administration areas (Set-up, Users & access) sit apart in their own shaded block.
 const GROUPS = [
@@ -126,18 +126,18 @@ const PAGES = [
   { id: 'home', name: () => (is(...ENTRY_ROLES) ? 'My reports' : 'Home'), short: 'What needs doing now', roles: ALL, desc: 'Start here: what needs doing and where to find everything.' },
   { id: 'review', group: 'report', name: () => (is('lga') ? 'Check school reports' : 'Approve reports'), short: 'Accept or send back what was sent', roles: ['sysadmin', 'state', 'lga'], nav: () => false,
     desc: () => (is('lga') ? 'Your schools / facilities send their reports to you. Check each one: Accept it (it then counts) or Send it back with a note.' : 'When an LGA presses Send, its report waits here. Check each one: Accept it (it then counts in the results) or Send it back with a note saying what to correct.') },
-  { id: 'reminders', group: 'report', name: 'Send reminders', short: 'Email those who have not sent', roles: ['sysadmin', 'state'], desc: 'Remind the people whose report is not sent yet: an email with their Excel template attached and a link to upload it.' },
-  { id: 'upload', name: 'Upload a report', roles: ['sysadmin', 'state', 'lga', 'unit'], nav: () => false, desc: 'Upload a filled Excel template.' },
-  { id: 'entry', group: 'report', name: 'Type in a report', short: 'On behalf of an LGA', roles: ['sysadmin', 'state', 'lga', 'unit'], nav: () => !is(...ENTRY_ROLES), desc: 'Type in the numbers of a report for an LGA that cannot do it themselves, and send it.' },
-  { id: 'picture', group: 'results', name: 'Results table', short: 'One report, one period', roles: ['sysadmin', 'setupadmin', 'state', 'viewer'], desc: 'The indicators of one report for one period, with a row per state, LGA or school / facility.' },
-  { id: 'pivot', group: 'results', name: () => (is(...ENTRY_ROLES) ? 'Results' : 'Compare over time'), short: 'Places × indicators × periods', roles: ['sysadmin', 'setupadmin', 'state', 'lga', 'viewer'], desc: 'Compare indicators across places and periods (a pivot table), and download it to Excel.' },
-  { id: 'export', group: 'results', name: 'Export to scorecard', short: 'The two JSON files', roles: ['sysadmin', 'setupadmin', 'state', 'viewer'], desc: 'Download the two JSON files that the scorecard platform reads.' },
+  { id: 'reminders', group: 'report', name: 'Send reminders', short: 'Email those who have not sent', roles: ['sysadmin', 'national', 'state'], desc: 'Remind the people whose report is not sent yet: an email with their Excel template attached and a link to upload it.' },
+  { id: 'upload', name: 'Upload a report', roles: ['sysadmin', 'national', 'state', 'lga', 'unit'], nav: () => false, desc: 'Upload a filled Excel template.' },
+  { id: 'entry', group: 'report', name: 'Type in a report', short: 'On behalf of an LGA', roles: ['sysadmin', 'national', 'state', 'lga', 'unit'], nav: () => !is(...ENTRY_ROLES), desc: 'Type in the numbers of a report for an LGA that cannot do it themselves, and send it.' },
+  { id: 'picture', group: 'results', name: 'Results table', short: 'One report, one period', roles: ['sysadmin', 'setupadmin', 'national', 'state', 'viewer'], desc: 'The indicators of one report for one period, with a row per state, LGA or school / facility.' },
+  { id: 'pivot', group: 'results', name: () => (is(...ENTRY_ROLES) ? 'Results' : 'Compare over time'), short: 'Places × indicators × periods', roles: ['sysadmin', 'setupadmin', 'national', 'state', 'lga', 'viewer'], desc: 'Compare indicators across places and periods (a pivot table), and download it to Excel.' },
+  { id: 'export', group: 'results', name: 'Export to scorecard', short: 'The two JSON files', roles: ['sysadmin', 'setupadmin', 'national', 'state', 'viewer'], desc: 'Download the two JSON files that the scorecard platform reads.' },
   { id: 'setup', group: 'setup', name: 'Sectors & indicators', short: 'Add a sector and its indicators', roles: ['sysadmin', 'setupadmin'], desc: 'Add a sector (Health, Education …), how often it reports, and its indicators.' },
   { id: 'dictionary', group: 'setup', name: 'Indicator dictionary', short: 'Shared definitions and codes', roles: ['sysadmin', 'setupadmin'], nav: () => false, desc: 'One definition per indicator — code, calculation, source, framework — shared by every sector that reports it.' },
   { id: 'population', group: 'setup', name: 'Population figures', short: 'Yearly denominators', roles: ['sysadmin', 'setupadmin'], desc: 'Yearly numbers per LGA that indicators divide by: population, under-5s, expected pregnancies …' },
-  { id: 'units', group: 'setup', name: 'Units below the LGA', short: 'Child org units: facilities, schools …', roles: ['sysadmin', 'setupadmin', 'state'], desc: 'The child org units of each LGA (DHIS2 level 4) that a sector reports on: health facilities, schools, water points, markets … Set them up per sector.' },
+  { id: 'units', group: 'setup', name: 'Units below the LGA', short: 'Child org units: facilities, schools …', roles: ['sysadmin', 'setupadmin', 'national', 'state'], desc: 'The child org units of each LGA (DHIS2 level 4) that a sector reports on: health facilities, schools, water points, markets … Set them up per sector.' },
   { id: 'rollout', group: 'setup', name: 'States in use', short: 'Which states take part', roles: ['sysadmin'], desc: 'Choose which states use the system. The others are hidden everywhere.' },
-  { id: 'accounts', group: 'people', name: 'Users', short: 'Accounts, sign-up requests, QR codes', roles: ['sysadmin', 'state'], desc: 'Create accounts, approve sign-up requests and share registration QR codes.' },
+  { id: 'accounts', group: 'people', name: 'Users', short: 'Accounts, sign-up requests, QR codes', roles: ['sysadmin', 'national', 'state'], desc: 'Create accounts, approve sign-up requests and share registration QR codes.' },
   { id: 'audit', group: 'people', name: 'Activity log', short: 'Who did what, when', roles: ['sysadmin'], desc: 'Who signed in, changed, sent, approved or downloaded what, and when.' },
 ];
 const pageDesc = (p) => (typeof p.desc === 'function' ? p.desc() : p.desc);
@@ -145,6 +145,7 @@ const pageName = (p) => (typeof p.name === 'function' ? p.name() : p.name);
 const ROLE_HELP = {
   sysadmin: 'Full control: sets up sectors and indicators, chooses the states in use, manages every user, and sees everything.',
   setupadmin: 'Adds sectors and indicators, sets up the population figures, and sees all results. Does not manage users.',
+  national: 'Data entry for the whole country: can type in a report for any state’s LGAs, sees all results, and manages state, LGA and school data-entry accounts.',
   state: 'Data entry for a whole state: can type in a report for any of its LGAs, sees the state’s results and manages LGA accounts there.',
   lga: 'Types in and sends the reports of one LGA (and of its schools / facilities, if a sector reports by unit).',
   unit: 'Types in and sends the reports of one school, health facility or other unit.',
@@ -2830,7 +2831,7 @@ async function linkDialog(m) {
   };
   area.addEventListener('change', fillLga); await fillLga();
   const roleOpts = [{ id: '', name: 'Let them choose' }, { id: 'lga', name: 'Data entry — LGA' }, { id: 'unit', name: 'Data entry — school / facility' },
-    ...(is('sysadmin') ? [{ id: 'state', name: 'Data entry — state' }] : [])];
+    ...(is('sysadmin', 'national') ? [{ id: 'state', name: 'Data entry — state' }] : [])];
   const roleSel = select(roleOpts, is('state') ? 'lga' : '');
   const days = h('input', { type: 'number', min: 1, max: 365, value: 30, size: 5 });
   const sectorPick = select([{ id: '', name: 'Any sector (they choose)' }, ...m.sectors.filter((x) => m.datasets.some((d) => d.sectorId === x.id && !d.shared))], '');
@@ -2983,13 +2984,13 @@ function assignedText(u, m) {
 }
 
 async function userDialog(u, roles, m, presetRole = null) {
-  const allowedRoles = (is('sysadmin') ? roles : roles.filter((r) => ['lga', 'unit'].includes(r.id)))
+  const allowedRoles = (is('sysadmin') ? roles : is('national') ? roles.filter((r) => ['state', 'lga', 'unit'].includes(r.id)) : roles.filter((r) => ['lga', 'unit'].includes(r.id)))
     .filter((r) => presetRole !== 'admin' || ['sysadmin', 'setupadmin'].includes(r.id));
   const name = h('input', { value: u ? u.name : '', autocomplete: 'off' });
   const email = h('input', { type: 'email', value: u ? u.email : '', autocomplete: 'off' });
   const roleSel = select(allowedRoles, u ? u.role : presetRole === 'admin' ? 'sysadmin' : (allowedRoles.find((r) => r.id === 'lga') || allowedRoles[0]).id);
   // Shown as three roles — System administrator, Administrator, Data entry (at a state, an LGA, or a school / facility).
-  const ENTRY = ['state', 'lga', 'unit'];
+  const ENTRY = ['national', 'state', 'lga', 'unit'];
   const has = (id) => allowedRoles.some((r) => r.id === id);
   const kinds = [
     has('sysadmin') ? { id: 'sysadmin', name: 'System administrator' } : null,
@@ -2997,7 +2998,7 @@ async function userDialog(u, roles, m, presetRole = null) {
     ENTRY.some(has) ? { id: 'entry', name: 'Data entry' } : null,
     has('viewer') && u && u.role === 'viewer' ? { id: 'viewer', name: 'Viewer (only looks at results)' } : null,
   ].filter(Boolean);
-  const levelNames = { state: 'A state (any of its LGAs)', lga: 'An LGA', unit: 'A school, facility or ward' };
+  const levelNames = { national: 'The whole country (any state)', state: 'A state (any of its LGAs)', lga: 'An LGA', unit: 'A school, facility or ward' };
   const kindSel = select(kinds, ENTRY.includes(roleSel.value) ? 'entry' : roleSel.value);
   const levelSel = select(ENTRY.filter(has).map((id) => ({ id, name: levelNames[id] })), ENTRY.includes(roleSel.value) ? roleSel.value : 'lga');
   const levelField = field('Enters data for', levelSel);

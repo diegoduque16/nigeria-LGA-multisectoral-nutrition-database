@@ -21,7 +21,7 @@ async function manageableSectors(db, ctx) {
   return sectors.filter((s) => mine.has(s.id));
 }
 function requireManager(ctx) {
-  if (!['sysadmin', 'setupadmin', 'state'].includes(ctx.role) || ctx.apiToken) {
+  if (!['sysadmin', 'setupadmin', 'national', 'state'].includes(ctx.role) || ctx.apiToken) {
     throw new HttpError(403, 'forbidden', 'Only administrators and state officers can manage units below the LGA.');
   }
 }

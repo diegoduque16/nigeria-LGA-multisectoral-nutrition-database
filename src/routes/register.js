@@ -27,7 +27,7 @@ const linkOut = async (db, l, request) => {
 };
 
 export async function listLinks(request, env, ctx) {
-  requireRole(ctx, ['sysadmin', 'state']);
+  requireRole(ctx, ['sysadmin', 'national', 'state']);
   const rows = await all(env.DB, 'SELECT l.*, o.path FROM registration_links l JOIN org_units o ON o.id = l.ou_id ORDER BY l.created_at DESC LIMIT 200');
   const out = [];
   for (const l of rows) if (inScope(ctx, l)) out.push(await linkOut(env.DB, l, request));
@@ -35,7 +35,7 @@ export async function listLinks(request, env, ctx) {
 }
 
 export async function createLink(request, env, ctx) {
-  requireRole(ctx, ['sysadmin', 'state']);
+  requireRole(ctx, ['sysadmin', 'national', 'state']);
   const body = validate(v.object({
     name: v.string({ min: 1, max: 120 }),
     ouId: v.string({ min: 11, max: 11 }),
@@ -48,6 +48,7 @@ export async function createLink(request, env, ctx) {
   const ou = await ouById(env.DB, body.ouId);
   if (!ou || ou.level > 3) throw new HttpError(422, 'invalid', 'Choose the country, a state or an LGA.', { field: 'ouId' });
   if (!inScope(ctx, ou)) throw new HttpError(403, 'out_of_scope', 'That area is outside your account.');
+  if (ctx.role === 'national' && body.role && !['state', 'lga', 'unit'].includes(body.role)) throw new HttpError(403, 'forbidden', 'National data entry can invite state, LGA and school data-entry users.');
   if (ctx.role === 'state' && body.role && !['lga', 'unit'].includes(body.role)) throw new HttpError(403, 'forbidden', 'State officers can invite LGA and unit data-entry users.');
   for (const d of body.datasets || []) if (!(await one(env.DB, 'SELECT id FROM datasets WHERE id = ?', d))) throw new HttpError(422, 'invalid', 'Unknown data set.', { field: 'datasets' });
   if (body.sectorId && !(await one(env.DB, 'SELECT id FROM sectors WHERE id = ?', body.sectorId))) throw new HttpError(422, 'invalid', 'Unknown sector.', { field: 'sectorId' });
@@ -59,7 +60,7 @@ export async function createLink(request, env, ctx) {
 }
 
 export async function revokeLink(request, env, ctx, { id }) {
-  requireRole(ctx, ['sysadmin', 'state']);
+  requireRole(ctx, ['sysadmin', 'national', 'state']);
   const l = await one(env.DB, 'SELECT l.*, o.path FROM registration_links l JOIN org_units o ON o.id = l.ou_id WHERE l.id = ?', id);
   if (!l || !inScope(ctx, l)) throw new HttpError(404, 'not_found', 'Link not found.');
   await run(env.DB, 'UPDATE registration_links SET revoked_at = ? WHERE id = ?', now(), id);
@@ -183,7 +184,7 @@ async function requestsInScope(db, ctx, status) {
 }
 
 export async function listRequests(request, env, ctx) {
-  requireRole(ctx, ['sysadmin', 'state']);
+  requireRole(ctx, ['sysadmin', 'national', 'state']);
   const status = new URL(request.url).searchParams.get('status') || 'pending';
   if (!['pending', 'approved', 'rejected'].includes(status)) throw new HttpError(422, 'invalid', 'Unknown status.');
   const rows = await requestsInScope(env.DB, ctx, status);
@@ -213,7 +214,7 @@ async function loadPending(db, ctx, id) {
 
 // POST /api/account-requests/:id/approve  { role?, datasets?, dataElements? }
 export async function approveRequest(request, env, ctx, { id }) {
-  requireRole(ctx, ['sysadmin', 'state']);
+  requireRole(ctx, ['sysadmin', 'national', 'state']);
   const r = await loadPending(env.DB, ctx, id);
   const body = validate(v.object({
     role: v.string({ oneOf: SELF_ROLES }).optional(),
@@ -221,6 +222,7 @@ export async function approveRequest(request, env, ctx, { id }) {
     dataElements: v.array(v.string({ min: 1, max: 20 }), { max: 500 }).optional(),
   }), await readJson(request));
   const role = body.role || r.role;
+  if (ctx.role === 'national' && !['state', 'lga', 'unit'].includes(role)) throw new HttpError(403, 'forbidden', 'National data entry can approve state, LGA and school data-entry accounts.');
   if (ctx.role === 'state' && !['lga', 'unit'].includes(role)) throw new HttpError(403, 'forbidden', 'State officers can approve LGA and unit data-entry accounts.');
   const ou = await ouById(env.DB, r.ou_id);
   if (ROLE_LEVEL[role] && (ROLE_LEVEL[role] === 4 ? ou.level < 4 : ou.level !== ROLE_LEVEL[role])) throw new HttpError(422, 'invalid', `“${ROLE_NAMES[role]}” does not match where this person works (${ou.name}). Reject it and ask them to register again, or keep the requested role.`);
@@ -241,7 +243,7 @@ export async function approveRequest(request, env, ctx, { id }) {
 
 // POST /api/account-requests/:id/reject  { note }
 export async function rejectRequest(request, env, ctx, { id }) {
-  requireRole(ctx, ['sysadmin', 'state']);
+  requireRole(ctx, ['sysadmin', 'national', 'state']);
   await loadPending(env.DB, ctx, id);
   const body = validate(v.object({ note: v.string({ max: 500 }).optional() }), await readJson(request));
   await run(env.DB, "UPDATE account_requests SET status = 'rejected', decided_by = ?, decided_at = ?, decision_note = ? WHERE id = ?", ctx.user.id, now(), body.note || null, id);

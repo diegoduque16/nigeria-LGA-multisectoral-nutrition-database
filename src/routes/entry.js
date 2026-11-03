@@ -45,9 +45,9 @@ async function loadReportingOu(db, ctx, ouId, ds) {
   return ou;
 }
 
-const canEnter = (ctx) => ['sysadmin', 'state', 'lga', 'unit'].includes(ctx.role) && !ctx.apiToken;
+const canEnter = (ctx) => ['sysadmin', 'national', 'state', 'lga', 'unit'].includes(ctx.role) && !ctx.apiToken;
 // State officers review LGA reports; unit reports can also be reviewed by the LGA.
-const canReview = (ctx, ou) => !ctx.apiToken && inScope(ctx, ou) && (['sysadmin', 'state'].includes(ctx.role) || (ctx.role === 'lga' && ou.level >= 4));
+const canReview = (ctx, ou) => !ctx.apiToken && inScope(ctx, ou) && (['sysadmin', 'national', 'state'].includes(ctx.role) || (ctx.role === 'lga' && ou.level >= 4));
 
 async function reportOf(db, dsId, ouId, period) {
   return one(db, 'SELECT * FROM reports WHERE dataset_id = ? AND ou_id = ? AND period = ?', dsId, ouId, period);
@@ -307,7 +307,7 @@ export async function deleteEntry(request, env, ctx) {
 
 // POST /api/entry/review  { dataset, ou, period, action: accept | return, comment }
 export async function reviewEntry(request, env, ctx) {
-  requireRole(ctx, ['sysadmin', 'state', 'lga']);
+  requireRole(ctx, ['sysadmin', 'national', 'state', 'lga']);
   const body = validate(v.object({
     ...keySchema,
     action: v.string({ oneOf: ['accept', 'return'] }),

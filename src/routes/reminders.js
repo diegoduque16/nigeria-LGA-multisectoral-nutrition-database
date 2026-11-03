@@ -41,7 +41,7 @@ async function openReports(db, ctx, ds, period, area) {
 }
 
 async function setup(env, ctx, q) {
-  requireRole(ctx, ['sysadmin', 'state']);
+  requireRole(ctx, ['sysadmin', 'national', 'state']);
   const ds = await loadDataset(env.DB, q.dataset || '');
   if (ds.shared) throw new HttpError(422, 'invalid', 'Choose a sector report.');
   if (!q.period) throw new HttpError(422, 'invalid', 'Choose the period.', { field: 'period' });

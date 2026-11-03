@@ -158,6 +158,7 @@ export async function setPassword(request, env, ctx, { token }) {
 function canManage(ctx, target) {
   if (ctx.role === 'sysadmin') return true;
   if (ctx.role === 'state') return ['lga', 'unit'].includes(target.role) && inScope(ctx, target.ou);
+  if (ctx.role === 'national') return ['state', 'lga', 'unit'].includes(target.role) && inScope(ctx, target.ou);
   return false;
 }
 
@@ -175,13 +176,14 @@ async function userOut(db, u) {
 }
 
 export async function listUsers(request, env, ctx) {
-  requireRole(ctx, ['sysadmin', 'state']);
+  requireRole(ctx, ['sysadmin', 'national', 'state']);
   const rows = await all(env.DB,
     `SELECT u.* FROM users u JOIN org_units o ON o.id = u.ou_id
       WHERE (o.path || '/') LIKE ? ORDER BY u.name LIMIT 2000`, ctx.ou.path + '/%');
   const out = [];
   for (const u of rows) {
     if (ctx.role === 'state' && !['lga', 'unit'].includes(u.role) && u.id !== ctx.user.id) continue;
+    if (ctx.role === 'national' && !['state', 'lga', 'unit'].includes(u.role) && u.id !== ctx.user.id) continue;
     out.push(await userOut(env.DB, u));
   }
   return json({ users: out, roles: ROLES.map((r) => ({ id: r, name: ROLE_NAMES[r], level: ROLE_LEVEL[r] })) });
@@ -236,12 +238,13 @@ async function setAssignments(db, userId, datasets, dataElements) {
 }
 
 export async function createUser(request, env, ctx) {
-  requireRole(ctx, ['sysadmin', 'state']);
+  requireRole(ctx, ['sysadmin', 'national', 'state']);
   const body = validate(userSchema(false), await readJson(request));
   if (ctx.role === 'state' && !['lga', 'unit'].includes(body.role)) throw new HttpError(403, 'forbidden', 'State officers can only create LGA or unit data-entry users.');
+  if (ctx.role === 'national' && !['state', 'lga', 'unit'].includes(body.role)) throw new HttpError(403, 'forbidden', 'National data entry can only manage state, LGA or school data-entry users.');
   const ou = await checkAssignment(env.DB, ctx, body.role, body.ouId, body.datasets, body.dataElements);
   let datasets = body.datasets || [];
-  if (ctx.role === 'state' && !datasets.length) datasets = ctx.datasets;
+  if (['state', 'national'].includes(ctx.role) && !datasets.length) datasets = ctx.datasets;
   const email = body.email.toLowerCase();
   if (await one(env.DB, 'SELECT id FROM users WHERE email = ?', email)) throw new HttpError(409, 'email_taken', 'A user with this email already exists.');
   const id = uid('u_');
@@ -263,7 +266,7 @@ async function loadTarget(db, ctx, id) {
 }
 
 export async function updateUser(request, env, ctx, { id }) {
-  requireRole(ctx, ['sysadmin', 'state']);
+  requireRole(ctx, ['sysadmin', 'national', 'state']);
   const u = await loadTarget(env.DB, ctx, id);
   const body = validate(userSchema(true), await readJson(request));
   if (id === ctx.user.id && (body.active === false || (body.role && body.role !== u.role))) {
@@ -271,6 +274,7 @@ export async function updateUser(request, env, ctx, { id }) {
   }
   const role = body.role || u.role;
   if (ctx.role === 'state' && !['lga', 'unit'].includes(role)) throw new HttpError(403, 'forbidden', 'State officers can only manage LGA or unit data-entry users.');
+  if (ctx.role === 'national' && !['state', 'lga', 'unit'].includes(role)) throw new HttpError(403, 'forbidden', 'National data entry can only manage state, LGA or school data-entry users.');
   const ouId = body.ouId || u.ou_id;
   if (body.role || body.ouId || body.datasets || body.dataElements) await checkAssignment(env.DB, ctx, role, ouId, body.datasets, body.dataElements);
   if (body.email && body.email.toLowerCase() !== u.email) {
@@ -287,7 +291,7 @@ export async function updateUser(request, env, ctx, { id }) {
 
 // New one-time link to set a password (also unlocks the account).
 export async function resetLink(request, env, ctx, { id }) {
-  requireRole(ctx, ['sysadmin', 'state']);
+  requireRole(ctx, ['sysadmin', 'national', 'state']);
   const u = await loadTarget(env.DB, ctx, id);
   const link = await issueLink(env.DB, id, u.pw_hash ? 'reset' : 'invite');
   await run(env.DB, 'UPDATE users SET failed_logins = 0, locked_until = NULL WHERE id = ?', id);
