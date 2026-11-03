@@ -124,8 +124,7 @@ const GROUPS = [
 const hasUnitSets = () => myDatasets().some((d) => d.reportLevel === 'UNIT');
 const PAGES = [
   { id: 'home', name: () => (is(...ENTRY_ROLES) ? 'My reports' : 'Home'), short: 'What needs doing now', roles: ALL, desc: 'Start here: what needs doing and where to find everything.' },
-  { id: 'review', group: 'report', name: () => (is('lga') ? 'Check school reports' : 'Approve reports'), short: 'Accept or send back what was sent', roles: ['sysadmin', 'state', 'lga'], nav: () => false,
-    desc: () => (is('lga') ? 'Your schools / facilities send their reports to you. Check each one: Accept it (it then counts) or Send it back with a note.' : 'When an LGA presses Send, its report waits here. Check each one: Accept it (it then counts in the results) or Send it back with a note saying what to correct.') },
+  { id: 'review', group: 'report', name: () => (is('lga') ? 'School / facility reports' : 'Who has sent'), short: 'Sent or not, per place', roles: ['sysadmin', 'national', 'state', 'lga'], nav: () => !is('lga') || hasUnitSets(), desc: () => (is('lga') ? 'Which of your schools / facilities have sent their report. Open one to see it or type it in.' : 'For each report and period: which LGAs (or schools / facilities) have sent, and which have not. Open one to see it or type it in.') },
   { id: 'reminders', group: 'report', name: 'Send reminders', short: 'Email those who have not sent', roles: ['sysadmin', 'national', 'state'], desc: 'Remind the people whose report is not sent yet: an email with their Excel template attached and a link to upload it.' },
   { id: 'upload', name: 'Upload a report', roles: ['sysadmin', 'national', 'state', 'lga', 'unit'], nav: () => false, desc: 'Upload a filled Excel template.' },
   { id: 'entry', group: 'report', name: 'Type in a report', short: 'On behalf of an LGA', roles: ['sysadmin', 'national', 'state', 'lga', 'unit'], nav: () => !is(...ENTRY_ROLES), desc: 'Type in the numbers of a report for an LGA that cannot do it themselves, and send it.' },
@@ -362,7 +361,7 @@ async function renderMyReports() {
       'Click Start (or Continue) next to a report.',
       'Type each number. Put 0 when there was nothing — every box must be filled.',
       'Press Send. If you are not finished, press Save and come back later.',
-      `The ${is('unit') ? 'LGA or state' : 'state'} checks it. If something is wrong they send it back with a note; correct it and send it again.`,
+      'Once sent, it counts in the results straight away. Made a mistake? Ask your system administrator to delete it, then type it in again.',
     ],
   });
   if (!sets.length && !unitSets.length) return mount(head, noDatasets());
@@ -389,11 +388,11 @@ async function renderMyReports() {
     const stateId = ou.path ? ou.path.split('/')[2] : null;
     const rows = await Promise.all(unitSets.map((ds) => get('/api/status' + qs({ dataset: ds.id, state: stateId })).then((st) => ({ ds, st })).catch(() => null)));
     unitCard = h('div', { class: 'panel report-card' },
-      h('div', { class: 'rc-head' }, h('h2', {}, 'Reports from your schools / facilities'), h('span', { class: 'muted small' }, 'You check these before they count')),
+      h('div', { class: 'rc-head' }, h('h2', {}, 'Reports from your schools / facilities'), h('span', { class: 'muted small' }, 'They count as soon as each one sends')),
       h('table', { class: 'todo' }, h('tbody', {}, rows.filter(Boolean).map(({ ds, st }) => h('tr', { class: 'click', onclick: () => { pref('ds', ds.id); go('#/review'); } },
         h('td', {}, ds.name, h('div', { class: 'muted small' }, st.periodName)),
-        h('td', {}, st.counts.submitted ? pill('submitted', `${st.counts.submitted} waiting for you`) : pill('accepted', 'Nothing waiting'), h('span', { class: 'muted small' }, ` ${st.counts.accepted} of ${st.total} accepted`)),
-        h('td', { class: 'n' }, h('button', { class: st.counts.submitted ? 'primary' : '' }, 'Check')))))));
+        h('td', {}, pill(st.counts.accepted + st.counts.submitted === st.total ? 'accepted' : 'draft', `${st.counts.accepted + st.counts.submitted} of ${st.total} sent`)),
+        h('td', { class: 'n' }, h('button', {}, 'See which')))))));
   }
   mount(h('div', {}, head, cards, unitCard));
 }
@@ -824,7 +823,7 @@ async function renderReview() {
   if (!sets.length) return mount(noDatasets());
   // LGA reviewers only review unit-reported data sets (their schools / facilities).
   const usable = role() === 'lga' ? sets.filter((d) => d.reportLevel === 'UNIT') : sets;
-  if (!usable.length) return mount(h('div', { class: 'note info' }, 'None of your reports come from schools or facilities, so there is nothing for you to check here.'));
+  if (!usable.length) return mount(h('div', { class: 'note info' }, 'None of your reports come from schools or facilities.'));
   const ds = usable.find((d) => d.id === pref('ds')) || usable[0];
   const byUnit = ds.reportLevel === 'UNIT';
   const sp = ['state', 'lga'].includes(role()) ? { value: state.me.ou.path ? state.me.ou.path.split('/')[2] : state.me.ou.id } : await pickState(pref('state'), (v) => { pref('state', v); pref('rlga', ''); renderReview(); });
@@ -841,20 +840,20 @@ async function renderReview() {
     go('#/entry');
   };
   const what = byUnit ? 'schools / facilities' : 'LGAs';
-  const order = { submitted: 0, returned: 1, draft: 2, none: 3, accepted: 4 };
+  const order = { none: 0, draft: 1, returned: 2, submitted: 3, accepted: 3 };
   const list = [...st.lgas].sort((a, b) => order[a.status] - order[b.status] || a.name.localeCompare(b.name));
-  const todo = { submitted: 'Check it', returned: 'Waiting for the correction', draft: 'Being typed in', none: 'Not started yet', accepted: 'Done' };
-  const summary = [st.counts.submitted ? `${st.counts.submitted} waiting for you` : 'nothing waiting for you', `${st.counts.accepted} accepted`, st.counts.returned ? `${st.counts.returned} sent back` : null, `${st.counts.none + st.counts.draft} not sent yet`].filter(Boolean).join(' · ');
+  const todo = { submitted: 'Sent', returned: 'Not sent', draft: 'Being typed in', none: 'Not started yet', accepted: 'Sent' };
+  const sent = st.counts.accepted + st.counts.submitted;
+  const summary = `${sent} sent · ${st.total - sent} not sent yet${st.counts.draft ? ` (${st.counts.draft} being typed in)` : ''}`;
   mount(h('div', {},
     pageHead({
-      title: role() === 'lga' ? 'Check school / facility reports' : 'Approve reports',
+      title: role() === 'lga' ? 'School / facility reports' : 'Who has sent',
       sub: `${role() === 'lga' ? state.me.ou.name : st.state.name} · ${st.dataset.name} · ${st.periodName} · due ${fmtDay(st.due)}`,
-      text: `When ${byUnit ? 'a school or facility' : 'an LGA'} presses Send, its report waits here for you. Nothing counts in the results until you accept it.`,
+      text: `Which ${byUnit ? 'schools / facilities' : 'LGAs'} have sent this report, and which have not. A report counts as soon as it is sent.`,
       how: [
         'Choose the report and the period at the top.',
-        'Reports waiting for you are at the top of the list, marked yellow. Click one to open it.',
-        'Look at the numbers. If they look right, press Accept — they now count in the results.',
-        'If something is wrong, write what to fix and press Send back. The sender sees your note, corrects it and sends it again.',
+        'Those not sent yet are at the top. Click one to type it in on their behalf, or use Send reminders.',
+        'Click a sent one to see its numbers. To correct a sent report, a system administrator deletes it and it is typed in again.',
       ],
     }),
     h('div', { class: 'bar' },
@@ -862,14 +861,14 @@ async function renderReview() {
       role() === 'state' || role() === 'lga' ? null : sp.el,
       byUnit && role() !== 'lga' ? field('LGA', select([{ id: '', name: 'All LGAs' }, ...st.lgaOptions], lgaFilter, { onchange: (e) => { pref('rlga', e.target.value); renderReview(); } })) : null,
       field(periodWord(ds.frequency), select(st.periods, st.period, { onchange: (e) => { pref('pe:' + ds.id, e.target.value); renderReview(); } }))),
-    h('div', { class: 'note ' + (st.counts.submitted ? 'warn' : 'ok') }, h('strong', {}, `${st.total} ${what}: `), summary),
+    h('div', { class: 'note ' + (sent < st.total ? 'warn' : 'ok') }, h('strong', {}, `${st.total} ${what}: `), summary),
     list.length ? h('div', { class: 'scroll' }, h('table', {},
-      h('thead', {}, h('tr', {}, byUnit ? h('th', {}, 'LGA') : null, h('th', {}, byUnit ? 'School / facility' : 'LGA'), h('th', {}, 'Status'), h('th', {}, 'Sent'), h('th', {}, 'Checked'), h('th', {}, 'Note'), h('th', {}, ''))),
-      h('tbody', {}, list.map((l) => h('tr', { class: 'click' + (l.status === 'submitted' ? ' hot' : ''), onclick: () => open(l) },
+      h('thead', {}, h('tr', {}, byUnit ? h('th', {}, 'LGA') : null, h('th', {}, byUnit ? 'School / facility' : 'LGA'), h('th', {}, 'Status'), h('th', {}, 'Sent on'), h('th', {}, ''))),
+      h('tbody', {}, list.map((l) => h('tr', { class: 'click', onclick: () => open(l) },
         byUnit ? h('td', { class: 'small' }, l.lgaName) : null,
         h('td', {}, l.name, l.type ? h('span', { class: 'muted small' }, ` · ${l.type}`) : null), h('td', {}, pill(l.status, STATUS_PLAIN[l.status]), l.late ? h('span', { class: 'late' }, 'Late') : null),
-        h('td', {}, fmtDate(l.submittedAt)), h('td', {}, fmtDate(l.reviewedAt)), h('td', { class: 'small muted' }, l.comment || ''),
-        h('td', { class: 'n' }, l.status === 'submitted' ? h('button', { class: 'primary' }, 'Open and check') : h('span', { class: 'muted small' }, todo[l.status])))))))
+        h('td', {}, fmtDate(l.submittedAt)),
+        h('td', { class: 'n' }, ['submitted', 'accepted'].includes(l.status) ? h('button', {}, 'View') : h('button', { class: 'primary' }, 'Type it in')))))))
       : h('div', { class: 'panel empty' }, byUnit ? 'No schools / facilities are listed for this sector here yet. Add them under Set-up → Units below the LGA.' : 'No LGAs.'),
   ));
 }
