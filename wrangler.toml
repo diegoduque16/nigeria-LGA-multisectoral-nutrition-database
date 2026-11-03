@@ -9,6 +9,11 @@ main = "src/index.js"
 compatibility_date = "2026-10-01"
 keep_vars = true
 
+[vars]
+# Sender of reminder emails; must be on the domain verified in Resend. The key itself (EMAIL_API_KEY) is a Secret
+# added in the Cloudflare dashboard, never here.
+EMAIL_FROM = "LGA Scorecard <reports@lganutritiondata.org>"
+
 [assets]
 directory = "./public"
 binding = "ASSETS"
@@ -25,4 +30,5 @@ migrations_dir = "migrations"
 crons = ["23 2 * * *"]
 
 # Secret (add in the Cloudflare dashboard, type "Secret"):
-#   SETUP_KEY  - any long phrase; needed once to create the first system administrator.
+#   SETUP_KEY      - any long phrase; needed once to create the first system administrator.
+#   EMAIL_API_KEY  - the Resend API key (re_…), for reminder emails.
