@@ -68,7 +68,7 @@ function indOut(i, deNames, sectorNames = {}) {
 async function checkUnitTypes(db, typeIds) {
   const ids = [...new Set(typeIds || [])];
   for (const t of ids) if (!(await one(db, 'SELECT id FROM unit_types WHERE id = ?', t))) throw new HttpError(422, 'invalid', 'Unknown unit type.', { field: 'unitTypes' });
-  if (ids.includes('ut_ward') && ids.length > 1) throw new HttpError(422, 'invalid', 'Report by wards, or by other units (facilities, schools …) — not both in one schedule: a ward already includes its facilities.', { field: 'unitTypes' });
+  if (ids.includes('ut_ward') && ids.length > 1) throw new HttpError(422, 'invalid', 'Report by wards, or by other units (facilities, schools …) — not both in one report: a ward already includes its facilities.', { field: 'unitTypes' });
   return ids;
 }
 async function setUnitTypes(db, dsId, ids) {
@@ -448,7 +448,7 @@ export async function createIndicator(request, env, ctx, { datasetId }) {
   const def = await definitionFor(env.DB, ctx, body, ds.sector_id);
   Object.assign(body, { name: def.name, numerator: def.numerator, denominator: def.denominator, showAs: def.show_as, source: def.source, description: def.definition });
   if (await one(env.DB, 'SELECT id FROM indicators WHERE dataset_id = ? AND def_id = ? AND archived_at IS NULL', datasetId, def.id)) {
-    throw new HttpError(409, 'name_taken', 'This schedule already has this indicator.');
+    throw new HttpError(409, 'name_taken', 'This report already has this indicator.');
   }
   const sectorId = body.sector ? await sectorFor(env.DB, body.sector) : ds.sector_id;
   const id = await pickId(env.DB, body.id);

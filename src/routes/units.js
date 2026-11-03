@@ -77,7 +77,7 @@ export async function deleteType(request, env, ctx, { id }) {
   requireAdmin(ctx);
   if (id === WARD_TYPE) throw new HttpError(422, 'invalid', 'Wards are built in.');
   if (await one(env.DB, 'SELECT 1 AS x FROM org_units WHERE unit_type_id = ? LIMIT 1', id)) throw new HttpError(409, 'in_use', 'Units of this type exist. Change their type or close them first.');
-  if (await one(env.DB, 'SELECT 1 AS x FROM dataset_unit_types WHERE type_id = ? LIMIT 1', id)) throw new HttpError(409, 'in_use', 'A reporting schedule uses this type.');
+  if (await one(env.DB, 'SELECT 1 AS x FROM dataset_unit_types WHERE type_id = ? LIMIT 1', id)) throw new HttpError(409, 'in_use', 'A report uses this type.');
   await run(env.DB, 'DELETE FROM unit_types WHERE id = ?', id);
   await audit(env.DB, ctx, 'unit_type_deleted', 'unit_type', id, {});
   return json({ ok: true });

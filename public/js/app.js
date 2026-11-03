@@ -1204,7 +1204,7 @@ async function renderSetup(dsId) {
 // The three steps of adding a sector (the current one marked).
 function sectorSteps(current, ds) {
   const steps = [
-    ['Name the sector and its schedule', 'How often it reports (monthly, quarterly, yearly) and who reports: each LGA, or each unit below the LGA (facility, school …).'],
+    ['Name the sector and how it reports', 'Who reports — each LGA, or each org unit below it (ward, health facility, school …) — and how often: monthly, quarterly or yearly.'],
     ['Add its indicators', 'For each: what is counted (numerator) and, for a rate, what it is divided by (denominator). These become the boxes people fill in.'],
     ['Give people access', 'On Users, create accounts or a registration QR code for this sector. Its people then see the report under “My reports”.'],
   ];
@@ -1306,14 +1306,14 @@ async function renderSectors(m) {
       h('td', { class: 'small' }, calcText(i)),
       h('td', { class: 'small muted' }, i.source || ''),
       h('td', { class: 'n small muted' }, { percent: '%', per1000: 'per 1,000', number: 'number' }[i.showAs] || '')))))
-      : h('p', { class: 'muted small' }, 'No indicators yet — nobody has anything to report on this schedule.');
+      : h('p', { class: 'muted small' }, 'No indicators yet — nobody has anything to report here.');
   };
   const block = (d, several) => h('div', { class: 'schedule' + (d.archived ? ' archived' : '') },
     h('div', { class: 'schedhead' },
       h('div', {}, several ? h('strong', {}, d.name) : null, h('span', { class: 'muted small' }, (several ? ' · ' : '') + scheduleText(d) + (d.archived ? ' · archived' : ''))),
       h('div', { class: 'actions' },
         canEdit && !d.archived ? h('button', { class: 'primary', onclick: () => indicatorDialog(d, m, null) }, '+ Add indicator') : null,
-        admin ? h('button', { class: 'link', onclick: () => datasetDialog(d, m) }, 'Schedule settings') : null,
+        admin ? h('button', { class: 'link', onclick: () => datasetDialog(d, m) }, 'Who reports & how often') : null,
         canEdit ? h('a', { class: 'small', href: '#/setup/' + d.id }, 'Edit as a table') : null)),
     indTable(d));
   const sectorIds = [...new Set([...m.sectors.map((s) => s.id), ...forms.map((d) => d.sectorId)])];
@@ -1326,7 +1326,7 @@ async function renderSectors(m) {
       if (!open.length) return null;
       return h('div', { class: 'panel sector-card' },
         h('div', { class: 'rc-head' }, h('h2', {}, 'Without a sector')),
-        h('div', { class: 'note warn' }, 'These belong to no sector. Use Schedule settings to choose the sector — or, if it was only a test, Delete it there (possible while nothing was reported; otherwise Archive).'),
+        h('div', { class: 'note warn' }, 'These belong to no sector. Use “Who reports & how often” to choose the sector — or, if it was only a test, Delete it there (possible while nothing was reported; otherwise Archive).'),
         open.map((d) => block(d, true)));
     }
     const sec = known;
@@ -1339,10 +1339,10 @@ async function renderSectors(m) {
           admin && sec.id ? h('button', { class: 'link', onclick: () => editSectorDialog(sec, active, m) }, 'Edit sector') : null,
           admin && sec.id && unused ? h('button', { class: 'link danger-link', onclick: () => removeSector(sec) }, 'Remove') : null)),
       active.length ? active.map((d) => block(d, active.length > 1))
-        : h('div', { class: 'note info' }, `${sec.name} has no reporting schedule yet, so nobody can report for it.`,
-          admin ? h('div', {}, h('button', { class: 'primary mt8', onclick: () => datasetDialog(null, m, false, sec.name) }, 'Set its schedule')) : null),
+        : h('div', { class: 'note info' }, `${sec.name} is not set up for reporting yet: choose who reports and how often.`,
+          admin ? h('div', {}, h('button', { class: 'primary mt8', onclick: () => datasetDialog(null, m, false, sec.name) }, 'Who reports & how often')) : null),
       archived.length ? h('details', {}, h('summary', { class: 'small muted' }, `Archived (${archived.length})`), archived.map((d) => block(d, true))) : null,
-      admin && active.length ? h('div', { class: 'actions' }, h('button', { class: 'link', onclick: () => datasetDialog(null, m, false, sec.name) }, `+ Add indicators with a different schedule (e.g. yearly, or by school)`)) : null);
+      admin && active.length ? h('div', { class: 'actions' }, h('button', { class: 'link', onclick: () => datasetDialog(null, m, false, sec.name) }, `+ Add indicators reported differently (e.g. by school, or yearly)`)) : null);
   }).filter(Boolean);
 
   // Right after adding a sector: open the first indicator straight away.
@@ -1716,7 +1716,7 @@ function definitionDialog(d, m) {
   const save = h('button', { class: 'primary' }, d ? 'Save' : 'Add to dictionary');
   const del = d && !d.uses.length ? h('button', { class: 'link danger-link' }, 'Remove from dictionary') : null;
   const dlg = h('dialog', { class: 'wide' }, h('h2', {}, d ? d.name : 'New indicator in the dictionary'),
-    d && d.uses.length ? h('div', { class: 'note warn' }, `Reported by ${d.uses.length} schedule${d.uses.length === 1 ? '' : 's'}: ${d.uses.map((u) => u.dataset).join(', ')}. Changing the name or calculation changes it for all of them.`) : null,
+    d && d.uses.length ? h('div', { class: 'note warn' }, `Used in ${d.uses.length} report${d.uses.length === 1 ? '' : 's'}: ${d.uses.map((u) => u.dataset).join(', ')}. Changing the name or calculation changes it for all of them.`) : null,
     d && d.uses.some((u) => u.differs) ? h('div', { class: 'note bad' }, `These count it differently from this definition: ${d.uses.filter((u) => u.differs).map((u) => u.dataset).join(', ')}. Press Save to make them all use this definition.`) : null,
     h('div', { class: 'grid2' }, field('Code', code), field('Indicator name *', name), field('Numerator — what is counted *', num), fieldGroup('Denominator — divided by (optional)', denPick.el, denPick.hint),
       field('Show as *', showAs, 'Percentage and per 1,000 need a denominator; a whole number is a plain count.'), field('Source *', source), field('Framework / reference', framework), field('Sector that usually reports it', sector)),
@@ -1730,7 +1730,7 @@ function definitionDialog(d, m) {
     let body;
     try {
       body = { code: code.value.trim(), name: name.value.trim(), definition: definition.value.trim(), numerator: num.value.trim(), denominator: await denPick.value(), showAs: showAs.value, source: source.value.trim(), framework: framework.value.trim(), sector: sector.value };
-      if (d) { const r = (await api('PATCH', '/api/dictionary/' + d.id, body)).data; toast(r.indicatorsUpdated ? `Saved — updated in ${r.indicatorsUpdated} schedule${r.indicatorsUpdated === 1 ? '' : 's'}` : 'Saved'); }
+      if (d) { const r = (await api('PATCH', '/api/dictionary/' + d.id, body)).data; toast(r.indicatorsUpdated ? `Saved — updated in ${r.indicatorsUpdated} report${r.indicatorsUpdated === 1 ? '' : 's'}` : 'Saved'); }
       else { await api('POST', '/api/dictionary', body); toast('Added to the dictionary'); }
     } catch (e) { err.textContent = e.message; return; }
     dlg.close(); state.meta = null; renderDictionary();
@@ -1815,8 +1815,8 @@ function editSectorDialog(sec, active, m) {
       ds ? field('How often it reports', freq, 'Each report covers one month, quarter or year.') : null,
       ds ? fieldGroup('Who reports', who.el, 'Each LGA sends one report — or each ward, or each unit of the types you tick (health facility, school …). Values add up to the LGA.') : null,
       ds ? field('Due day', due, 'Day of the month after the period ends.') : null),
-    active.length > 1 ? h('p', { class: 'muted small' }, `These settings are for “${ds.name}”. The sector’s other schedules (${active.slice(1).map((d) => d.name).join(', ')}) have their own Schedule settings.`) : null,
-    !ds ? h('p', { class: 'muted small' }, 'This sector has no reporting schedule yet. Use “Set its schedule” on its card.') : null,
+    active.length > 1 ? h('p', { class: 'muted small' }, `These settings are for “${ds.name}”. The sector’s other reports (${active.slice(1).map((d) => d.name).join(', ')}) have their own settings.`) : null,
+    !ds ? h('p', { class: 'muted small' }, 'This sector is not set up for reporting yet. Use “Who reports & how often” on its card.') : null,
     err, h('p'), h('div', { class: 'actions' }, save, h('button', { onclick: () => dlg.close() }, 'Cancel')));
   dlg.addEventListener('close', () => dlg.remove());
   save.addEventListener('click', busy(save, async () => {
@@ -1856,7 +1856,7 @@ function renderForm(ds, m) {
       'Typing the same name twice uses the same box. Show as: percentage, per 1,000, or number.',
       'IDs are made automatically. Paste an existing DHIS2 ID only if the indicator already exists in DHIS2.',
     ],
-    actions: [h('button', { onclick: () => datasetDialog(ds, m) }, 'Schedule settings')],
+    actions: [h('button', { onclick: () => datasetDialog(ds, m) }, 'Who reports & how often')],
   });
 
   const rows = ds.indicators.filter((i) => !i.archived);
@@ -1909,10 +1909,10 @@ function sectorDialog(m) {
     h('p', { class: 'muted small' }, 'A sector is a ministry or department that reports its own indicators, e.g. Health, Education, Agriculture, WASH, Social Protection. Next you add its indicators.'),
     h('div', { class: 'grid2' },
       field('Sector name', sector, 'As people will see it.'),
-      field('How often it reports', freq, 'Each report covers one month, quarter or year.'),
       fieldGroup('Who reports', who.el, 'Each LGA sends one report — or each ward, each health facility, or each of the sector’s own units (school …) sends its own. Values add up to the LGA.'),
+      field('How often it reports', freq, 'Each report covers one month, quarter or year.'),
       field('Due day', due, 'Day of the month after the period ends, e.g. 15.')),
-    h('p', { class: 'muted small' }, 'Some indicators on another schedule (e.g. yearly, or by school)? Add them later with “+ Add indicators with a different schedule”.'),
+    h('p', { class: 'muted small' }, 'Some indicators reported by a different level or at a different time (e.g. by school, or yearly)? Add them later with “+ Add indicators reported differently”.'),
     err, h('p'), h('div', { class: 'actions' }, save, h('button', { onclick: () => dlg.close() }, 'Cancel')));
   dlg.addEventListener('close', () => dlg.remove());
   save.addEventListener('click', busy(save, async () => {
@@ -2344,15 +2344,15 @@ function datasetDialog(ds, m, makeShared = false, presetSector = '') {
   const id = h('input', { class: 'mono', placeholder: 'made automatically', maxlength: 11 });
   const err = h('div', { class: 'err' });
   const save = h('button', { class: 'primary' }, ds ? 'Save' : shared ? 'Create' : 'Create, then add its indicators');
-  const title = ds ? (shared ? 'Population figures — settings' : 'Schedule settings') : shared ? 'Create population figures' : presetSector ? `${presetSector}: indicators on another schedule` : 'New reporting schedule';
+  const title = ds ? (shared ? 'Population figures — settings' : `${ds.name} — who reports & how often`) : shared ? 'Create population figures' : presetSector ? `${presetSector}: indicators reported differently` : 'New report: who reports & how often';
   const dlg = h('dialog', {}, h('h2', {}, title),
     shared ? h('p', { class: 'muted small' }, 'One yearly list of numbers (population, under-5s, expected pregnancies …) that every sector’s indicators can divide by. It has no indicators of its own.')
       : !ds ? h('p', { class: 'muted small' }, 'Use this for indicators that are reported differently from the sector’s others — e.g. once a year instead of monthly, or by each unit below the LGA (facility, school …) instead of each LGA. People get a separate report for them.') : null,
     ds && !shared ? h('p', { class: 'muted small' }, 'Once reports exist, how often and who reports can no longer change.') : null,
     h('div', { class: 'grid2' },
       shared ? null : field('Sector', sector),
-      shared ? null : field('How often it reports', freq),
       shared ? null : fieldGroup('Who reports', who.el),
+      shared ? null : field('How often it reports', freq),
       shared ? null : field('Due day', due, 'Day of the month after the period ends.'),
       field('Report name', name, shared ? null : 'What people see under “My reports”. Filled in for you.')),
     ds ? h('p', { class: 'muted small' }, 'ID ', idTag(ds.id)) : shared ? null : h('details', {}, h('summary', { class: 'small' }, 'Advanced: existing DHIS2 data set ID'), field('DHIS2 ID', id)),
@@ -2468,12 +2468,12 @@ async function renderUnits() {
   const addType = h('button', {}, '+ Add unit type');
   addType.addEventListener('click', busy(addType, async () => { await api('POST', '/api/unit-types', { name: newType.value.trim() }); toast('Unit type added'); state.meta = null; renderUnits(); }));
   const typesPanel = h('div', { class: 'panel' }, h('h2', {}, 'Unit types'),
-    h('p', { class: 'muted small' }, 'The kinds of unit below the LGA. Each reporting schedule chooses which types report (Sectors & indicators → Schedule settings). Ward is built in: wards are loaded with their official IDs, and other units can sit under their ward.'),
+    h('p', { class: 'muted small' }, 'The kinds of unit below the LGA. Each report chooses which types report (Sectors & indicators → Who reports & how often). Ward is built in: wards are loaded with their official IDs, and other units can sit under their ward.'),
     h('table', { class: 'todo' }, h('tbody', {}, types.map((t) => h('tr', {},
       h('td', {}, h('strong', {}, t.name), t.isWard ? h('span', { class: 'muted small' }, ' · directly under the LGA, official IDs') : null,
         t.codeLabel ? h('div', { class: 'cov' }, 'Own-system code: ', t.codeLabel) : null),
       h('td', { class: 'small' }, `${t.units} unit${t.units === 1 ? '' : 's'}`),
-      h('td', { class: 'small muted' }, t.datasets.length ? 'Reports on: ' + t.datasets.map((d) => d.name).join(', ') : 'No schedule uses it yet'),
+      h('td', { class: 'small muted' }, t.datasets.length ? 'Reports on: ' + t.datasets.map((d) => d.name).join(', ') : 'No report uses it yet'),
       h('td', { class: 'n' }, admin ? h('div', { class: 'actions' },
         h('button', { class: 'link', onclick: () => unitTypeDialog(t) }, 'Edit'),
         !t.isWard && !t.units && !t.datasets.length ? h('button', { class: 'link danger-link', onclick: async () => { try { await api('DELETE', '/api/unit-types/' + t.id); state.meta = null; renderUnits(); } catch (e) { toast(e.message, true); } } }, 'Remove') : null) : null))))),
@@ -2545,7 +2545,7 @@ async function renderUnits() {
         'Add the unit types you need (Primary school, Water point …) under Unit types.',
         'Download the Excel template: choose the State, LGA and Type from the lists and paste the names. Then press Import Excel — you see a check before anything is saved. Or add units one by one.',
         'Optional: “Load wards & health facilities” brings in a state’s official wards and health facilities, with their official IDs.',
-        'In Sectors & indicators → Schedule settings, set Who reports to “Each ward”, or to “Each facility, school …” and tick the unit types that report. Their values add up to the LGA.',
+        'In Sectors & indicators → Who reports & how often, set Who reports to “Each ward”, or to “Each facility, school …” and tick the unit types that report. Their values add up to the LGA.',
         'Click a unit to rename it, change its type or ward, or close it. Units are never deleted, so past data stays.',
       ],
       actions: [tplBtn, h('button', { class: 'primary', onclick: () => fileIn.click() }, 'Import Excel'), fileIn, h('button', { onclick: () => scorecardDialog(states, stateId, types) }, 'Load wards & health facilities')],
