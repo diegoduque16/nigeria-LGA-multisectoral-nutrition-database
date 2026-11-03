@@ -1,5 +1,5 @@
 // GRID3 / WorldPop modelled population estimates for Nigeria (e.g. "NGA population v3.0", 2025).
-// The release's table package (NGA_population_v3_0_table.zip) holds lga_pop_total_scaled.csv. This module
+// The release's admin package (NGA_population_v3_0_admin.zip; older releases: _table.zip) holds lga_pop_total_scaled.csv. This module
 // downloads it (or reads an uploaded copy), works out its columns, matches each row to our LGAs, and lets the
 // app map its columns onto the Population figures. It also checks WorldPop for newer versions.
 import { HttpError, json, readJson, now } from '../lib/util.js';
@@ -14,7 +14,8 @@ const MAX_CSV = 5_000_000;
 
 const vKey = (v) => v.split('.').map(Number);
 const newer = (a, b) => { const x = vKey(a); const y = vKey(b); for (let i = 0; i < Math.max(x.length, y.length); i++) { if ((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) > (y[i] || 0); } return false; };
-const tableUrl = (v) => `${WORLDPOP_BASE}v${v}/NGA_population_v${v.replace('.', '_')}_table.zip`;
+// v3.0 ships the LGA table as _admin.zip; earlier releases called it _table.zip. Try both.
+const tableUrls = (v) => ['admin', 'table'].map((k) => `${WORLDPOP_BASE}v${v}/NGA_population_v${v.replace('.', '_')}_${k}.zip`);
 
 function requireAdmin(ctx) {
   if (!['sysadmin', 'setupadmin'].includes(ctx.role) || ctx.apiToken) throw new HttpError(403, 'forbidden', 'Only administrators can import population figures.');
@@ -170,10 +171,13 @@ export async function worldpopTable(request, env, ctx) {
   }
   const version = new URL(request.url).searchParams.get('version') || '';
   if (!/^\d+(\.\d+)+$/.test(version)) throw new HttpError(422, 'invalid', 'Choose a version, e.g. 3.0.');
-  const url = tableUrl(version);
-  let res;
-  try { res = await fetch(url, { headers: { 'user-agent': 'lganutritiondata.org population import' } }); } catch (e) { throw new HttpError(502, 'unreachable', 'Could not reach WorldPop. Download the table yourself and upload it.'); }
-  if (!res.ok) throw new HttpError(502, 'unreachable', `WorldPop has no table package at ${url} (answer ${res.status}). Download the table from the release page and upload it.`);
+  let res; let url;
+  for (const u of tableUrls(version)) {
+    url = u;
+    try { res = await fetch(u, { headers: { 'user-agent': 'lganutritiondata.org population import' } }); } catch (e) { throw new HttpError(502, 'unreachable', 'Could not reach WorldPop. Download the table yourself and upload it.'); }
+    if (res.ok) break;
+  }
+  if (!res.ok) throw new HttpError(502, 'unreachable', `WorldPop has no LGA table for v${version} (tried ${tableUrls(version).map((u) => u.split('/').pop()).join(' and ')}; answer ${res.status}). Download the table from the release page and upload it.`);
   const files = await unzip(await res.arrayBuffer());
   const f = await pickCsv(files);
   const text = await f.text();

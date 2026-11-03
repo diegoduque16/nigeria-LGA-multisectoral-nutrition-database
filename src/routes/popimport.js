@@ -45,7 +45,8 @@ export async function importPopulation(request, env, ctx, { id }) {
   if (body.rows.length > (commit ? MAX_COMMIT : MAX_ROWS)) throw new HttpError(422, 'too_many', 'Too many rows in one request.');
 
   const fields = new Map((await all(env.DB, 'SELECT * FROM data_elements WHERE dataset_id = ? AND archived_at IS NULL', ds.id)).map((f) => [f.id, f]));
-  const lgas = (await all(env.DB, `SELECT l.id, l.name, l.path, s.name AS state_name FROM org_units l JOIN org_units s ON s.id = l.parent_id WHERE l.level = 3 AND s.inactive = 0`)).filter((l) => inScope(ctx, l));
+  // Every LGA in scope, also in states not taking part yet: their figures are ready when a state is switched on.
+  const lgas = (await all(env.DB, `SELECT l.id, l.name, l.path, s.name AS state_name FROM org_units l JOIN org_units s ON s.id = l.parent_id WHERE l.level = 3`)).filter((l) => inScope(ctx, l));
   const byId = new Map(lgas.map((l) => [l.id, l]));
   const byName = new Map();
   for (const l of lgas) {

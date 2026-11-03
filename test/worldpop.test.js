@@ -43,7 +43,7 @@ function withFetch(handler, fn) {
 const worldpop = (calls) => async (url) => {
   calls.push(String(url));
   if (String(url).endsWith('/NGA/population/')) return new Response('<a href="v1.2/">v1.2/</a> <a href="v2.0/">v2.0/</a> <a href="v3.0/">v3.0/</a> <a href="v3.1/">v3.1/</a>');
-  if (String(url).endsWith('v3.0/NGA_population_v3_0_table.zip')) return new Response(makeZip({ 'NGA_population_v3_0_table/national_pop_total_scaled.csv': 'total\n237527782', 'NGA_population_v3_0_table/lga_pop_total_scaled.csv': CSV }));
+  if (String(url).endsWith('v3.0/NGA_population_v3_0_admin.zip')) return new Response(makeZip({ 'NGA_population_v3_0_admin/national_pop_total_scaled.csv': 'total\n237527782', 'NGA_population_v3_0_admin/lga_pop_total_scaled.csv': CSV }));
   return new Response('not found', { status: 404 });
 };
 
