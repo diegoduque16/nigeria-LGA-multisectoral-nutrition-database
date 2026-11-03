@@ -2424,7 +2424,7 @@ function datasetDialog(ds, m, makeShared = false, presetSector = '') {
 }
 
 // ---------- sector org units (schools, facilities ...) ----------
-const UNIT_HEADERS = ['State', 'LGA', 'LGA ID', 'Ward', 'Ward ID', 'Type', 'Name', 'Code', 'Latitude', 'Longitude', 'ID'];
+const UNIT_HEADERS = ['State', 'LGA', 'LGA ID', 'Ward', 'Ward ID', 'Type', 'Name', 'Code', 'Latitude', 'Longitude', 'ID', 'LGA in use', 'Possible duplicate'];
 
 // Rollout: which states take part (system administrators).
 // States & LGAs in use: a drill-down. All states (tick the states in use) → one state (tick its LGAs in use).
@@ -2525,12 +2525,19 @@ async function renderUnits() {
   const o = await orgs();
   const states = state.me.ou.level === 1 ? o.states : null;
   const stateId = states ? (states.some((x) => x.id === pref('unitState')) ? pref('unitState') : (states[0] || {}).id) : state.me.ou.level === 2 ? state.me.ou.id : (state.me.ou.path || '').split('/')[2];
-  const lgas = stateId ? await lgasOf(stateId) : [];
+  const allLgas = !!pref('unitAllLgas');
+  const lgas = !stateId ? [] : allLgas ? (await get('/api/orgunits?parent=' + stateId)).children.filter((c) => !c.closed) : await lgasOf(stateId);
   const lgaFilter = lgas.some((l) => l.id === pref('unitLga')) ? pref('unitLga') : '';
   const typeFilter = pref('unitType') || '';
-  const data = await get('/api/units' + qs({ type: typeFilter, state: lgaFilter ? undefined : stateId, lga: lgaFilter || undefined }));
+  const data = await get('/api/units' + qs({ type: typeFilter, state: lgaFilter ? undefined : stateId, lga: lgaFilter || undefined, all: allLgas ? 1 : undefined }));
   const types = data.types;
-  const units = data.units;
+  // Possible duplicates: the same name and type twice in one LGA (often the same facility under two IDs).
+  const dupKey = (u) => `${u.lgaId}|${u.typeId}|${u.name.trim().toLowerCase().replace(/\s+/g, ' ')}`;
+  const seen = new Map(); for (const u of data.units) if (!u.isWard && !u.closed) seen.set(dupKey(u), (seen.get(dupKey(u)) || 0) + 1);
+  const isDup = (u) => !u.isWard && !u.closed && seen.get(dupKey(u)) > 1;
+  const dupCount = data.units.filter(isDup).length;
+  const onlyDups = !!pref('unitDups') && dupCount > 0;
+  const units = onlyDups ? data.units.filter(isDup) : data.units;
   const admin = is('sysadmin', 'setupadmin');
   const typeName = (id) => (types.find((t) => t.id === id) || {}).name || '';
 
@@ -2604,7 +2611,7 @@ async function renderUnits() {
   listBtn.addEventListener('click', busy(listBtn, async () => {
     const { writeWorkbook } = await import('./xlsx.js');
     const wardIdOf = (u) => u.wardId || '';
-    saveBlob(writeWorkbook([{ name: 'Units', rows: [UNIT_HEADERS, ...units.map((u) => [u.stateName, u.lgaName, u.lgaId, u.isWard ? '' : u.ward, u.isWard ? '' : wardIdOf(u), u.type, u.name, u.code, u.latitude ?? '', u.longitude ?? '', u.id])], widths: [18, 24, 14, 22, 14, 20, 36, 14, 11, 11, 16] }]), 'Units_below_LGA.xlsx');
+    saveBlob(writeWorkbook([{ name: 'Units', rows: [UNIT_HEADERS, ...units.map((u) => [u.stateName, u.lgaName, u.lgaId, u.isWard ? '' : u.ward, u.isWard ? '' : wardIdOf(u), u.type, u.name, u.code, u.latitude ?? '', u.longitude ?? '', u.id, u.inUse === false ? 'No' : 'Yes', isDup(u) ? 'Yes' : ''])], widths: [18, 24, 14, 22, 14, 20, 36, 14, 11, 11, 16] }]), 'Units_below_LGA.xlsx');
   }));
 
   mount(h('div', {},
@@ -2627,7 +2634,11 @@ async function renderUnits() {
       states ? field('State', select(states, stateId, { onchange: (e) => { pref('unitState', e.target.value); pref('unitLga', ''); renderUnits(); } })) : null,
       field('LGA', select([{ id: '', name: 'All LGAs' }, ...lgas], lgaFilter, { onchange: (e) => { pref('unitLga', e.target.value); renderUnits(); } })),
       field('Type', select([{ id: '', name: 'All types' }, ...types.map((t) => ({ id: t.id, name: t.name }))], typeFilter, { onchange: (e) => { pref('unitType', e.target.value); renderUnits(); } })),
+      h('label', { class: 'check small' }, h('input', { type: 'checkbox', checked: allLgas, onchange: (e) => { pref('unitAllLgas', e.target.checked); pref('unitLga', ''); renderUnits(); } }), 'Include LGAs not in use'),
       h('div', { class: 'muted small' }, `${units.length} unit${units.length === 1 ? '' : 's'}`), listBtn),
+    dupCount ? h('div', { class: 'note warn' }, h('strong', {}, `${dupCount} units share a name with another of the same type in their LGA. `),
+      'Often it is one facility listed twice with two IDs, which makes it count twice in Who has sent. Open the extra one and close it (its data is kept). ',
+      h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: onlyDups, onchange: (e) => { pref('unitDups', e.target.checked); renderUnits(); } }), 'Show only these')) : null,
     h('div', { class: 'panel' }, h('h3', {}, 'Add one unit'),
       h('div', { class: 'bar' }, field('Type', addType_), field('LGA', addLga), wardBox, field('Name', nName), codeBox, field('Latitude (optional)', nLat), field('Longitude (optional)', nLon), idBox, addBtn)),
     units.length > 2000 ? h('p', { class: 'muted small' }, `Showing the first 2,000 of ${units.length}. Choose an LGA or a type, or use “Download list” for all.`) : null,
@@ -2637,7 +2648,7 @@ async function renderUnits() {
         h('td', {}, u.lgaName), h('td', { class: 'small' }, u.isWard ? '' : u.wardId ? u.ward : u.ward ? h('span', { class: 'muted', title: 'Ward not loaded yet: kept as a label' }, u.ward + ' (label)') : '—'),
         h('td', {}, u.isWard ? h('strong', {}, u.name) : u.name), h('td', {}, u.type), h('td', {}, u.code),
         h('td', { class: 'small muted' }, u.latitude !== null ? `${u.latitude}, ${u.longitude}` : '—'),
-        h('td', {}, h('span', { class: 'id' }, u.id)), h('td', {}, u.closed ? pill('none', 'Closed') : pill('accepted', 'Open')))))))
+        h('td', {}, h('span', { class: 'id' }, u.id)), h('td', {}, u.closed ? pill('none', 'Closed') : pill('accepted', 'Open'), isDup(u) ? pill('draft', 'Possible duplicate') : null, u.inUse === false ? h('div', { class: 'muted small' }, 'LGA not in use') : null))))))
       : h('div', { class: 'panel empty' }, 'No units here yet. Download the Excel template, paste the names and import it — or add one above.'),
   ));
 }

@@ -33,7 +33,7 @@ function requireAdmin(ctx) {
 const unitOut = (u) => ({
   id: u.id, name: u.name, level: u.level, typeId: u.unit_type_id || null, type: u.type_name || u.unit_type || '', isWard: u.unit_type_id === WARD_TYPE,
   code: u.code || '', codeLabel: u.code_label || '', latitude: u.latitude ?? null, longitude: u.longitude ?? null, ward: u.ward_name || u.ward || '', wardId: u.ward_id || null, sectorId: u.sector_id,
-  lgaId: u.lga_id || u.parent_id, lgaName: u.lga_name, stateId: u.state_id, stateName: u.state_name, closed: !!u.closed_at,
+  lgaId: u.lga_id || u.parent_id, lgaName: u.lga_name, stateId: u.state_id, stateName: u.state_name, closed: !!u.closed_at, inUse: !u.inactive,
 });
 
 // ---------- unit types ----------
@@ -126,6 +126,8 @@ export async function listUnits(request, env, ctx) {
   const scope = await one(env.DB, 'SELECT * FROM org_units WHERE id = ?', scopeId);
   if (!scope || !inScope(ctx, scope)) throw new HttpError(403, 'out_of_scope', 'That area is outside your account.');
   where.push('u.path LIKE ?'); args.push(scope.path + '/%');
+  // Only LGAs in use (States & LGAs in use), unless asked for all.
+  if (q.get('all') !== '1') where.push('l.inactive = 0');
   const rows = await all(env.DB, `${UNIT_SELECT} WHERE ${where.join(' AND ')} ORDER BY s.name, l.name, ward_name, u.name LIMIT 20000`, ...args);
   return json({ sectors, sector: sector || (sectors[0] || {}).id, type, types: await typeList(env.DB), units: rows.map(unitOut) });
 }
