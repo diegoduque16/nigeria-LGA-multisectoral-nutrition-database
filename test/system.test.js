@@ -349,7 +349,8 @@ test('units below the LGA: unit types, wards with their DHIS2 IDs, import, scope
   const admin = await setupAdmin(env);
   const edu = (await admin.post('/api/datasets', { name: 'Education – yearly', sector: 'Education', frequency: 'YEARLY' })).data;
   let types = (await admin.get('/api/unit-types')).data.types;
-  assert.deepEqual(types.map((t) => [t.name, t.isWard]), [['Ward', true]]);
+  assert.deepEqual(types.map((t) => [t.name, t.isWard]), [['Ward', true], ['Health facility', false]]); // both ship by default
+  assert.equal((await admin.post('/api/unit-types', { name: 'health facility' })).status, 409);
   const prim = (await admin.post('/api/unit-types', { name: 'Primary school' })).data.id;
   assert.equal((await admin.post('/api/unit-types', { name: 'primary school' })).status, 409);
   const one = await admin.post('/api/units', { typeId: prim, lgaId: ABA_NORTH, name: 'Central Primary School', code: 'AB-001' });
@@ -430,7 +431,7 @@ test('units below the LGA: unit types, wards with their DHIS2 IDs, import, scope
 test('reporting by facilities under wards: chosen unit types report and add up to the LGA', async () => {
   const env = makeEnv();
   const admin = await setupAdmin(env);
-  const fac = (await admin.post('/api/unit-types', { name: 'Health facility' })).data.id;
+  const fac = 'ut_health_facility'; // ships by default
   const ds = (await admin.post('/api/datasets', { name: 'Health – facilities', sector: 'Health', frequency: 'YEARLY', reportLevel: 'UNIT', unitTypes: [fac] })).data;
   await admin.post(`/api/datasets/${ds.id}/indicators`, { name: 'Children vaccinated', numerator: 'Children vaccinated' });
   await admin.post('/api/units/import', { commit: true, rows: [

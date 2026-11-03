@@ -156,7 +156,7 @@ test('breakdowns: send back and correct, partial access, facilities, Excel sheet
   assert.equal(pv.status, 200, JSON.stringify(pv.data));
 
   // Facilities: parts add up from each facility to the LGA.
-  const fac = (await admin.post('/api/unit-types', { name: 'Health facility' })).data.id;
+  const fac = 'ut_health_facility'; // ships by default
   const fds = (await admin.post('/api/datasets', { name: 'Health – facilities', sector: 'Health', frequency: 'YEARLY', reportLevel: 'UNIT', unitTypes: [fac] })).data;
   await admin.post(`/api/datasets/${fds.id}/indicators`, { name: 'Vaccinated', numerator: 'Children vaccinated' });
   await admin.post('/api/units/import', { commit: true, rows: [
