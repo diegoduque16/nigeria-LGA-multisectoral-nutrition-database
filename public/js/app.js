@@ -133,7 +133,7 @@ const PAGES = [
   { id: 'pivot', group: 'results', name: () => (is(...ENTRY_ROLES) ? 'Results' : 'Compare over time'), short: 'Places × indicators × periods', roles: ['sysadmin', 'setupadmin', 'state', 'lga', 'viewer'], desc: 'Compare indicators across places and periods (a pivot table), and download it to Excel.' },
   { id: 'export', group: 'results', name: 'Export to scorecard', short: 'The two JSON files', roles: ['sysadmin', 'setupadmin', 'state', 'viewer'], desc: 'Download the two JSON files that the scorecard platform reads.' },
   { id: 'setup', group: 'setup', name: 'Sectors & indicators', short: 'Add a sector and its indicators', roles: ['sysadmin', 'setupadmin'], desc: 'Add a sector (Health, Education …), how often it reports, and its indicators.' },
-  { id: 'dictionary', group: 'setup', name: 'Indicator dictionary', short: 'Shared definitions and codes', roles: ['sysadmin', 'setupadmin'], desc: 'One definition per indicator — code, calculation, source, framework — shared by every sector that reports it.' },
+  { id: 'dictionary', group: 'setup', name: 'Indicator dictionary', short: 'Shared definitions and codes', roles: ['sysadmin', 'setupadmin'], nav: () => false, desc: 'One definition per indicator — code, calculation, source, framework — shared by every sector that reports it.' },
   { id: 'population', group: 'setup', name: 'Population figures', short: 'Yearly denominators', roles: ['sysadmin', 'setupadmin'], desc: 'Yearly numbers per LGA that indicators divide by: population, under-5s, expected pregnancies …' },
   { id: 'units', group: 'setup', name: 'Units below the LGA', short: 'Child org units: facilities, schools …', roles: ['sysadmin', 'setupadmin', 'state'], desc: 'The child org units of each LGA (DHIS2 level 4) that a sector reports on: health facilities, schools, water points, markets … Set them up per sector.' },
   { id: 'rollout', group: 'setup', name: 'States in use', short: 'Which states take part', roles: ['sysadmin'], desc: 'Choose which states use the system. The others are hidden everywhere.' },
@@ -1309,7 +1309,7 @@ async function renderSectors(m) {
     pageHead({
       title: 'Sectors & indicators',
       text: 'Each sector (Health, Education, Agriculture, WASH …) has its indicators. The numerator and denominator of each indicator become the boxes people fill in when they report.',
-      actions: admin ? [h('button', { class: 'primary big', onclick: () => sectorDialog(m) }, '+ Add a sector')] : null,
+      actions: [admin ? h('button', { class: 'primary big', onclick: () => sectorDialog(m) }, '+ Add a sector') : null, h('a', { class: 'small', href: '#/dictionary', title: 'Every indicator any sector uses: codes, definitions, Excel import' }, 'All indicators (dictionary) →')].filter(Boolean),
     }),
     h('div', { class: 'panel guide' }, h('h2', {}, 'Adding a sector takes three steps'), sectorSteps(admin ? 1 : 0),
       admin ? h('div', { class: 'actions' }, h('button', { class: 'primary', onclick: () => sectorDialog(m) }, 'Start: + Add a sector')) : h('p', { class: 'muted small' }, 'Only system administrators can add a sector. You can add and change the indicators of your sectors.')),
@@ -1325,6 +1325,23 @@ async function renderSectors(m) {
 }
 
 // Add or change one indicator.
+// Every number any sector already counts or divides by (not population figures), with the sectors using it —
+// suggested when typing a numerator, so the same thing gets the same name (and the same box) everywhere.
+function numbersInUse(m) {
+  const seen = new Map();
+  for (const d of m.datasets.filter((x) => !x.shared && !x.archived)) {
+    for (const i of (d.indicators || []).filter((x) => !x.archived)) {
+      for (const n of [i.numerator, i.denominator]) {
+        const k = String(n || '').trim().toLowerCase();
+        if (!k) continue;
+        if (!seen.has(k)) seen.set(k, { name: String(n).trim(), sectors: new Set() });
+        seen.get(k).sectors.add(d.sector || d.name);
+      }
+    }
+  }
+  return [...seen.values()].sort((a, b) => a.name.localeCompare(b.name)).map((x) => ({ name: x.name, label: [...x.sectors].join(', ') }));
+}
+
 // Required on every indicator: name, numerator, source and how it is shown; a percentage or a rate per 1,000
 // also needs its denominator. Returns what is missing, in words, or ''.
 function indicatorMissing(x) {
@@ -1430,13 +1447,14 @@ async function indicatorDialog(ds, m, i, first = false) {
   const myDef = i && defs.find((d) => d.id === i.defId);
   const onSchedule = new Set(ds.indicators.filter((x) => !x.archived).map((x) => x.defId));
   const pickable = defs.filter((d) => !onSchedule.has(d.id));
-  const pick = i ? null : select([{ id: '', name: pickable.length ? '— a new indicator (adds it to the dictionary) —' : '— a new indicator —' },
+  const pick = i ? null : select([{ id: '', name: pickable.length ? '— a new indicator —' : '— a new indicator —' },
     ...pickable.map((d) => ({ id: d.id, name: `${d.code ? d.code + ' · ' : ''}${d.name}${d.sector ? ' (' + d.sector + ')' : ''}` }))], '');
   const code = h('input', { placeholder: 'optional, e.g. NUT-01', size: 12, value: myDef ? myDef.code : '' });
   const sharedFields = m.datasets.filter((d) => d.shared && !d.archived).flatMap((d) => d.dataElements.filter((f) => !f.archived));
   const boxes = ds.dataElements.filter((d) => !d.archived);
   const listId = 'boxes-' + ds.id;
-  const dl = h('datalist', { id: listId }, boxes.map((d) => h('option', { value: d.name })), sharedFields.map((f) => h('option', { value: f.name, label: 'Population figure' })));
+  const inUse = numbersInUse(m).filter((x) => !boxes.some((b) => b.name.toLowerCase() === x.name.toLowerCase()));
+  const dl = h('datalist', { id: listId }, boxes.map((d) => h('option', { value: d.name, label: 'On this form' })), inUse.map((x) => h('option', { value: x.name, label: `Used by ${x.label}` })), sharedFields.map((f) => h('option', { value: f.name, label: 'Population figure' })));
   const name = h('input', { value: i ? i.name : '', placeholder: 'e.g. ANC 4+ coverage' });
   const num = h('input', { list: listId, value: i ? i.numerator : '', placeholder: 'e.g. Women with 4+ ANC visits' });
   const denPick = denominatorPicker(m, ds, i ? i.denominator : '');
@@ -1465,7 +1483,7 @@ async function indicatorDialog(ds, m, i, first = false) {
     first ? h('div', { class: 'area area-admin area-setup' }, 'Step 2 of 3') : null,
     h('h2', {}, i ? i.name : `New indicator — ${ds.sector || ds.name}`),
     h('p', { class: 'muted small' }, scheduleText(ds)), dl,
-    pick ? h('div', { class: 'f' }, h('span', {}, 'Pick from the indicator dictionary'), pick, h('span', { class: 'hint' }, 'Use the shared definition when another sector reports the same indicator, so the figures can be compared.')) : null,
+    pick ? h('div', { class: 'f' }, h('span', {}, 'Already used by a sector? Pick it'), pick, h('span', { class: 'hint' }, 'Every indicator any sector adds is listed here. Picking it keeps one definition, so the figures can be added up and compared.')) : null,
     fromDict,
     sharedWith.length ? h('div', { class: 'note warn' }, `Shared definition: also used by ${[...new Set(sharedWith.map((u) => u.sector || u.dataset))].join(', ')}. Changing the name or calculation here changes it there too.`) : null,
     h('div', { class: 'grid2' },
@@ -1550,6 +1568,7 @@ async function renderDictionary() {
   }));
   mount(h('div', {},
     pageHead({
+      back: ['#/setup', 'Sectors & indicators'],
       title: 'Indicator dictionary',
       text: 'One definition per indicator, shared by every sector that reports it: its code, what is counted, what it is divided by, how it is shown, the source and the framework it belongs to. The same name always means the same calculation, so sectors can be compared and the codes go with the export.',
       how: [
@@ -1753,6 +1772,7 @@ function renderForm(ds, m) {
   const sharedFields = m.datasets.filter((d) => d.shared && !d.archived).flatMap((d) => d.dataElements.filter((f) => !f.archived));
   const fieldList = h('datalist', { id: 'field-list' },
     ds.dataElements.filter((d) => !d.archived).map((d) => h('option', { value: d.name })),
+    ds.shared ? [] : numbersInUse(m).filter((x) => !ds.dataElements.some((d) => d.name.toLowerCase() === x.name.toLowerCase())).map((x) => h('option', { value: x.name, label: `Used by ${x.label}` })),
     ds.shared ? [] : sharedFields.map((f) => h('option', { value: f.name, label: 'Population figure (shared)' })));
   const head = pageHead({
     back: ['#/setup', 'All sectors'],
