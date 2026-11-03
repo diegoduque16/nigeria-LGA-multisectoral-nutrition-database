@@ -124,7 +124,7 @@ const GROUPS = [
 const hasUnitSets = () => myDatasets().some((d) => d.reportLevel === 'UNIT');
 const PAGES = [
   { id: 'home', name: () => (is(...ENTRY_ROLES) ? 'My reports' : 'Home'), short: 'What needs doing now', roles: ALL, desc: 'Start here: what needs doing and where to find everything.' },
-  { id: 'review', group: 'report', name: () => (is('lga') ? 'School / facility reports' : 'Who has sent'), short: 'Sent or not, per place', roles: ['sysadmin', 'national', 'state', 'lga'], nav: () => !is('lga') || hasUnitSets(), desc: () => (is('lga') ? 'Which of your schools / facilities have sent their report. Open one to see it or type it in.' : 'For each report and period: which LGAs (or schools / facilities) have sent, and which have not. Open one to see it or type it in.') },
+  { id: 'review', group: 'report', name: () => (is('lga') ? 'Org unit reports' : 'Who has sent'), short: 'Sent or not, per place', roles: ['sysadmin', 'national', 'state', 'lga'], nav: () => !is('lga') || hasUnitSets(), desc: () => (is('lga') ? 'Which org units below your LGA have sent their report. Open one to see it or type it in.' : 'For each report and period: % of LGAs (or org units below the LGA) that have sent, by state, then LGA by LGA.') },
   { id: 'reminders', group: 'report', name: 'Send reminders', short: 'Email those who have not sent', roles: ['sysadmin', 'national', 'state'], desc: 'Remind the people whose report is not sent yet: an email with their Excel template attached and a link to upload it.' },
   { id: 'upload', name: 'Upload a report', roles: ['sysadmin', 'national', 'state', 'lga', 'unit'], nav: () => false, desc: 'Upload a filled Excel template.' },
   { id: 'entry', group: 'report', name: 'Type in a report', short: 'On behalf of an LGA', roles: ['sysadmin', 'national', 'state', 'lga', 'unit'], nav: () => !is(...ENTRY_ROLES), desc: 'Type in the numbers of a report for an LGA that cannot do it themselves, and send it.' },
@@ -821,13 +821,16 @@ function reviewControls(form, after) {
 // "Who has sent": a drill-down. Whole country → one row per state (% sent); a state → its LGAs; for reports sent by
 // schools / facilities, an LGA → each school / facility. State and LGA users start at their own level.
 async function renderReview() {
-  const sets = myDatasets();
+  // Population figures are entered centrally, not sent by anyone, so they are not listed here.
+  const sets = myDatasets().filter((d) => !d.shared && !d.archived);
   if (!sets.length) return mount(noDatasets());
-  // LGA reviewers only review unit-reported data sets (their schools / facilities).
+  // LGA reviewers only review data sets reported by org units below the LGA.
   const usable = role() === 'lga' ? sets.filter((d) => d.reportLevel === 'UNIT') : sets;
-  if (!usable.length) return mount(h('div', { class: 'note info' }, 'None of your reports come from schools or facilities.'));
+  if (!usable.length) return mount(h('div', { class: 'note info' }, 'None of your reports come from org units below the LGA.'));
   const ds = usable.find((d) => d.id === pref('ds')) || usable[0];
   const byUnit = ds.reportLevel === 'UNIT';
+  await meta();
+  const pw = placeWords(ds); const lc = (w) => (w === 'LGA' || w === 'LGAs' ? w : w.toLowerCase());
   const national = state.me.ou.level === 1;
   const myState = ['state', 'lga'].includes(role()) ? (state.me.ou.path ? state.me.ou.path.split('/')[2] : state.me.ou.id) : '';
   const o = national ? await orgs() : null;
@@ -848,7 +851,7 @@ async function renderReview() {
     ? await retry('/api/status', { dataset: ds.id, state: stateId, lga: lgaId, period })
     : await retry('/api/status/summary', { dataset: ds.id, state: view === 'lgas' ? stateId : undefined, period });
   await meta();
-  const what = byUnit ? 'schools / facilities' : 'LGAs';
+  const what = lc(pw.many);
   const stateName = st.state ? st.state.name : '';
   const lgaName = lgaId && st.lgaOptions ? (st.lgaOptions.find((l) => l.id === lgaId) || {}).name : '';
   // Breadcrumb.
@@ -860,12 +863,12 @@ async function renderReview() {
   const bar = (pct) => { const fill = h('span', {}); fill.style.width = `${pct || 0}%`; return h('div', { class: 'pbar' }, fill); };
   const pctCell = (r) => h('td', { class: 'pcell' }, bar(r.percent), h('span', { class: 'n' }, r.percent == null ? '—' : `${r.percent}%`));
   const head = pageHead({
-    title: role() === 'lga' ? 'School / facility reports' : 'Who has sent',
+    title: role() === 'lga' ? `${pw.one} reports` : 'Who has sent',
     sub: `${view === 'states' ? 'All states' : role() === 'lga' ? state.me.ou.name : lgaName ? `${lgaName}, ${stateName}` : stateName} · ${st.dataset.name} · ${st.periodName} · due ${fmtDay(st.due)}`,
     text: `How many ${what} have sent this report. A report counts as soon as it is sent.`,
     how: [
       'Choose the report and the period at the top.',
-      national ? 'Start with the states. Click a state to see its LGAs' + (byUnit ? ', then an LGA to see each school / facility.' : '.') : byUnit && role() !== 'lga' ? 'Click an LGA to see each school / facility.' : 'Those not sent yet are at the top.',
+      national ? 'Start with the states. Click a state to see its LGAs' + (byUnit ? `, then an LGA to see each ${lc(pw.one)}.` : '.') : byUnit && role() !== 'lga' ? `Click an LGA to see each ${lc(pw.one)}.` : 'Those not sent yet are at the top.',
       'In the full list, click one not sent yet to type it in on their behalf, or use Send reminders. To correct a sent report, a system administrator deletes it and it is typed in again.',
     ],
   });
@@ -875,7 +878,7 @@ async function renderReview() {
 
   if (view !== 'list') {
     // Summary table: states, or the LGAs of one state.
-    const unitsWord = byUnit ? 'Schools / facilities' : 'LGAs';
+    const unitsWord = pw.many;
     const rows = st.rows;
     const note = h('div', { class: 'note ' + (st.sent < st.total ? 'warn' : 'ok') }, h('strong', {}, `${st.percent == null ? '—' : st.percent + '%'} reported: `),
       `${st.sent} of ${st.total} ${what} have sent${view === 'states' ? ` across ${rows.length} state${rows.length === 1 ? '' : 's'}` : ` in ${stateName}`}.`);
@@ -892,7 +895,7 @@ async function renderReview() {
     return mount(h('div', {}, head, filters, crumbBar, note, table));
   }
 
-  // Full list: each LGA, or each school / facility.
+  // Full list: each LGA, or each org unit below the LGA.
   const open = (l) => {
     pref('ds', ds.id); pref('state', stateId); pref('pe:' + ds.id, st.period);
     if (byUnit) { pref('lga', l.lgaId); pref('unit', l.id); } else pref('lga', l.id);
@@ -906,13 +909,13 @@ async function renderReview() {
   mount(h('div', {}, head, filters, crumbBar,
     h('div', { class: 'note ' + (sent < st.total ? 'warn' : 'ok') }, h('strong', {}, `${pct == null ? '—' : pct + '%'} reported · ${st.total} ${what}: `), summary),
     list.length ? h('div', { class: 'scroll' }, h('table', {},
-      h('thead', {}, h('tr', {}, byUnit && !lgaId ? h('th', {}, 'LGA') : null, h('th', {}, byUnit ? 'School / facility' : 'LGA'), h('th', {}, 'Status'), h('th', {}, 'Sent on'), h('th', {}, ''))),
+      h('thead', {}, h('tr', {}, byUnit && !lgaId ? h('th', {}, 'LGA') : null, h('th', {}, pw.one), h('th', {}, 'Status'), h('th', {}, 'Sent on'), h('th', {}, ''))),
       h('tbody', {}, list.map((l) => h('tr', { class: 'click', onclick: () => open(l) },
         byUnit && !lgaId ? h('td', { class: 'small' }, l.lgaName) : null,
         h('td', {}, l.name, l.type ? h('span', { class: 'muted small' }, ` · ${l.type}`) : null), h('td', {}, pill(l.status, STATUS_PLAIN[l.status]), l.late ? h('span', { class: 'late' }, 'Late') : null),
         h('td', {}, fmtDate(l.submittedAt)),
         h('td', { class: 'n' }, ['submitted', 'accepted'].includes(l.status) ? h('button', {}, 'View') : h('button', { class: 'primary' }, 'Type it in')))))))
-      : h('div', { class: 'panel empty' }, byUnit ? 'No schools / facilities are listed for this sector here yet. Add them under Set-up → Units below the LGA.' : 'No LGAs.'),
+      : h('div', { class: 'panel empty' }, byUnit ? `No ${lc(pw.many)} are listed here yet. Add them under Set-up → Units below the LGA.` : 'No LGAs.'),
   ));
 }
 
@@ -1249,6 +1252,16 @@ function whoText(d) {
   return names.length ? 'each ' + names.map((n) => n.toLowerCase()).join(' / ') : 'each unit below the LGA';
 }
 const scheduleText = (d) => `${d.frequencyName} · ${whoText(d)} reports · due on day ${d.dueDay} of the next month`;
+// What a report's places are called: "LGA(s)", or the configured child unit type ("Primary school(s)",
+// "Health facilit(y/ies)", "Ward(s)"); "Org unit(s)" when a report is set up for several types.
+const plural = (w) => (/[^aeiou]y$/i.test(w) ? w.slice(0, -1) + 'ies' : /(s|x|ch|sh)$/i.test(w) ? w + 'es' : w + 's');
+function placeWords(d) {
+  if (d.reportLevel !== 'UNIT') return { one: 'LGA', many: 'LGAs' };
+  const types = (state.meta && state.meta.unitTypes) || [];
+  const names = (d.unitTypes || []).map((id) => (types.find((t) => t.id === id) || {}).name).filter(Boolean);
+  const one = names.length === 1 ? names[0] : 'Org unit';
+  return { one, many: plural(one) };
+}
 
 // “Who reports” on a schedule: each LGA, each ward, or each unit of the sector's own types (health facilities,
 // schools … set up under Units below the LGA). Returns the control and its value.
