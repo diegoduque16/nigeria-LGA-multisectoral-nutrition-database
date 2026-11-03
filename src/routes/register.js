@@ -4,6 +4,7 @@
 //   3. an administrator approves (an account is created) or rejects the request.
 import { HttpError, json, readJson, validate, v, uid, now, randomToken, EMAIL_RE } from '../lib/util.js';
 import { one, all, run, audit, rateLimit } from '../lib/db.js';
+import { emailApproved } from '../lib/accountmail.js';
 import { hashPassword, checkPasswordStrength, ROLE_NAMES, ROLE_LEVEL, requireRole, inScope, requireManager, rolesManagedBy } from '../lib/auth.js';
 
 // Roles people may ask for through a link (administrators are never self-registered).
@@ -246,7 +247,8 @@ export async function approveRequest(request, env, ctx, { id }) {
   for (const d of body.dataElements || []) await run(env.DB, 'INSERT OR IGNORE INTO user_data_elements (user_id, de_id) VALUES (?, ?)', userId, d);
   await run(env.DB, "UPDATE account_requests SET status = 'approved', decided_by = ?, decided_at = ?, user_id = ? WHERE id = ?", ctx.user.id, t, userId, id);
   await audit(env.DB, ctx, 'account_request_approved', 'user', userId, { email: r.email, role });
-  return json({ ok: true, userId });
+  const emailed = await emailApproved(env, { name: r.name, email: r.email, roleName: ROLE_NAMES[role], place: ou.name, signIn: `${new URL(request.url).origin}/#/login`, replyTo: ctx.user.email });
+  return json({ ok: true, userId, emailed });
 }
 
 // POST /api/account-requests/:id/reject  { note }

@@ -2869,7 +2869,7 @@ function requestsPanel(requests, m) {
       h('tbody', {}, requests.map((r) => {
         const approve = h('button', { class: 'primary' }, 'Approve');
         const reject = h('button', { class: 'danger' }, 'Reject');
-        approve.addEventListener('click', busy(approve, async () => { await api('POST', `/api/account-requests/${r.id}/approve`, {}); toast(`${r.name} can now sign in`); renderAccounts(); }));
+        approve.addEventListener('click', busy(approve, async () => { const { data } = await api('POST', `/api/account-requests/${r.id}/approve`, {}); toast(`${r.name} can now sign in${data.emailed ? ' — we emailed them' : ''}`); renderAccounts(); }));
         reject.addEventListener('click', busy(reject, async () => {
           const note = prompt(`Reason for not approving ${r.name} (shown to them when they try to sign in):`, '');
           if (note === null) return;
@@ -3156,7 +3156,7 @@ async function userDialog(u, roles, m, presetRole = null) {
   roleSel.addEventListener('change', showRoleHelp);
 
   // Data sets and the numbers (numerators/denominators) the account may enter.
-  const dsBoxes = m.datasets.filter((d) => !d.archived).map((d) => ({ d, box: h('input', { type: 'checkbox', checked: u ? u.datasets.includes(d.id) : false }) }));
+  const dsBoxes = m.datasets.filter((d) => !d.archived && typedIn(d)).map((d) => ({ d, box: h('input', { type: 'checkbox', checked: u ? u.datasets.includes(d.id) : false }) }));
   const deBoxes = [];
   const deArea = h('div');
   function layoutFields() {
@@ -3196,8 +3196,9 @@ async function userDialog(u, roles, m, presetRole = null) {
   dlg.addEventListener('close', () => { dlg.remove(); renderAccounts(); });
   showRoleHelp();
 
-  const showLink = (link, exp) => out.replaceChildren(h('div', { class: 'note ok' },
-    'Send this one-time link to the person (by email or WhatsApp). It works once and expires ', fmtDate(exp), '.',
+  const showLink = (link, exp, emailed) => out.replaceChildren(h('div', { class: 'note ok' },
+    emailed ? h('strong', {}, `Emailed to ${email.value.trim()}. `) : null,
+    emailed ? 'You can also share the same one-time link by WhatsApp. It works once and expires ' : 'Send this one-time link to the person (by email or WhatsApp). It works once and expires ', fmtDate(exp), '.',
     h('div', { class: 'linkbox' }, h('input', { value: link, readonly: true }), h('button', { onclick: () => copy(link) }, 'Copy'))));
 
   save.addEventListener('click', busy(save, async () => {
@@ -3212,10 +3213,10 @@ async function userDialog(u, roles, m, presetRole = null) {
     };
     try {
       if (u) { await api('PATCH', '/api/users/' + u.id, { ...body, active: active.checked }); toast('Saved'); dlg.close(); }
-      else { const { data } = await api('POST', '/api/users', body); u = data.user; save.textContent = 'Save'; showLink(data.link, data.linkExpiresAt); }
+      else { const { data } = await api('POST', '/api/users', body); u = data.user; save.textContent = 'Save'; showLink(data.link, data.linkExpiresAt, data.emailed); }
     } catch (e) { err.textContent = e.message; }
   }));
-  if (reset) reset.addEventListener('click', busy(reset, async () => { const { data } = await api('POST', `/api/users/${u.id}/reset-link`); showLink(data.link, data.linkExpiresAt); }));
+  if (reset) reset.addEventListener('click', busy(reset, async () => { const { data } = await api('POST', `/api/users/${u.id}/reset-link`); showLink(data.link, data.linkExpiresAt, data.emailed); }));
   document.body.append(dlg); dlg.showModal();
 }
 

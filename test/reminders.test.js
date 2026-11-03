@@ -87,3 +87,22 @@ test('reminders: units without their own account are chased through the LGA acco
   assert.match(sent[0].text, /no account of their own.*Clinic B/);
   assert.ok(b);
 });
+
+test('account emails: the invite link is emailed when email is set up, and shown either way', async () => {
+  const env = makeEnv({ EMAIL_API_KEY: 'test-key', EMAIL_FROM: 'LGA Scorecard <reports@example.org>' });
+  const admin = await setupAdmin(env);
+  const sent = [];
+  const real = globalThis.fetch;
+  globalThis.fetch = async (url, init) => { sent.push(JSON.parse(init.body)); return new Response('{"id":"x"}', { status: 200 }); };
+  let r;
+  try { r = (await admin.post('/api/users', { name: 'Musa', email: 'musa@abia.gov.ng', role: 'lga', ouId: ABA_NORTH })).data; }
+  finally { globalThis.fetch = real; }
+  assert.equal(r.emailed, true);
+  assert.deepEqual(sent[0].to, ['musa@abia.gov.ng']);
+  assert.ok(sent[0].text.includes(r.link)); assert.match(sent[0].text, /Data entry — LGA/);
+  // Without email: not emailed, link still returned.
+  const env2 = makeEnv();
+  const admin2 = await setupAdmin(env2);
+  const r2 = (await admin2.post('/api/users', { name: 'Ada', email: 'ada@abia.gov.ng', role: 'lga', ouId: ABA_NORTH })).data;
+  assert.equal(r2.emailed, false); assert.match(r2.link, /set-password/);
+});

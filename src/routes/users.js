@@ -9,6 +9,7 @@ import {
 import { loadSeedOrgUnits } from './orgunits.js';
 import { pendingFor } from './register.js';
 import { FREQUENCY_NAMES } from '../lib/dhis.js';
+import { emailPasswordLink } from '../lib/accountmail.js';
 
 const INVITE_DAYS = 7;
 const RESET_HOURS = 24;
@@ -254,7 +255,9 @@ export async function createUser(request, env, ctx) {
   const link = await issueLink(env.DB, id, 'invite');
   await audit(env.DB, ctx, 'user_created', 'user', id, { email, role: body.role, admin: !!body.isAdmin, ou: ou.id });
   const u = await one(env.DB, 'SELECT * FROM users WHERE id = ?', id);
-  return json({ user: await userOut(env.DB, u), link: linkUrl(request, link.token), linkExpiresAt: link.expiresAt }, 201);
+  const url = linkUrl(request, link.token);
+  const emailed = await emailPasswordLink(env, { name: body.name, email, roleName: roleName(body.role, body.isAdmin && AREA_ADMIN_NAMES[body.role]), place: ou.name, link: url, expiresAt: link.expiresAt, purpose: 'invite', replyTo: ctx.user.email });
+  return json({ user: await userOut(env.DB, u), link: url, linkExpiresAt: link.expiresAt, emailed }, 201);
 }
 
 async function loadTarget(db, ctx, id) {
@@ -296,7 +299,10 @@ export async function resetLink(request, env, ctx, { id }) {
   const link = await issueLink(env.DB, id, u.pw_hash ? 'reset' : 'invite');
   await run(env.DB, 'UPDATE users SET failed_logins = 0, locked_until = NULL WHERE id = ?', id);
   await audit(env.DB, ctx, 'reset_link', 'user', id);
-  return json({ link: linkUrl(request, link.token), linkExpiresAt: link.expiresAt });
+  const url = linkUrl(request, link.token);
+  const ou = await one(env.DB, 'SELECT name FROM org_units WHERE id = ?', u.ou_id);
+  const emailed = await emailPasswordLink(env, { name: u.name, email: u.email, roleName: roleName(u.role, u.is_admin), place: ou && ou.name, link: url, expiresAt: link.expiresAt, purpose: u.pw_hash ? 'reset' : 'invite', replyTo: ctx.user.email });
+  return json({ link: url, linkExpiresAt: link.expiresAt, emailed });
 }
 
 // ---------- audit log ----------
