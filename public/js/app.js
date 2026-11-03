@@ -795,7 +795,9 @@ async function renderReminders() {
           h('td', {}, pill(p.status, STATUS_PLAIN[p.status])), h('td', {}, u.name), h('td', { class: 'small' }, u.email), h('td', { class: 'small' }, fmtDate(u.lastReminded)),
           h('td', {}, h('button', { class: 'link', onclick: () => copyMsg(u) }, 'Copy message')))))))
         : r.places.length ? null : h('p', { class: 'muted' }, 'Every report is sent. Nothing to remind.'),
-      noAccount.length ? h('p', { class: 'muted small' }, `No account to remind for: ${noAccount.map((p) => p.name).join(', ')}. Create accounts on the Users page.`) : null,
+      noAccount.length ? h('details', { class: 'small' }, h('summary', { class: 'muted' }, `${noAccount.length} ${noAccount.length === 1 ? 'place has' : 'places have'} no account to remind — show which`),
+        h('p', { class: 'muted small' }, noAccount.map((p) => p.name).join(', ')),
+        h('p', { class: 'muted small' }, 'Create accounts for them on the Users page, or share a registration QR code.')) : null,
       h('p'), h('div', { class: 'f' }, h('span', {}, 'Note in the email (optional)'), note), h('p'),
       h('div', { class: 'actions' }, send, h('button', { onclick: () => copy(r.link) }, 'Copy upload link')), out),
     h('details', { class: 'panel' }, h('summary', {}, 'See the email text'), h('pre', { class: 'small wrap' }, r.sample))));
