@@ -28,7 +28,7 @@ export async function pivot(request, env, ctx) {
   const datasets = (await all(env.DB, 'SELECT * FROM datasets WHERE archived_at IS NULL AND shared = 0 ORDER BY name'))
     .filter((d) => datasetAllowed(ctx, d.id) && (!wanted || wanted.includes(d.id)));
   const children = root.level === 1 ? await all(env.DB, 'SELECT id, name FROM org_units WHERE level = 2 AND parent_id = ? AND inactive = 0 ORDER BY name', root.id)
-    : root.level === 2 ? await all(env.DB, 'SELECT id, name FROM org_units WHERE level = 3 AND parent_id = ? AND closed_at IS NULL ORDER BY name', root.id) : [];
+    : root.level === 2 ? await all(env.DB, 'SELECT id, name FROM org_units WHERE level = 3 AND parent_id = ? AND closed_at IS NULL AND inactive = 0 ORDER BY name', root.id) : [];
 
   const indicators = []; const cells = []; const skipped = []; const ous = new Map([[root.id, { id: root.id, name: root.name, level: root.level, total: true }]]);
   for (const c of children) ous.set(c.id, { id: c.id, name: c.name, level: root.level + 1 });

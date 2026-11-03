@@ -45,7 +45,7 @@ export async function loadLgaTotals(db, dataset, period, rootOu, statuses, share
   const unitLevel = dataset.report_level === 4;
   const like = rootOu.path + '/%';
   const lgaRows = await all(db,
-    `SELECT id, name, parent_id, path FROM org_units WHERE level = 3 AND closed_at IS NULL AND parent_id NOT IN (SELECT id FROM org_units WHERE level = 2 AND inactive = 1) AND (id = ? OR path LIKE ? OR ? LIKE path || '/%') ORDER BY name`,
+    `SELECT id, name, parent_id, path FROM org_units WHERE level = 3 AND closed_at IS NULL AND inactive = 0 AND parent_id NOT IN (SELECT id FROM org_units WHERE level = 2 AND inactive = 1) AND (id = ? OR path LIKE ? OR ? LIKE path || '/%') ORDER BY name`,
     rootOu.id, like, rootOu.path);
   const lgas = new Map(lgaRows.map((o) => [o.id, {
     id: o.id, name: o.name, stateId: o.parent_id, values: {}, reported: 0, expected: unitLevel ? 0 : 1,
@@ -59,7 +59,7 @@ export async function loadLgaTotals(db, dataset, period, rootOu, statuses, share
     const unitRows = await all(db,
       `SELECT u.id, u.name, u.lga_id, COALESCE(t.name, u.unit_type) AS unit_type, COALESCE(w.name, u.ward) AS ward
          FROM org_units u LEFT JOIN unit_types t ON t.id = u.unit_type_id LEFT JOIN org_units w ON w.id = u.parent_id AND u.level = 5
-        WHERE ${f.sql} AND u.closed_at IS NULL AND (u.id = ? OR u.path LIKE ?) ORDER BY u.name`,
+        WHERE ${f.sql} AND u.closed_at IS NULL AND u.inactive = 0 AND (u.id = ? OR u.path LIKE ?) ORDER BY u.name`,
       ...f.args, rootOu.id, like);
     for (const u of unitRows) { const l = lgas.get(u.lga_id); if (l) l.expected++; }
     if (perUnit) units = new Map(unitRows.map((u) => [u.id, { id: u.id, name: u.name, lgaId: u.lga_id, type: u.unit_type || '', ward: u.ward || '', values: {}, reported: 0, expected: 1, statuses: {}, periodsReported: new Set() }]));

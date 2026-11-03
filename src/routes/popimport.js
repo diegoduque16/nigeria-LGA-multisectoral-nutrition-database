@@ -25,7 +25,7 @@ export async function populationTable(request, env, ctx, { id }) {
   // The template lists the imported figures only; calculated ones follow Total population.
   const fields = await all(env.DB, 'SELECT id, name FROM data_elements WHERE dataset_id = ? AND archived_at IS NULL AND calc_base IS NULL ORDER BY sort, name', ds.id);
   const lgas = (await all(env.DB, `SELECT l.id, l.name, l.path, s.name AS state FROM org_units l JOIN org_units s ON s.id = l.parent_id
-      WHERE l.level = 3 AND l.closed_at IS NULL AND s.inactive = 0 ORDER BY s.name, l.name`)).filter((l) => inScope(ctx, l));
+      WHERE l.level = 3 AND l.closed_at IS NULL AND l.inactive = 0 AND s.inactive = 0 ORDER BY s.name, l.name`)).filter((l) => inScope(ctx, l));
   const vals = await all(env.DB, `SELECT de_id, ou_id, value FROM data_values WHERE period = ? AND de_id IN (SELECT id FROM data_elements WHERE dataset_id = ?)`, year, ds.id);
   const byKey = new Map(vals.map((x) => [x.ou_id + '|' + x.de_id, x.value]));
   const source = await getSetting(env.DB, `popsource:${ds.id}:${year}`);

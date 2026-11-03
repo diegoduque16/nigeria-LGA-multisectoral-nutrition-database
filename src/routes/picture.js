@@ -110,10 +110,11 @@ async function exportDatasets(db, ctx, param) {
 async function exportOrgUnits(db, root, units = null) {
   const ancestors = root.path.split('/').filter(Boolean).slice(0, -1);
   const inactiveStates = new Set((await all(db, 'SELECT id FROM org_units WHERE level = 2 AND inactive = 1')).map((r) => r.id));
+  // LGAs not in use (and the units below them) are left out too.
   const sectorTypes = units && units !== 'all'
     ? new Set((await all(db, 'SELECT DISTINCT x.type_id FROM dataset_unit_types x JOIN datasets d ON d.id = x.dataset_id WHERE d.sector_id = ?', units)).map((r) => r.type_id))
     : null;
-  const rows = await all(db, 'SELECT id, name, level, parent_id, closed_at, sector_id, unit_type_id, path, code, latitude, longitude FROM org_units WHERE (id = ? OR path LIKE ?) AND closed_at IS NULL ORDER BY level, name', root.id, root.path + '/%');
+  const rows = await all(db, 'SELECT id, name, level, parent_id, closed_at, sector_id, unit_type_id, path, code, latitude, longitude FROM org_units WHERE (id = ? OR path LIKE ?) AND closed_at IS NULL AND (level < 3 OR inactive = 0) ORDER BY level, name', root.id, root.path + '/%');
   const keep = new Set(rows.filter((o) => o.level <= 3 || (units && (units === 'all' || o.sector_id === units || (sectorTypes && sectorTypes.has(o.unit_type_id))))).map((o) => o.id));
   for (const o of rows) if (keep.has(o.id) && o.level === 5) keep.add(o.parent_id);
   const below = rows.filter((o) => keep.has(o.id))

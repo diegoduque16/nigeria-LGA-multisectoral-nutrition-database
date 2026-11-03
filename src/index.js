@@ -47,6 +47,7 @@ const ROUTES = [
   ['GET', '/api/orgunits', orgunits.listOrgUnits, 'session'],
   ['POST', '/api/orgunits/import', orgunits.importOrgUnits, 'session'],
   ['PUT', '/api/rollout', orgunits.setRollout, 'session'],
+  ['PUT', '/api/rollout/lgas', orgunits.setLgaRollout, 'session'],
   ['GET', '/api/units', units.listUnits, 'session'],
   ['POST', '/api/units', units.createUnit, 'session'],
   ['POST', '/api/units/import', units.importUnits, 'session'],

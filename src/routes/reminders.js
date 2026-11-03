@@ -22,9 +22,9 @@ async function openReports(db, ctx, ds, period, area) {
   if (ds.report_level === 4) {
     const f = unitsOf(ds, 'o');
     places = await all(db, `SELECT o.id, o.name, o.path, l.name AS lga FROM org_units o JOIN org_units l ON l.id = o.lga_id
-      WHERE ${f.sql} AND o.closed_at IS NULL AND o.path LIKE ? ORDER BY l.name, o.name LIMIT 5000`, ...f.args, area.path + '/%');
+      WHERE ${f.sql} AND o.closed_at IS NULL AND o.inactive = 0 AND o.path LIKE ? ORDER BY l.name, o.name LIMIT 5000`, ...f.args, area.path + '/%');
   } else {
-    places = await all(db, `SELECT o.id, o.name, o.path, o.name AS lga FROM org_units o WHERE o.level = 3 AND o.closed_at IS NULL AND (o.id = ? OR o.path LIKE ?) ORDER BY o.name`, area.id, area.path + '/%');
+    places = await all(db, `SELECT o.id, o.name, o.path, o.name AS lga FROM org_units o WHERE o.level = 3 AND o.closed_at IS NULL AND o.inactive = 0 AND (o.id = ? OR o.path LIKE ?) ORDER BY o.name`, area.id, area.path + '/%');
   }
   places = places.filter((p) => inScope(ctx, p));
   const status = new Map((await all(db, 'SELECT ou_id, status FROM reports WHERE dataset_id = ? AND period = ?', ds.id, period)).map((r) => [r.ou_id, r.status]));

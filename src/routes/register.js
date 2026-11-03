@@ -145,6 +145,7 @@ export async function submitRegistration(request, env, ctx, { token }) {
   if (!ou || ou.closed_at || !(ou.path + '/').startsWith(area.path + '/')) throw new HttpError(422, 'invalid', 'Choose where you work (inside the area of this link).', { field: 'ouId' });
   const ouState = ou.level >= 2 ? await one(env.DB, 'SELECT inactive FROM org_units WHERE id = ?', ou.path.split('/')[2]) : null;
   if (ouState && ouState.inactive) throw new HttpError(422, 'invalid', 'This state is not using the system yet.', { field: 'ouId' });
+  if (ou.level >= 3 && ou.inactive) throw new HttpError(422, 'invalid', 'This LGA is not using the system yet.', { field: 'ouId' });
   const lvl = ROLE_LEVEL[body.role];
   if (lvl && (lvl === 4 ? ou.level < 4 : ou.level !== lvl)) {
     const where = { 2: 'a state', 3: 'an LGA', 4: 'a unit (school, facility …)' }[lvl];

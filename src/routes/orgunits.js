@@ -78,7 +78,7 @@ export async function loadSeedOrgUnits(db) {
   return upsertUnits(db, prepareUnits(extractUnits(seed)));
 }
 
-const ouOut = (o) => ({ id: o.id, name: o.name, level: o.level, parentId: o.parent_id, closed: !!o.closed_at });
+const ouOut = (o) => ({ id: o.id, name: o.name, level: o.level, parentId: o.parent_id, closed: !!o.closed_at, active: !o.inactive });
 
 // GET /api/orgunits            -> the states in the caller's scope (with LGA counts)
 // GET /api/orgunits?parent=ID  -> children of an org unit
@@ -88,7 +88,7 @@ export async function listOrgUnits(request, env, ctx) {
   if (url.searchParams.get('lgas') === 'all') {
     // Every LGA in the caller's area with its state (for Excel templates).
     const rows = await all(env.DB, `SELECT l.id, l.name, l.path, s.name AS state FROM org_units l JOIN org_units s ON s.id = l.parent_id
-      WHERE l.level = 3 AND l.closed_at IS NULL AND s.inactive = 0 ORDER BY s.name, l.name`);
+      WHERE l.level = 3 AND l.closed_at IS NULL AND l.inactive = 0 AND s.inactive = 0 ORDER BY s.name, l.name`);
     return json({ lgas: rows.filter((r) => inScope(ctx, r)).map((r) => ({ id: r.id, name: r.name, state: r.state })) });
   }
   if (parent) {
@@ -108,11 +108,12 @@ export async function listOrgUnits(request, env, ctx) {
     return json({ parent: ouOut(p), children: rows.filter((r) => inScope(ctx, r) || inScope({ ou: r }, ctx.ou)).map(ouOut) });
   }
   const rows = await all(env.DB,
-    `SELECT s.*, (SELECT COUNT(*) FROM org_units l WHERE l.parent_id = s.id AND l.closed_at IS NULL) AS lgas
+    `SELECT s.*, (SELECT COUNT(*) FROM org_units l WHERE l.parent_id = s.id AND l.closed_at IS NULL AND l.inactive = 0) AS lgas,
+            (SELECT COUNT(*) FROM org_units l WHERE l.parent_id = s.id AND l.closed_at IS NULL) AS lgas_all
        FROM org_units s WHERE s.level = 2 ${url.searchParams.get('all') === '1' && ctx.role === 'sysadmin' ? '' : 'AND s.inactive = 0'} ORDER BY s.name`);
   const visible = rows.filter((r) => inScope(ctx, r) || inScope({ ou: r }, ctx.ou));
   const root = await one(env.DB, 'SELECT * FROM org_units WHERE level = 1 LIMIT 1');
-  return json({ country: root ? ouOut(root) : null, states: visible.map((r) => ({ ...ouOut(r), lgas: r.lgas, active: !r.inactive })) });
+  return json({ country: root ? ouOut(root) : null, states: visible.map((r) => ({ ...ouOut(r), lgas: r.lgas, lgasAll: r.lgas_all, active: !r.inactive })) });
 }
 
 // POST /api/orgunits/import  body: DHIS2 /api/organisationUnits JSON or an ALMA Export metadata file.
@@ -140,4 +141,27 @@ export async function setRollout(request, env, ctx) {
   for (const s of changed) await run(env.DB, 'UPDATE org_units SET inactive = ?, updated_at = ? WHERE id = ?', on.has(s.id) ? 0 : 1, now(), s.id);
   await audit(env.DB, ctx, 'rollout_changed', null, null, { active: body.active.length, changed: changed.map((s) => `${s.name}: ${on.has(s.id) ? 'on' : 'off'}`) });
   return json({ active: body.active.length, changed: changed.length });
+}
+
+// Units below the LGA follow their LGA: switched off with it, back on with it.
+export const syncUnitsInUse = (db) => run(db, `UPDATE org_units SET inactive = COALESCE((SELECT l.inactive FROM org_units l WHERE l.id = org_units.lga_id), 0)
+  WHERE level >= 4 AND lga_id IS NOT NULL`);
+
+// PUT /api/rollout/lgas  { state, active: [lgaId, ...] } — which LGAs of a state take part (system administrators).
+export async function setLgaRollout(request, env, ctx) {
+  requireRole(ctx, ['sysadmin']);
+  const body = await readJson(request);
+  const st = await one(env.DB, 'SELECT id, name FROM org_units WHERE id = ? AND level = 2', body.state || '');
+  if (!st) throw new HttpError(422, 'invalid', 'Unknown state.');
+  if (!Array.isArray(body.active)) throw new HttpError(422, 'invalid', 'Send the list of LGAs in use.');
+  const lgas = await all(env.DB, 'SELECT id, name, inactive FROM org_units WHERE parent_id = ? AND level = 3 AND closed_at IS NULL', st.id);
+  const ids = new Set(lgas.map((l) => l.id));
+  for (const id of body.active) if (!ids.has(id)) throw new HttpError(422, 'invalid', 'Unknown LGA for this state.');
+  if (!body.active.length) throw new HttpError(422, 'invalid', 'Keep at least one LGA in use, or switch the whole state off.');
+  const on = new Set(body.active);
+  const changed = lgas.filter((l) => !l.inactive !== on.has(l.id));
+  for (const l of changed) await run(env.DB, 'UPDATE org_units SET inactive = ?, updated_at = ? WHERE id = ?', on.has(l.id) ? 0 : 1, now(), l.id);
+  if (changed.length) await syncUnitsInUse(env.DB);
+  await audit(env.DB, ctx, 'rollout_lgas_changed', 'org_unit', st.id, { state: st.name, active: on.size, of: lgas.length, changed: changed.map((l) => `${l.name}: ${on.has(l.id) ? 'on' : 'off'}`) });
+  return json({ active: on.size, of: lgas.length, changed: changed.length });
 }

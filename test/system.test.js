@@ -158,6 +158,16 @@ test('state review, state picture (sum counts, recompute rates) and coverage', a
   assert.equal(sumAll.groupBy, 'state'); assert.equal(abia.total, 17); assert.equal(abia.sent, 3); assert.equal(abia.percent, 18);
   const sumState = (await state.c.get(`/api/status/summary?dataset=${dsId}&period=${period}`)).data;
   assert.deepEqual(sumState.rows.map((r) => r.id), [ABIA]);
+  // LGAs in use: switching one off takes it out of the counts and lists; only a system administrator can.
+  const lgaIds = (await admin.get(`/api/orgunits?parent=${ABIA}`)).data.children.map((c) => c.id);
+  assert.equal((await state.c.put('/api/rollout/lgas', { state: ABIA, active: lgaIds })).status, 403);
+  assert.equal((await admin.put('/api/rollout/lgas', { state: ABIA, active: [] })).status, 422);
+  assert.equal((await admin.put('/api/rollout/lgas', { state: ABIA, active: lgaIds.filter((id) => id !== ABA_SOUTH) })).data.changed, 1);
+  assert.equal((await admin.get(`/api/status/summary?dataset=${dsId}&period=${period}`)).data.rows.find((r) => r.id === ABIA).total, 16);
+  assert.ok(!(await state.c.get(`/api/status?dataset=${dsId}&period=${period}`)).data.lgas.some((l) => l.id === ABA_SOUTH));
+  assert.equal((await admin.get(`/api/orgunits?parent=${ABIA}`)).data.children.find((c) => c.id === ABA_SOUTH).active, false);
+  assert.equal((await admin.get('/api/orgunits')).data.states.find((x) => x.id === ABIA).lgas, 16);
+  await admin.put('/api/rollout/lgas', { state: ABIA, active: lgaIds });
   // A sent report is locked for the LGA; only a system administrator can delete it.
   assert.equal((await lgaC.c.put('/api/entry', { dataset: dsId, ou: AROCHUKWU, period, values: { [den]: 50 } })).status, 409);
   const del = `/api/entry?dataset=${dsId}&ou=${AROCHUKWU}&period=${period}`;

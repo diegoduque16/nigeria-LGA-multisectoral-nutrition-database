@@ -356,19 +356,19 @@ export async function reportStatus(request, env, ctx) {
          LEFT JOIN unit_types t ON t.id = o.unit_type_id
          LEFT JOIN org_units w ON w.id = o.parent_id AND w.level = 4 AND o.level = 5
          LEFT JOIN reports r ON r.ou_id = o.id AND r.dataset_id = ? AND r.period = ?
-        WHERE ${f.sql} AND o.closed_at IS NULL AND o.path LIKE ? ORDER BY l.name, w.name, o.name LIMIT 5000`,
+        WHERE ${f.sql} AND o.closed_at IS NULL AND o.inactive = 0 AND o.path LIKE ? ORDER BY l.name, w.name, o.name LIMIT 5000`,
       ds.id, period, ...f.args, (lga ? lga.path : state.path) + '/%');
   } else {
     rows = await all(env.DB,
       `SELECT o.id, o.name, o.path, r.status, r.submitted_at, r.reviewed_at, r.updated_at, r.review_comment
          FROM org_units o LEFT JOIN reports r ON r.ou_id = o.id AND r.dataset_id = ? AND r.period = ?
-        WHERE o.parent_id = ? AND o.level = 3 AND o.closed_at IS NULL ORDER BY o.name`, ds.id, period, state.id);
+        WHERE o.parent_id = ? AND o.level = 3 AND o.closed_at IS NULL AND o.inactive = 0 ORDER BY o.name`, ds.id, period, state.id);
   }
   const due = dueAt(period, ds.due_day);
   const visible = rows.filter((r) => inScope(ctx, r));
   const counts = { none: 0, draft: 0, submitted: 0, accepted: 0, returned: 0 };
   for (const r of visible) counts[r.status || 'none']++;
-  const lgas = unitLevel ? await all(env.DB, 'SELECT id, name, path FROM org_units WHERE parent_id = ? AND level = 3 AND closed_at IS NULL ORDER BY name', state.id) : [];
+  const lgas = unitLevel ? await all(env.DB, 'SELECT id, name, path FROM org_units WHERE parent_id = ? AND level = 3 AND closed_at IS NULL AND inactive = 0 ORDER BY name', state.id) : [];
   return json({
     dataset: { id: ds.id, name: ds.name, frequency: ds.frequency, reportLevel: unitLevel ? 'UNIT' : 'LGA' },
     state: { id: state.id, name: state.name },
@@ -411,14 +411,14 @@ export async function statusSummary(request, env, ctx) {
       rows = await all(env.DB,
         `SELECT s.id, s.name, s.path, COUNT(o.id) AS total, SUM(CASE WHEN ${SENT} THEN 1 ELSE 0 END) AS sent,
                 COUNT(DISTINCT l.id) AS groups, COUNT(DISTINCT CASE WHEN ${SENT} THEN l.id END) AS groups_sent
-           FROM org_units s JOIN org_units l ON l.parent_id = s.id AND l.level = 3
-           JOIN org_units o ON o.lga_id = l.id AND o.closed_at IS NULL AND ${f.sql}
+           FROM org_units s JOIN org_units l ON l.parent_id = s.id AND l.level = 3 AND l.inactive = 0
+           JOIN org_units o ON o.lga_id = l.id AND o.closed_at IS NULL AND o.inactive = 0 AND ${f.sql}
            LEFT JOIN reports r ON r.ou_id = o.id AND r.dataset_id = ? AND r.period = ?
           WHERE s.level = 2 AND s.inactive = 0 GROUP BY s.id ORDER BY s.name`, ...f.args, ds.id, period);
     } else {
       rows = await all(env.DB,
         `SELECT s.id, s.name, s.path, COUNT(o.id) AS total, SUM(CASE WHEN ${SENT} THEN 1 ELSE 0 END) AS sent
-           FROM org_units s JOIN org_units o ON o.parent_id = s.id AND o.level = 3 AND o.closed_at IS NULL
+           FROM org_units s JOIN org_units o ON o.parent_id = s.id AND o.level = 3 AND o.closed_at IS NULL AND o.inactive = 0
            LEFT JOIN reports r ON r.ou_id = o.id AND r.dataset_id = ? AND r.period = ?
           WHERE s.level = 2 AND s.inactive = 0 GROUP BY s.id ORDER BY s.name`, ds.id, period);
     }
@@ -427,9 +427,9 @@ export async function statusSummary(request, env, ctx) {
     const f = unitsOf(ds, 'o');
     rows = await all(env.DB,
       `SELECT l.id, l.name, l.path, COUNT(o.id) AS total, SUM(CASE WHEN ${SENT} THEN 1 ELSE 0 END) AS sent
-         FROM org_units l LEFT JOIN org_units o ON o.lga_id = l.id AND o.closed_at IS NULL AND ${f.sql}
+         FROM org_units l LEFT JOIN org_units o ON o.lga_id = l.id AND o.closed_at IS NULL AND o.inactive = 0 AND ${f.sql}
          LEFT JOIN reports r ON r.ou_id = o.id AND r.dataset_id = ? AND r.period = ?
-        WHERE l.parent_id = ? AND l.level = 3 AND l.closed_at IS NULL GROUP BY l.id ORDER BY l.name`, ...f.args, ds.id, period, stateId);
+        WHERE l.parent_id = ? AND l.level = 3 AND l.closed_at IS NULL AND l.inactive = 0 GROUP BY l.id ORDER BY l.name`, ...f.args, ds.id, period, stateId);
   } else {
     throw new HttpError(422, 'invalid', 'This report is sent by LGAs: open the state to see each LGA.');
   }
@@ -474,12 +474,12 @@ export async function sheetData(db, who, ds, period, area) {
       `SELECT o.id, o.name, o.path, l.name AS lga, s.name AS state, w.name AS ward, COALESCE(t.name, o.unit_type) AS type
          FROM org_units o JOIN org_units l ON l.id = o.lga_id JOIN org_units s ON s.id = l.parent_id
          LEFT JOIN unit_types t ON t.id = o.unit_type_id LEFT JOIN org_units w ON w.id = o.parent_id AND o.level = 5
-        WHERE ${f.sql} AND o.closed_at IS NULL AND (o.id = ? OR o.path LIKE ?) ORDER BY l.name, w.name, o.name LIMIT 5000`,
+        WHERE ${f.sql} AND o.closed_at IS NULL AND o.inactive = 0 AND (o.id = ? OR o.path LIKE ?) ORDER BY l.name, w.name, o.name LIMIT 5000`,
       ...f.args, area.id, area.path + '/%');
   } else {
     places = await all(db,
       `SELECT o.id, o.name, o.path, o.name AS lga, s.name AS state, NULL AS ward, NULL AS type FROM org_units o JOIN org_units s ON s.id = o.parent_id
-        WHERE o.level = 3 AND o.closed_at IS NULL AND s.inactive = 0 AND (o.id = ? OR o.path LIKE ?) ORDER BY o.name`, area.id, area.path + '/%');
+        WHERE o.level = 3 AND o.closed_at IS NULL AND o.inactive = 0 AND s.inactive = 0 AND (o.id = ? OR o.path LIKE ?) ORDER BY o.name`, area.id, area.path + '/%');
   }
   places = places.filter((p) => inScope(who, p));
   const fields = await all(db, 'SELECT id, name, value_type, breakdown_id, breakdown2_id FROM data_elements WHERE dataset_id = ? AND archived_at IS NULL ORDER BY sort, name', ds.id);

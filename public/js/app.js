@@ -138,7 +138,7 @@ const PAGES = [
   { id: 'dictionary', group: 'setup', name: 'Indicator dictionary', short: 'Shared definitions and codes', roles: ['sysadmin', 'setupadmin'], nav: () => false, desc: 'One definition per indicator — code, calculation, source, framework — shared by every sector that reports it.' },
   { id: 'population', group: 'setup', name: 'Population figures', short: 'Yearly denominators', roles: ['sysadmin', 'setupadmin'], desc: 'Yearly numbers per LGA that indicators divide by: population, under-5s, expected pregnancies …' },
   { id: 'units', group: 'setup', name: 'Units below the LGA', short: 'Child org units: facilities, schools …', roles: ['sysadmin', 'setupadmin', 'national', 'state'], desc: 'The child org units of each LGA (DHIS2 level 4) that a sector reports on: health facilities, schools, water points, markets … Set them up per sector.' },
-  { id: 'rollout', group: 'setup', name: 'States in use', short: 'Which states take part', roles: ['sysadmin'], desc: 'Choose which states use the system. The others are hidden everywhere.' },
+  { id: 'rollout', group: 'setup', name: 'States & LGAs in use', short: 'Which states and LGAs take part', roles: ['sysadmin'], desc: 'Choose which states, and which of their LGAs, use the system. The others are hidden everywhere.' },
   { id: 'accounts', group: 'people', name: 'Users', short: 'Accounts, sign-up requests, QR codes', roles: ['sysadmin', 'national', 'state', 'lga'], nav: () => canManageUsers(), desc: 'Create accounts, approve sign-up requests and share registration QR codes.' },
   { id: 'audit', group: 'people', name: 'Activity log', short: 'Who did what, when', roles: ['sysadmin'], desc: 'Who signed in, changed, sent, approved or downloaded what, and when.' },
 ];
@@ -164,7 +164,7 @@ async function orgs() { if (!state.orgs) state.orgs = await get('/api/orgunits')
 const lgaCache = {};
 const unitCache = {};
 async function unitsOf(lgaId) { if (!unitCache[lgaId]) unitCache[lgaId] = (await get(`/api/orgunits?parent=${lgaId}&units=1`)).children; return unitCache[lgaId]; }
-async function lgasOf(stateId) { if (!lgaCache[stateId]) lgaCache[stateId] = (await get('/api/orgunits?parent=' + stateId)).children.filter((c) => !c.closed); return lgaCache[stateId]; }
+async function lgasOf(stateId) { if (!lgaCache[stateId]) lgaCache[stateId] = (await get('/api/orgunits?parent=' + stateId)).children.filter((c) => !c.closed && c.active !== false); return lgaCache[stateId]; }
 
 const navPages = () => PAGES.filter((p) => p.roles.includes(role()) && (!p.nav || p.nav()));
 function renderChrome(page) {
@@ -444,7 +444,7 @@ async function renderOverview() {
     blocks.push(h('div', { class: 'panel' }, h('h2', {}, 'Getting the system ready'),
       h('p', { class: 'muted small' }, 'Do these in order. Each step can be changed later.'),
       h('ol', { class: 'steps' },
-        active ? step(active.some((s) => !s.active), '1. Choose the states in use', `${active.filter((s) => s.active).length} of ${active.length} states are in use.`, '#/rollout', 'States in use') : null,
+        active ? step(active.some((s) => !s.active), '1. Choose the states and LGAs in use', `${active.filter((s) => s.active).length} of ${active.length} states are in use.`, '#/rollout', 'States & LGAs in use') : null,
         step(!!shared && shared.dataElements.length > 0, `${active ? '2' : '1'}. Population figures`, shared ? `${shared.dataElements.filter((f) => !f.archived).length} population numbers (e.g. expected pregnancies) that indicators can divide by.` : 'The yearly numbers every sector divides by: population, under-5s, expected pregnancies …', '#/population', shared ? 'Open' : 'Create'),
         step(inds > 0, `${active ? '3' : '2'}. Sectors and indicators`, forms.length ? `${sectors.size} sector${sectors.size === 1 ? '' : 's'}, ${inds} indicator${inds === 1 ? '' : 's'}.` : 'Add a sector (Health, Education, Agriculture …) and its indicators.', '#/setup', forms.length ? 'Open' : 'Add a sector'),
         byUnit.length ? step(false, `${active ? '4' : '3'}. Units below the LGA`, `${byUnit.map((d) => `${d.name} (${whoText(d)})`).join(', ')}: load the list of these org units.`, '#/units', 'Open') : null,
@@ -2396,33 +2396,64 @@ function datasetDialog(ds, m, makeShared = false, presetSector = '') {
 const UNIT_HEADERS = ['State', 'LGA', 'LGA ID', 'Ward', 'Ward ID', 'Type', 'Name', 'Code', 'Latitude', 'Longitude', 'ID'];
 
 // Rollout: which states take part (system administrators).
-async function rolloutPanel() {
-  const { states } = await get('/api/orgunits?all=1');
-  const boxes = states.map((st) => ({ st, box: h('input', { type: 'checkbox', checked: st.active }) }));
+// States & LGAs in use: a drill-down. All states (tick the states in use) → one state (tick its LGAs in use).
+function clearPlaceCaches() { state.orgs = null; for (const k of Object.keys(lgaCache)) delete lgaCache[k]; for (const k of Object.keys(unitCache)) delete unitCache[k]; }
+function tickList(items, label) {
+  const boxes = items.map((it) => ({ it, box: h('input', { type: 'checkbox', checked: it.active }) }));
   const count = h('span', { class: 'muted small' });
-  const upd = () => { const n = boxes.filter((b) => b.box.checked).length; count.textContent = `${n} of ${states.length} states active`; };
+  const upd = () => { count.textContent = `${boxes.filter((b) => b.box.checked).length} of ${items.length} ${label} in use`; };
   boxes.forEach((b) => b.box.addEventListener('change', upd)); upd();
-  const save = h('button', { class: 'primary' }, 'Save rollout');
-  save.addEventListener('click', busy(save, async () => {
-    const { data } = await api('PUT', '/api/rollout', { active: boxes.filter((b) => b.box.checked).map((b) => b.st.id) });
-    state.orgs = null; for (const k of Object.keys(lgaCache)) delete lgaCache[k];
-    toast(`Rollout saved (${data.changed} state${data.changed === 1 ? '' : 's'} changed)`);
-  }));
-  const all = (on) => () => { boxes.forEach((b) => { b.box.checked = on; }); upd(); };
-  return h('div', { class: 'panel' },
-    h('div', { class: 'actions' }, h('button', { class: 'link', onclick: all(true) }, 'Select all'), h('button', { class: 'link', onclick: all(false) }, 'Select none'), count),
-    h('div', { class: 'chips rollout' }, boxes.map((b) => h('label', { class: 'check' }, b.box, b.st.name))),
-    h('p'), save);
+  const setAll = (on) => () => { boxes.forEach((b) => { b.box.checked = on; }); upd(); };
+  const dirty = () => boxes.some((b) => b.box.checked !== b.it.active);
+  const bar = h('div', { class: 'actions' }, h('button', { class: 'link', onclick: setAll(true) }, 'Select all'), h('button', { class: 'link', onclick: setAll(false) }, 'Select none'), count);
+  return { boxes, bar, dirty, chosen: () => boxes.filter((b) => b.box.checked).map((b) => b.it.id) };
 }
 
 async function renderRollout() {
-  mount(h('div', {},
-    pageHead({
-      title: 'States in use',
-      text: 'Tick the states that use the system, then press Save. The other states are hidden everywhere: in lists, registration QR codes, results, national totals, reporting rates and exports.',
-      how: ['Nothing is deleted: data and accounts of a state you untick are kept and come back when you tick it again.'],
-    }),
-    await rolloutPanel()));
+  const { states } = await get('/api/orgunits?all=1');
+  const open = states.find((x) => x.id === pref('rollState'));
+  const head = pageHead({
+    title: 'States & LGAs in use',
+    text: 'Tick the states that use the system, then open a state to tick its LGAs. Whatever is not in use is hidden everywhere: in lists, registration QR codes, Who has sent, results, totals, reporting rates and exports.',
+    how: [
+      'All states: tick the states in use and press Save.',
+      'Press Open on a state to choose which of its LGAs are in use (all of them, unless you untick some).',
+      'Nothing is deleted: data and accounts of a state or LGA you untick are kept and come back when you tick it again.',
+    ],
+  });
+  const crumbs = (cur) => h('div', { class: 'crumbs' }, cur ? [h('a', { href: '#/rollout', onclick: (e) => { e.preventDefault(); pref('rollState', ''); renderRollout(); } }, 'All states'), h('span', { class: 'muted' }, ' › '), h('strong', {}, cur)] : h('strong', {}, 'All states'));
+
+  if (!open) {
+    const t = tickList(states, 'states');
+    const save = h('button', { class: 'primary' }, 'Save states');
+    save.addEventListener('click', busy(save, async () => {
+      const { data } = await api('PUT', '/api/rollout', { active: t.chosen() });
+      clearPlaceCaches(); toast(`Saved (${data.changed} state${data.changed === 1 ? '' : 's'} changed)`); renderRollout();
+    }));
+    const openState = (st) => { if (t.dirty()) { toast('Save the states first.', true); return; } pref('rollState', st.id); renderRollout(); };
+    return mount(h('div', {}, head, crumbs(null), h('div', { class: 'panel' }, t.bar,
+      h('div', { class: 'scroll' }, h('table', { class: 'rollout-table' },
+        h('thead', {}, h('tr', {}, h('th', {}, 'In use'), h('th', {}, 'State'), h('th', {}, 'LGAs in use'), h('th', {}, ''))),
+        h('tbody', {}, t.boxes.map(({ it, box }) => h('tr', {},
+          h('td', {}, box), h('td', {}, it.name),
+          h('td', {}, it.lgas === it.lgasAll ? h('span', { class: 'muted' }, `All ${it.lgasAll}`) : pill('draft', `${it.lgas} of ${it.lgasAll}`)),
+          h('td', { class: 'n' }, h('button', { onclick: () => openState(it) }, 'Open ›'))))))),
+      h('p'), save)));
+  }
+
+  const lgas = (await get('/api/orgunits?parent=' + open.id)).children.filter((c) => !c.closed);
+  const t = tickList(lgas, 'LGAs');
+  const save = h('button', { class: 'primary' }, `Save LGAs of ${open.name}`);
+  save.addEventListener('click', busy(save, async () => {
+    const { data } = await api('PUT', '/api/rollout/lgas', { state: open.id, active: t.chosen() });
+    clearPlaceCaches(); toast(`Saved (${data.changed} LGA${data.changed === 1 ? '' : 's'} changed)`); renderRollout();
+  }));
+  mount(h('div', {}, head, crumbs(open.name),
+    open.active ? null : h('div', { class: 'note warn' }, `${open.name} itself is not in use, so all its LGAs are hidden whatever you tick here. Tick it under All states first.`),
+    h('div', { class: 'panel' }, t.bar,
+      h('div', { class: 'chips rollout' }, t.boxes.map((b) => h('label', { class: 'check' }, b.box, b.it.name))),
+      h('p', { class: 'muted small' }, 'An LGA not in use takes its wards, schools and facilities with it.'),
+      save)));
 }
 
 // Excel template for units below the LGA: State, LGA and Type are drop-down lists (the LGA list follows the State),

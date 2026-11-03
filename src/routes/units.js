@@ -9,6 +9,7 @@ import { one, all, run, audit } from '../lib/db.js';
 import { inScope } from '../lib/auth.js';
 import { dhisUid, UID_RE } from '../lib/dhis.js';
 import { WARD_TYPE } from '../lib/units.js';
+import { syncUnitsInUse } from './orgunits.js';
 
 const MAX_IMPORT = 5000;      // rows checked per request
 const MAX_COMMIT = 400;       // rows saved per request (the app sends bigger files in parts)
@@ -58,6 +59,7 @@ export async function createType(request, env, ctx) {
   const id = 'ut_' + dhisUid().toLowerCase();
   await run(env.DB, 'INSERT INTO unit_types (id, name, is_ward, sort, code_label, created_at) VALUES (?,?,0,10,?,?)', id, name.trim(), (codeLabel || '').trim() || null, now());
   await audit(env.DB, ctx, 'unit_type_created', 'unit_type', id, { name });
+  await syncUnitsInUse(env.DB);
   return json({ id }, 201);
 }
 // PATCH /api/unit-types/:id { name }
@@ -417,5 +419,6 @@ export async function importUnits(request, env, ctx) {
     for (let i = 0; i < stmts.length; i += 100) await env.DB.batch(stmts.slice(i, i + 100));
     await audit(env.DB, ctx, 'units_imported', 'org_unit', null, counts);
   }
+  if (commit) await syncUnitsInUse(env.DB);
   return json({ committed: commit, counts: { ...counts, possibleDuplicates: results.filter((x) => x.note && /Possible duplicate/.test(x.note)).length }, results, newTypes: newTypeList.map((t) => t.name) });
 }

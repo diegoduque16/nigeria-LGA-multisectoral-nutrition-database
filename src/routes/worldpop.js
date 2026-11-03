@@ -74,7 +74,7 @@ export function detectColumns(header, body) {
 // Match file rows to our LGAs (active states, in the caller's area).
 async function matchRows(db, ctx, rows, cols) {
   const lgas = (await all(db, `SELECT l.id, l.name, l.path, s.id AS state_id, s.name AS state_name FROM org_units l JOIN org_units s ON s.id = l.parent_id
-    WHERE l.level = 3 AND l.closed_at IS NULL AND s.inactive = 0`)).filter((l) => inScope(ctx, l));
+    WHERE l.level = 3 AND l.closed_at IS NULL AND l.inactive = 0 AND s.inactive = 0`)).filter((l) => inScope(ctx, l));
   const byState = new Map();
   for (const l of lgas) { const k = placeKey(l.state_name); if (!byState.has(k)) byState.set(k, []); byState.get(k).push({ ...l, key: placeKey(l.name) }); }
   const out = []; const unmatched = []; const used = new Map(); let otherStates = 0;
