@@ -831,3 +831,58 @@ test('population: figures calculated as a share of Total population follow every
   await admin.post(`/api/datasets/${pop.id}/population`, { year: '2026', source: 'NPC', commit: true, rows: [{ row: 2, lgaId: ABA_NORTH, values: { [preg.id]: 8000 } }] });
   assert.equal(await val(preg.id), 8000);
 });
+
+test('population per ward: imported for wards, shares calculated, ward-reported indicators use it', async () => {
+  const env = makeEnv();
+  const admin = await setupAdmin(env);
+  const pop = (await admin.post('/api/datasets', { name: 'Population and denominators', shared: true })).data;
+  const preg = (await admin.post(`/api/datasets/${pop.id}/fields`, { name: 'Expected pregnancies', prorate: true, calcShare: 4.5 })).data.dataElement;
+  await admin.post('/api/units/import', { commit: true, rows: [{ lgaId: ABA_NORTH, name: 'Ward 1', type: 'Ward', id: 'WardAbaN001' }] });
+  const ds = (await admin.post('/api/datasets', { name: 'Health – wards', sector: 'Health', frequency: 'YEARLY', reportLevel: 'UNIT', unitTypes: ['ut_ward'] })).data;
+  await admin.post(`/api/datasets/${ds.id}/indicators`, { name: 'ANC coverage', numerator: 'ANC visits', denominator: 'Expected pregnancies', source: 'HMIS', showAs: 'percent' });
+  const year = String(Number(lastCompletedPeriod('MONTHLY').slice(0, 4)) - 1);
+  const total = preg.calcBase;
+  const chk = await admin.post(`/api/datasets/${pop.id}/population`, { year, rows: [
+    { row: 2, wardId: 'WardAbaN001', values: { [total]: 100000 } },
+    { row: 3, wardId: 'NotLoaded01', values: { [total]: 5 } },
+    { row: 4, lgaId: ABA_NORTH, values: { [total]: 300000 } }] });
+  assert.equal(chk.data.counts.wards, 1); assert.equal(chk.data.counts.lgas, 1); assert.equal(chk.data.counts.skipped, 1); assert.equal(chk.data.counts.error, 0);
+  const ok = chk.data.results.filter((r) => r.status !== 'skipped').map((r) => r.row);
+  await admin.post(`/api/datasets/${pop.id}/population`, { year, source: 'WorldPop 100 m grid by ward', commit: true, rows: [
+    { row: 2, wardId: 'WardAbaN001', values: { [total]: 100000 } }, { row: 4, lgaId: ABA_NORTH, values: { [total]: 300000 } }].filter((r) => ok.includes(r.row)) });
+  const val = async (de, ou) => (await env.DB.prepare('SELECT value FROM data_values WHERE de_id = ? AND ou_id = ? AND period = ?').bind(de, ou, year).first())?.value;
+  assert.equal(await val(preg.id, 'WardAbaN001'), 4500);
+  assert.equal(await val(preg.id, ABA_NORTH), 13500);
+  // The ward reports; its coverage divides by the ward's own expected pregnancies.
+  const form = (await admin.get(`/api/entry?dataset=${ds.id}&ou=WardAbaN001&period=${year}`)).data;
+  assert.equal(form.sharedValues.find((x) => x.id === preg.id).value, 4500);
+  await admin.put('/api/entry', { dataset: ds.id, ou: 'WardAbaN001', period: year, values: { [form.fields[0].id]: 900 } });
+  await admin.post('/api/entry/submit', { dataset: ds.id, ou: 'WardAbaN001', period: year });
+  await admin.post('/api/entry/review', { dataset: ds.id, ou: 'WardAbaN001', period: year, action: 'accept' });
+  const pic = (await admin.get(`/api/picture?dataset=${ds.id}&ou=${ABA_NORTH}&period=${year}`)).data;
+  const ind = pic.indicators[0].id;
+  const ward = pic.rows.find((r) => r.id === 'WardAbaN001');
+  assert.equal(ward.indicators[ind].value, 20);
+});
+
+test('population per ward: rows named by LGA and ward are matched to the wards loaded in the app', async () => {
+  const env = makeEnv();
+  const admin = await setupAdmin(env);
+  const pop = (await admin.post('/api/datasets', { name: 'Population and denominators', shared: true })).data;
+  const total = (await admin.post(`/api/datasets/${pop.id}/fields`, { name: 'Total population', prorate: false })).data.dataElement.id;
+  await admin.post('/api/units/import', { commit: true, rows: [
+    { lgaId: ABA_NORTH, name: 'ab Ariaria Ward', type: 'Ward', id: 'WardAriar01' },
+    { lgaId: ABA_NORTH, name: 'ab Umuogor', type: 'Ward', id: 'WardUmuog01' }] });
+  const rows = [
+    { row: 2, lgaId: ABA_NORTH, ward: 'Ariaria Market', wardAlt: 'Ariaria, Ward 9', values: { [total]: 30000 } }, // by another name
+    { row: 3, lgaId: ABA_NORTH, ward: 'Umuogo', values: { [total]: 20000 } },                                     // close spelling
+    { row: 4, lgaId: ABA_NORTH, ward: 'Osusu', values: { [total]: 10000 } },                                      // no such ward
+    { row: 5, lgaId: ABA_SOUTH, ward: 'Aba Town Hall', values: { [total]: 10000 } }];                            // wards not loaded
+  const chk = (await admin.post(`/api/datasets/${pop.id}/population`, { year: '2026', rows })).data;
+  assert.equal(chk.counts.wards, 2); assert.equal(chk.counts.skipped, 2); assert.equal(chk.counts.error, 0);
+  assert.match(chk.results.find((r) => r.row === 4).message, /No ward/);
+  assert.match(chk.results.find((r) => r.row === 5).message, /not loaded/);
+  await admin.post(`/api/datasets/${pop.id}/population`, { year: '2026', source: 'WorldPop by GRID3 ward', commit: true, rows: rows.slice(0, 2) });
+  const v = await env.DB.prepare('SELECT value FROM data_values WHERE de_id = ? AND ou_id = ? AND period = ?').bind(total, 'WardUmuog01', '2026').first();
+  assert.equal(v.value, 20000);
+});

@@ -2160,17 +2160,17 @@ async function populationImportDialog(ds, fields, file, year, after) {
   const { readSheet } = await import('./xlsx.js');
   const rows = await readSheet(file);
   const norm = (x) => String(x || '').toLowerCase().replace(/[^a-z0-9]/g, '');
-  const hi = rows.findIndex((r) => r.some((c) => ['lgaid', 'lga'].includes(norm(c))));
+  const hi = rows.findIndex((r) => r.some((c) => ['lgaid', 'lga', 'wardid'].includes(norm(c))));
   if (hi < 0) throw new Error('No “LGA” or “LGA ID” column found. Use the template (Download template).');
   const head = rows[hi].map(norm);
-  const ci = { state: head.indexOf('state'), lga: head.indexOf('lga'), lgaId: head.indexOf('lgaid') };
+  const ci = { state: head.indexOf('state'), lga: head.indexOf('lga'), lgaId: head.indexOf('lgaid'), ward: head.indexOf('ward'), wardId: head.indexOf('wardid'), wardAlt: head.indexOf('wardothernames') };
   // Columns that are not population figures yet: offer to add them (e.g. a ready-made file of projections).
   // Calculated figures (a share of Total population) are never imported: their columns are left out.
   const calcNames = new Set([...fields.filter((f) => f.calcBase).map((f) => norm(f.name)), ...COMMON_DENOMINATORS.filter((c) => c.share != null).map((c) => norm(c.name))]);
   const skipped = rows[hi].map((c) => String(c ?? '').trim()).filter((n) => n && calcNames.has(norm(n)));
   fields = fields.filter((f) => !f.calcBase);
   const extra = rows[hi].map((c, i) => ({ name: String(c ?? '').trim(), i }))
-    .filter((x) => x.name && !['state', 'lga', 'lgaid'].includes(norm(x.name)) && !calcNames.has(norm(x.name)) && !fields.some((f) => norm(f.name) === norm(x.name)));
+    .filter((x) => x.name && !['state', 'lga', 'lgaid', 'ward', 'wardid', 'wardothernames'].includes(norm(x.name)) && !calcNames.has(norm(x.name)) && !fields.some((f) => norm(f.name) === norm(x.name)));
   if (extra.length && is('sysadmin') && confirm(`This file has ${extra.length === 1 ? 'a number that is' : 'numbers that are'} not population figures yet:\n\n${extra.map((x) => '• ' + x.name).join('\n')}\n\nAdd ${extra.length === 1 ? 'it' : 'them'} to the Population figures and import ${extra.length === 1 ? 'it' : 'them'} too?`)) {
     for (const x of extra) {
       const c = COMMON_DENOMINATORS.find((d) => norm(d.name) === norm(x.name));
@@ -2186,21 +2186,38 @@ async function populationImportDialog(ds, fields, file, year, after) {
   const data = rows.slice(hi + 1).map((r, i) => ({
     row: hi + i + 2,
     state: ci.state >= 0 ? String(r[ci.state] ?? '').trim() : '', lga: ci.lga >= 0 ? String(r[ci.lga] ?? '').trim() : '', lgaId: ci.lgaId >= 0 ? String(r[ci.lgaId] ?? '').trim() : '',
+    ...(ci.wardId >= 0 && String(r[ci.wardId] ?? '').trim() ? { wardId: String(r[ci.wardId]).trim() }
+      : ci.ward >= 0 && String(r[ci.ward] ?? '').trim() ? { ward: String(r[ci.ward]).trim(), wardAlt: ci.wardAlt >= 0 ? String(r[ci.wardAlt] ?? '').trim() : '' } : {}),
     values: Object.fromEntries(cols.map(({ f, i: c }) => [f.id, String(r[c] ?? '').trim()])),
-  })).filter((r) => r.lga || r.lgaId);
-  if (!data.length) throw new Error('The file has no LGA rows.');
-  const { data: check } = await api('POST', `/api/datasets/${ds.id}/population`, { year, rows: data });
+  })).filter((r) => r.lga || r.lgaId || r.wardId);
+  if (!data.length) throw new Error('The file has no LGA or ward rows.');
+  // Checked in parts (a ward file has ~9,400 rows).
+  const check = { counts: { lgas: 0, wards: 0, values: 0, changed: 0, error: 0, skipped: 0 }, results: [] };
+  for (let i = 0; i < data.length; i += 800) {
+    const { data: part } = await api('POST', `/api/datasets/${ds.id}/population`, { year, rows: data.slice(i, i + 800) });
+    for (const k of Object.keys(check.counts)) check.counts[k] += part.counts[k] || 0;
+    check.results.push(...part.results);
+  }
   const c = check.counts;
   const errors = check.results.filter((r) => r.status === 'error');
-  const source = h('input', { placeholder: `e.g. NPC ${year} projections`, size: 40 });
-  const go = h('button', { class: 'primary', disabled: !!c.error || !c.lgas }, `Save figures for ${c.lgas} LGA${c.lgas === 1 ? '' : 's'}`);
+  const places = [c.lgas ? `${c.lgas} LGA${c.lgas === 1 ? '' : 's'}` : '', c.wards ? `${c.wards} ward${c.wards === 1 ? '' : 's'}` : ''].filter(Boolean).join(' and ') || 'no places';
+  const source = h('input', { placeholder: c.wards ? 'e.g. WorldPop v3.0 100 m grid summed by GRID3 ward' : `e.g. NPC ${year} projections`, size: 40 });
+  const go = h('button', { class: 'primary', disabled: !!c.error || !(c.lgas + c.wards) }, `Save figures for ${places}`);
   const progress = h('span', { class: 'muted small' });
   const err = h('div', { class: 'err' });
   const dlg = h('dialog', {}, h('h2', {}, `Population figures ${year} — check`),
-    h('p', { class: 'muted small' }, file.name, ` · ${data.length} LGA rows · columns: ${cols.map((x) => x.f.name).join(', ')}`),
+    h('p', { class: 'muted small' }, file.name, ` · ${data.length} rows · columns: ${cols.map((x) => x.f.name).join(', ')}`),
     skipped.length ? h('p', { class: 'muted small' }, `Left out (calculated from Total population): ${skipped.join(', ')}.`) : null,
+    (() => {
+      const sk = check.results.filter((r) => r.status === 'skipped');
+      if (!sk.length) return null;
+      const notLoaded = sk.filter((r) => /not loaded/.test(r.message)).length;
+      return h('details', {}, h('summary', { class: 'small' }, `${sk.length} ward rows skipped${notLoaded ? ` — ${notLoaded} because their LGA’s wards are not loaded yet (Units below the LGA → Load wards & health facilities)` : ''}`),
+        h('ul', { class: 'small' }, sk.filter((r) => !/not loaded/.test(r.message)).slice(0, 300).map((r) => h('li', {}, `${r.lga}: ${r.message}`))));
+    })(),
     missingCols.length ? h('div', { class: 'note warn' }, `Not in the file (kept as they are): ${missingCols.join(', ')}.`) : null,
-    h('div', { class: 'counts' }, h('span', { class: 'pill s-accepted' }, `LGAs with figures: ${c.lgas}`), h('span', { class: 'pill s-draft' }, `Values changing: ${c.changed}`), h('span', { class: 'pill s-returned' }, `Problems: ${c.error}`)),
+    h('div', { class: 'counts' }, h('span', { class: 'pill s-accepted' }, `LGAs with figures: ${c.lgas}`), c.wards ? h('span', { class: 'pill s-accepted' }, `Wards with figures: ${c.wards}`) : null,
+      c.skipped ? h('span', { class: 'pill s-none' }, `Ward rows skipped: ${c.skipped}`) : null, h('span', { class: 'pill s-draft' }, `Values changing: ${c.changed}`), h('span', { class: 'pill s-returned' }, `Problems: ${c.error}`)),
     errors.length ? h('div', {}, h('div', { class: 'note bad' }, 'Fix these rows in the file and import again. Nothing has been saved.'),
       h('div', { class: 'scroll' }, h('table', {}, h('thead', {}, h('tr', {}, h('th', {}, 'Row'), h('th', {}, 'LGA'), h('th', {}, 'Problem'))),
         h('tbody', {}, errors.slice(0, 200).map((e) => h('tr', {}, h('td', {}, e.row), h('td', {}, e.lga), h('td', {}, e.message)))))))
@@ -2216,7 +2233,7 @@ async function populationImportDialog(ds, fields, file, year, after) {
       progress.textContent = `Saving ${Math.min(i + 60, todo.length)} of ${todo.length}…`;
       await api('POST', `/api/datasets/${ds.id}/population`, { year, source: source.value.trim(), rows: todo.slice(i, i + 60), commit: true });
     }
-    dlg.close(); toast(`Saved population figures for ${todo.length} LGAs`); after();
+    dlg.close(); toast(`Saved population figures for ${places}`); after();
   }));
   document.body.append(dlg); dlg.showModal();
 }

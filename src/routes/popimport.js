@@ -35,7 +35,34 @@ export async function populationTable(request, env, ctx, { id }) {
   });
 }
 
-// POST /api/datasets/:id/population  { year, source, commit, rows: [{ row, state, lga, lgaId, values: { fieldId: value } }] }
+// Ward names compared loosely: no state prefix ("be "), no word "ward", Roman numerals as written, letters and digits only.
+export function wardKey(s) {
+  return String(s || '').toLowerCase().replace(/\s+/g, ' ').trim().replace(/^[a-z]{2} (?=\S)/, '')
+    .replace(/\bward\b/g, ' ').replace(/[^a-z0-9]/g, '');
+}
+function close(a, b) {
+  if (Math.abs(a.length - b.length) > 2 || Math.min(a.length, b.length) < 5) return false;
+  const max = a.length >= 9 ? 2 : 1;
+  let prev = Array.from({ length: b.length + 1 }, (_, j) => j);
+  for (let i = 1; i <= a.length; i++) {
+    const cur = [i];
+    for (let j = 1; j <= b.length; j++) cur[j] = Math.min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+    if (Math.min(...cur) > max) return false;
+    prev = cur;
+  }
+  return prev[b.length] <= max;
+}
+// The ward of an LGA a row names (ward, plus other names separated by commas): exact first, then one close spelling.
+function findWard(list, row) {
+  const keys = [row.ward, ...String(row.wardAlt || '').split(/[,;]/)].map(wardKey).filter(Boolean);
+  for (const k of keys) { const hit = list.filter((w) => w.key === k); if (hit.length === 1) return hit[0]; }
+  for (const k of keys) { const hit = list.filter((w) => close(k, w.key)); if (hit.length === 1) return hit[0]; }
+  return null;
+}
+
+// POST /api/datasets/:id/population  { year, source, commit, rows: [{ row, state, lga, lgaId | wardId, ward?, wardAlt?, values: { fieldId: value } }] }
+// A row with a ward name (and its LGA) is matched to a ward loaded in the app by name.
+// A row with wardId is a ward's figure; wards not loaded in the app yet are skipped (not an error).
 export async function importPopulation(request, env, ctx, { id }) {
   const ds = await loadShared(env.DB, ctx, id);
   const body = await readJson(request, 3_000_000);
@@ -50,6 +77,13 @@ export async function importPopulation(request, env, ctx, { id }) {
   // Every LGA in scope, also in states not taking part yet: their figures are ready when a state is switched on.
   const lgas = (await all(env.DB, `SELECT l.id, l.name, l.path, s.name AS state_name FROM org_units l JOIN org_units s ON s.id = l.parent_id WHERE l.level = 3`)).filter((l) => inScope(ctx, l));
   const byId = new Map(lgas.map((l) => [l.id, l]));
+  const wardIds = [...new Set(body.rows.map((r) => r && r.wardId).filter(Boolean).map(String))];
+  const wards = new Map();
+  for (let i = 0; i < wardIds.length; i += 90) {
+    const part = wardIds.slice(i, i + 90);
+    for (const w of await all(env.DB, `SELECT w.id, w.name, w.path, l.name AS state_name FROM org_units w JOIN org_units l ON l.id = w.parent_id
+        WHERE w.unit_type_id = 'ut_ward' AND w.id IN (${part.map(() => '?').join(',')})`, ...part)) if (inScope(ctx, w)) wards.set(w.id, w);
+  }
   const byName = new Map();
   for (const l of lgas) {
     byName.set(looseName(l.state_name) + '|' + looseName(l.name), l);
@@ -58,13 +92,38 @@ export async function importPopulation(request, env, ctx, { id }) {
   const existing = new Map((await all(env.DB, `SELECT de_id, ou_id, value FROM data_values WHERE period = ? AND de_id IN (SELECT id FROM data_elements WHERE dataset_id = ?)`, year, ds.id))
     .map((x) => [x.ou_id + '|' + x.de_id, x.value]));
 
+  // Wards named by their LGA and name (e.g. a file summed from GRID3 ward boundaries).
+  const byLgaWards = new Map();
+  const namedLgas = [...new Set(body.rows.filter((r) => r && r.ward && !r.wardId && r.lgaId).map((r) => String(r.lgaId).trim()))];
+  for (let i = 0; i < namedLgas.length; i += 90) {
+    const part = namedLgas.slice(i, i + 90);
+    for (const w of await all(env.DB, `SELECT w.id, w.name, w.path, w.parent_id, l.name AS state_name FROM org_units w JOIN org_units l ON l.id = w.parent_id
+        WHERE w.unit_type_id = 'ut_ward' AND w.closed_at IS NULL AND w.parent_id IN (${part.map(() => '?').join(',')})`, ...part)) {
+      if (!inScope(ctx, w)) continue;
+      if (!byLgaWards.has(w.parent_id)) byLgaWards.set(w.parent_id, []);
+      byLgaWards.get(w.parent_id).push({ ...w, key: wardKey(w.name) });
+    }
+  }
   const results = []; const counts = { lgas: 0, values: 0, changed: 0, error: 0 };
   const writes = []; const seen = new Set();
   for (let i = 0; i < body.rows.length; i++) {
     const r = body.rows[i] || {};
     const rowNo = Number(r.row) || i + 2;
     const err = (m) => { counts.error++; results.push({ row: rowNo, lga: r.lga || r.lgaId || '', status: 'error', message: m }); };
-    let lga = r.lgaId ? byId.get(String(r.lgaId).trim()) : (r.state ? byName.get(looseName(r.state) + '|' + looseName(r.lga)) : byName.get('lga|' + looseName(r.lga)));
+    if (r.ward && !r.wardId && r.lgaId) {
+      const list = byLgaWards.get(String(r.lgaId).trim());
+      const skip = (m) => { counts.skipped = (counts.skipped || 0) + 1; results.push({ row: rowNo, lga: `${r.ward} (${r.lga || r.lgaId})`, status: 'skipped', message: m }); };
+      if (!list) { skip('This LGA’s wards are not loaded in the app yet.'); continue; }
+      const w = findWard(list, r);
+      if (!w) { skip('No ward of this name in the LGA.'); continue; }
+      if (seen.has(w.id)) { skip(`Matched ${w.name}, which another row already filled.`); continue; }
+      r.__ou = w;
+    } else if (r.wardId) {
+      const w = wards.get(String(r.wardId).trim());
+      if (!w) { counts.skipped = (counts.skipped || 0) + 1; results.push({ row: rowNo, lga: r.ward || r.wardId, status: 'skipped', message: 'Ward not loaded in the app yet.' }); continue; }
+      r.__ou = w;
+    }
+    let lga = r.__ou ? r.__ou : r.lgaId ? byId.get(String(r.lgaId).trim()) : (r.state ? byName.get(looseName(r.state) + '|' + looseName(r.lga)) : byName.get('lga|' + looseName(r.lga)));
     if (lga === 'ambiguous') { err(`More than one LGA is called “${r.lga}”. Keep the State or LGA ID column.`); continue; }
     if (!lga) { err(r.lgaId ? `LGA ID ${r.lgaId} is not an LGA in your area.` : `LGA “${r.lga || ''}” was not found. Keep the LGA ID column from the template.`); continue; }
     if (seen.has(lga.id)) { err(`${lga.name} appears more than once.`); continue; }
@@ -86,7 +145,8 @@ export async function importPopulation(request, env, ctx, { id }) {
     }
     if (bad) { err(bad); continue; }
     if (!n) { results.push({ row: rowNo, lga: lga.name, status: 'empty' }); continue; }
-    counts.lgas++; counts.values += n; counts.changed += changed;
+    if (r.__ou) counts.wards = (counts.wards || 0) + 1; else counts.lgas++;
+    counts.values += n; counts.changed += changed;
     results.push({ row: rowNo, lga: lga.name, state: lga.state_name, status: changed ? 'changed' : 'same', values: n });
   }
   if (commit) {

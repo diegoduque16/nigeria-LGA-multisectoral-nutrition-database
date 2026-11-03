@@ -76,7 +76,8 @@ async function formFor(db, ctx, ds, ou, period) {
   const locked = !EDITABLE.includes(status);
   const inds = compileIndicators(await all(db, 'SELECT * FROM indicators WHERE dataset_id = ? AND archived_at IS NULL ORDER BY sort, name', ds.id), await factors(db));
   // Shared yearly numbers (population etc.) for this LGA, scaled to this period, so the preview matches the state picture.
-  const sharedIds = ds.report_level === 4 ? [] : sharedIdsOf(inds, fields.map((f) => f.id)); // population is per LGA, not per unit
+  // Population is per LGA and per ward (not per facility or school).
+  const sharedIds = ds.report_level === 4 && ou.unit_type_id !== 'ut_ward' ? [] : sharedIdsOf(inds, fields.map((f) => f.id));
   const preview = { ...byDe };
   const sharedOut = [];
   if (sharedIds.length) {

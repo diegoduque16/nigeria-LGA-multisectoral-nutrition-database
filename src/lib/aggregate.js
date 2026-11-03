@@ -62,7 +62,7 @@ export async function loadLgaTotals(db, dataset, period, rootOu, statuses, share
         WHERE ${f.sql} AND u.closed_at IS NULL AND (u.id = ? OR u.path LIKE ?) ORDER BY u.name`,
       ...f.args, rootOu.id, like);
     for (const u of unitRows) { const l = lgas.get(u.lga_id); if (l) l.expected++; }
-    if (perUnit) units = new Map(unitRows.map((u) => [u.id, { id: u.id, name: u.name, lgaId: u.lga_id, type: u.unit_type || '', ward: u.ward || '', values: {}, reported: 0, expected: 1, statuses: {} }]));
+    if (perUnit) units = new Map(unitRows.map((u) => [u.id, { id: u.id, name: u.name, lgaId: u.lga_id, type: u.unit_type || '', ward: u.ward || '', values: {}, reported: 0, expected: 1, statuses: {}, periodsReported: new Set() }]));
   }
   // Units count towards their LGA (o.lga_id), whether they sit directly under it or under a ward.
   const levelSql = unitLevel ? 'o.level >= 4' : 'o.level = 3';
@@ -74,7 +74,7 @@ export async function loadLgaTotals(db, dataset, period, rootOu, statuses, share
     const ok = statuses.includes(r.status);
     if (unitLevel) {
       const u = units && units.get(r.ou_id);
-      if (u) { u.statuses[r.period] = r.status; if (ok) u.reported++; }
+      if (u) { u.statuses[r.period] = r.status; if (ok) { u.reported++; u.periodsReported.add(r.period); } }
       const l = lgas.get(r.parent_id);
       if (!l || !ok) continue;
       l.reported++; l.unitsReported.add(r.ou_id); l.periodsReported.add(r.period);
@@ -106,6 +106,8 @@ export async function loadLgaTotals(db, dataset, period, rootOu, statuses, share
   }
   for (const l of lgas.values()) l.unitsReporting = l.unitsReported.size;
   if (sharedIds.length) await addSharedValues(db, lgas, sharedIds, statuses, rootOu);
+  // Wards have their own population figures (other units do not): ward rows get their own denominators.
+  if (sharedIds.length && units) await addSharedValues(db, units, sharedIds, statuses, rootOu);
   return { subPeriods, lgas, units, unitLevel };
 }
 
