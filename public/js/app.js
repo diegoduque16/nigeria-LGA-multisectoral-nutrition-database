@@ -1200,11 +1200,16 @@ const scheduleText = (d) => `${d.frequencyName} · ${whoText(d)} reports · due 
 // schools … set up under Units below the LGA). Returns the control and its value.
 function whoReportsPicker(m, ds) {
   const custom = (m.unitTypes || []).filter((t) => !t.isWard);
-  const cur = ds && ds.reportLevel === 'UNIT' ? ((ds.unitTypes || []).includes('ut_ward') ? 'WARD' : 'UNIT') : 'LGA';
+  // Health facilities are a choice of their own (official DHIS2 facilities, loaded under Units below the LGA).
+  const hf = custom.find((t) => t.id === 'ut_health_facility') || custom.find((t) => /^health facilit/i.test(t.name));
+  const dsTypes = (ds && ds.unitTypes) || [];
+  const cur = ds && ds.reportLevel === 'UNIT'
+    ? (dsTypes.includes('ut_ward') ? 'WARD' : hf && dsTypes.length === 1 && dsTypes[0] === hf.id ? 'HF' : 'UNIT') : 'LGA';
   const level = select([
     { id: 'LGA', name: 'Each LGA (default)' },
     { id: 'WARD', name: 'Each ward' },
-    { id: 'UNIT', name: 'Each facility, school … (types you choose)' },
+    { id: 'HF', name: 'Each health facility' },
+    { id: 'UNIT', name: 'Other units: school … (types you choose)' },
   ], cur);
   const boxes = custom.map((t) => ({ t, box: h('input', { type: 'checkbox', checked: !!(ds && (ds.unitTypes || []).includes(t.id)) }) }));
   const newType = h('input', { placeholder: 'or a new type, e.g. Primary school', size: 28 });
@@ -1219,11 +1224,12 @@ function whoReportsPicker(m, ds) {
     level,
     onChange: (fn) => { level.addEventListener('change', fn); boxes.forEach((x) => x.box.addEventListener('change', fn)); newType.addEventListener('input', fn); },
     // Names for the schedule's name, e.g. ", by ward" / ", by health facility".
-    byText: () => (level.value === 'LGA' ? '' : level.value === 'WARD' ? ', by ward'
+    byText: () => (level.value === 'LGA' ? '' : level.value === 'WARD' ? ', by ward' : level.value === 'HF' ? ', by health facility'
       : ', by ' + [...boxes.filter((x) => x.box.checked).map((x) => x.t.name), newType.value.trim()].filter(Boolean).map((n) => n.toLowerCase()).join(' / ') || ', by unit'),
     async value() {
       if (level.value === 'LGA') return { reportLevel: 'LGA', unitTypes: [] };
       if (level.value === 'WARD') return { reportLevel: 'UNIT', unitTypes: ['ut_ward'] };
+      if (level.value === 'HF') return { reportLevel: 'UNIT', unitTypes: [hf ? hf.id : (await api('POST', '/api/unit-types', { name: 'Health facility' })).data.id] };
       const ids = boxes.filter((x) => x.box.checked).map((x) => x.t.id);
       if (newType.value.trim()) {
         const found = (m.unitTypes || []).find((t) => t.name.toLowerCase() === newType.value.trim().toLowerCase());
@@ -1288,6 +1294,7 @@ async function renderSectors(m) {
     return h('div', { class: 'panel sector-card' },
       h('div', { class: 'rc-head' }, h('h2', {}, sec.name),
         h('div', { class: 'actions' },
+          admin && sec.id ? h('button', { class: 'link', onclick: () => editSectorDialog(sec, active, m) }, 'Edit sector') : null,
           admin && sec.id ? h('button', { class: 'link', onclick: () => renameSector(sec) }, 'Rename') : null,
           admin && sec.id && unused ? h('button', { class: 'link danger-link', onclick: () => removeSector(sec) }, 'Remove') : null)),
       active.length ? active.map((d) => block(d, active.length > 1))
@@ -1610,6 +1617,42 @@ async function renameSector(sec) {
   try { await api('PATCH', '/api/sectors/' + sec.id, { name: name.trim() }); toast('Sector renamed'); state.meta = null; route(); } catch (e) { toast(e.message, true); }
 }
 
+// Edit a sector in one place: its name, and how its main schedule reports (the same choices as “Add a sector”).
+// Other schedules of the sector keep their own Schedule settings.
+function editSectorDialog(sec, active, m) {
+  const ds = active[0] || null;
+  const name = h('input', { value: sec.name });
+  const freq = ds ? select(m.frequencies, ds.frequency) : null;
+  const who = ds ? whoReportsPicker(m, ds) : null;
+  const due = ds ? h('input', { type: 'number', min: 1, max: 28, value: ds.dueDay }) : null;
+  const err = h('div', { class: 'err' });
+  const save = h('button', { class: 'primary' }, 'Save');
+  const dlg = h('dialog', {}, h('h2', {}, `Edit sector — ${sec.name}`),
+    ds ? h('p', { class: 'muted small' }, 'Once reports exist, how often and who reports can no longer change.') : null,
+    h('div', { class: 'grid2' },
+      field('Sector name', name, 'As people will see it.'),
+      ds ? field('How often it reports', freq, 'Each report covers one month, quarter or year.') : null,
+      ds ? fieldGroup('Who reports', who.el, 'Each LGA sends one report — or each ward, or each unit of the types you tick (health facility, school …). Values add up to the LGA.') : null,
+      ds ? field('Due day', due, 'Day of the month after the period ends.') : null),
+    active.length > 1 ? h('p', { class: 'muted small' }, `These settings are for “${ds.name}”. The sector’s other schedules (${active.slice(1).map((d) => d.name).join(', ')}) have their own Schedule settings.`) : null,
+    !ds ? h('p', { class: 'muted small' }, 'This sector has no reporting schedule yet. Use “Set its schedule” on its card.') : null,
+    err, h('p'), h('div', { class: 'actions' }, save, h('button', { onclick: () => dlg.close() }, 'Cancel')));
+  dlg.addEventListener('close', () => dlg.remove());
+  save.addEventListener('click', busy(save, async () => {
+    err.textContent = '';
+    const newName = name.value.trim();
+    if (!newName) { err.textContent = 'Give the sector a name.'; return; }
+    try {
+      let body = null;
+      if (ds) body = { frequency: freq.value, ...(await who.value()), dueDay: Number(due.value) };
+      if (newName !== sec.name) await api('PATCH', '/api/sectors/' + sec.id, { name: newName });
+      if (body) await api('PATCH', '/api/datasets/' + ds.id, body);
+    } catch (e) { err.textContent = e.message; state.meta = null; return; }
+    dlg.close(); toast('Sector saved'); state.meta = null; await loadMe(); route();
+  }));
+  document.body.append(dlg); dlg.showModal(); name.focus();
+}
+
 // One form: its indicators (editable grid) and the numbers people type in.
 function renderForm(ds, m) {
   const sectorList = h('datalist', { id: 'sector-list' }, m.sectors.map((s) => h('option', { value: s.name })));
@@ -1685,7 +1728,7 @@ function sectorDialog(m) {
     h('div', { class: 'grid2' },
       field('Sector name', sector, 'As people will see it.'),
       field('How often it reports', freq, 'Each report covers one month, quarter or year.'),
-      fieldGroup('Who reports', who.el, 'Each LGA sends one report — or each ward, or each of the sector’s own units (facility, school …) sends its own. Values add up to the LGA.'),
+      fieldGroup('Who reports', who.el, 'Each LGA sends one report — or each ward, each health facility, or each of the sector’s own units (school …) sends its own. Values add up to the LGA.'),
       field('Due day', due, 'Day of the month after the period ends, e.g. 15.')),
     h('p', { class: 'muted small' }, 'Some indicators on another schedule (e.g. yearly, or by school)? Add them later with “+ Add indicators with a different schedule”.'),
     err, h('p'), h('div', { class: 'actions' }, save, h('button', { onclick: () => dlg.close() }, 'Cancel')));
