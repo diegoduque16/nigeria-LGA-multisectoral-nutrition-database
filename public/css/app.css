@@ -294,3 +294,8 @@ tr.part td { border-bottom: 0; padding-top: .2rem; padding-bottom: .2rem; }
 .pcell .n { display: inline-block; width: 42px; margin-left: 8px; }
 .pbar { display: inline-block; vertical-align: middle; width: 100px; height: 8px; border-radius: 4px; background: var(--line, #e3e6ea); overflow: hidden; }
 .pbar span { display: block; height: 100%; background: var(--ok, #2e7d4f); }
+.full { width: 100%; max-width: 100%; box-sizing: border-box; }
+.mb6 { margin-bottom: 6px; }
+.mt8 { margin-top: 8px; }
+pre.wrap { white-space: pre-wrap; }
+table.glance td { vertical-align: middle; }
