@@ -1918,7 +1918,8 @@ function sharedPanel(ds) {
     list.length ? h('h2', {}, '2 · The figures for each LGA') : null,
     list.length ? h('p', { class: 'muted small' }, 'Two ways to fill them: the GRID3 / WorldPop modelled estimates, downloaded for you, or official figures (e.g. NPC projections) from Excel. Each import only fills the numbers you choose for the year you choose.') : null,
     list.length ? worldpopPanel(ds, list) : null,
-    list.length ? populationImportPanel(ds, list) : h('div', { class: 'note info' }, 'Add at least one number above; then you can import the figures for each LGA.'));
+    populationImportPanel(ds, list),
+    list.length ? null : h('div', { class: 'note info' }, 'No numbers yet: add them above, or import a ready-made Excel file — its columns (e.g. “Total population”, “Children under 5”) are added for you.'));
 }
 
 // ---------- GRID3 / WorldPop modelled population estimates ----------
@@ -2105,8 +2106,20 @@ async function populationImportDialog(ds, fields, file, year, after) {
   if (hi < 0) throw new Error('No “LGA” or “LGA ID” column found. Use the template (Download template).');
   const head = rows[hi].map(norm);
   const ci = { state: head.indexOf('state'), lga: head.indexOf('lga'), lgaId: head.indexOf('lgaid') };
+  // Columns that are not population figures yet: offer to add them (e.g. a ready-made file of projections).
+  const extra = rows[hi].map((c, i) => ({ name: String(c ?? '').trim(), i }))
+    .filter((x) => x.name && !['state', 'lga', 'lgaid'].includes(norm(x.name)) && !fields.some((f) => norm(f.name) === norm(x.name)));
+  if (extra.length && is('sysadmin') && confirm(`This file has ${extra.length === 1 ? 'a number that is' : 'numbers that are'} not population figures yet:\n\n${extra.map((x) => '• ' + x.name).join('\n')}\n\nAdd ${extra.length === 1 ? 'it' : 'them'} to the Population figures and import ${extra.length === 1 ? 'it' : 'them'} too?`)) {
+    for (const x of extra) {
+      const c = COMMON_DENOMINATORS.find((d) => norm(d.name) === norm(x.name));
+      try { await api('POST', `/api/datasets/${ds.id}/fields`, { name: x.name, prorate: c ? c.prorate : false }); } catch (e) { if (e.status !== 409) throw e; }
+    }
+    state.meta = null;
+    const m2 = await meta(true);
+    fields = (m2.datasets.find((d) => d.id === ds.id) || ds).dataElements.filter((f) => !f.archived);
+  }
   const cols = fields.map((f) => ({ f, i: head.indexOf(norm(f.name)) })).filter((x) => x.i >= 0);
-  if (!cols.length) throw new Error('None of the columns match a number in this data set (e.g. “' + fields[0].name + '”). Use the template.');
+  if (!cols.length) throw new Error(fields.length ? 'None of the columns match a number in this data set (e.g. “' + fields[0].name + '”). Use the template.' : 'No population figures yet: add them first, or accept adding the file’s columns.');
   const missingCols = fields.filter((f) => !cols.some((c) => c.f.id === f.id)).map((f) => f.name);
   const data = rows.slice(hi + 1).map((r, i) => ({
     row: hi + i + 2,
