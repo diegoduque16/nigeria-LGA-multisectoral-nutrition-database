@@ -7,6 +7,7 @@ import {
 } from '../lib/dhis.js';
 import { compileIndicators, indicatorValue, round, sharedIdsOf } from '../lib/aggregate.js';
 import { unitsOf } from '../lib/units.js';
+import { breakdownMap, partsOf } from '../lib/breakdowns.js';
 
 const STATUS_NAMES = { none: 'Not started', draft: 'Draft', submitted: 'Submitted', accepted: 'Accepted', returned: 'Sent back' };
 const EDITABLE = ['none', 'draft', 'returned'];
@@ -61,6 +62,13 @@ async function formFor(db, ctx, ds, ou, period) {
     'SELECT de_id, value, updated_at FROM data_values WHERE ou_id = ? AND period = ? AND de_id IN (SELECT id FROM data_elements WHERE dataset_id = ?)',
     ou.id, period, ds.id);
   const byDe = Object.fromEntries(vals.map((x) => [x.de_id, x.value]));
+  const bmap = await breakdownMap(db);
+  const partVals = {};
+  if (fields.some((f) => f.breakdown_id)) {
+    for (const x of await all(db, 'SELECT de_id, part, value FROM data_value_parts WHERE ou_id = ? AND period = ? AND de_id IN (SELECT id FROM data_elements WHERE dataset_id = ?)', ou.id, period, ds.id)) {
+      (partVals[x.de_id] ||= {})[x.part] = x.value;
+    }
+  }
   const rep = await reportOf(db, ds.id, ou.id, period);
   const status = rep ? rep.status : 'none';
   const locked = !EDITABLE.includes(status);
@@ -102,6 +110,7 @@ async function formFor(db, ctx, ds, ou, period) {
       id: f.id, name: f.name, valueType: f.value_type, min: f.min_value, max: f.max_value,
       value: byDe[f.id] ?? null,
       editable: canEnter(ctx) && !locked && canEnterElement(ctx, f.id),
+      parts: partsOf(f, bmap).map((pt) => ({ ...pt, value: (partVals[f.id] || {})[pt.key] ?? null })),
     })),
     indicators: inds.map((i) => {
       const r = indicatorValue(i, preview);
@@ -162,6 +171,30 @@ export async function saveEntry(request, env, ctx) {
   const old = Object.fromEntries((await all(env.DB, 'SELECT de_id, value FROM data_values WHERE ou_id = ? AND period = ?', ou.id, body.period)).map((x) => [x.de_id, x.value]));
   const errors = {};
   const changes = [];
+  // Parts of broken-down numbers arrive as "deId:part"; the total of such a number is the sum of its parts.
+  const bmap = await breakdownMap(env.DB);
+  const partChanges = []; const touched = new Set();
+  const oldParts = {};
+  for (const x of await all(env.DB, 'SELECT de_id, part, value FROM data_value_parts WHERE ou_id = ? AND period = ?', ou.id, body.period)) (oldParts[x.de_id] ||= {})[x.part] = x.value;
+  for (const [key, val] of Object.entries(values)) {
+    if (!key.includes(':')) continue;
+    delete values[key];
+    const [deId, part] = key.split(':');
+    const f = fields.get(deId);
+    const parts = f ? partsOf(f, bmap).map((p) => p.key) : [];
+    if (!f || !parts.includes(part)) { errors[deId || key] = 'Unknown breakdown.'; continue; }
+    if (!canEnterElement(ctx, deId)) { errors[deId] = 'You are not assigned to enter this value.'; continue; }
+    const cur = (oldParts[deId] ||= {});
+    if (val === null || val === '') { if (part in cur) { delete cur[part]; partChanges.push([deId, part, null]); touched.add(deId); } continue; }
+    const n = typeof val === 'number' ? val : Number(String(val).replace(/,/g, '').trim());
+    if (!Number.isFinite(n) || n < 0) { errors[deId] = 'Enter a number of 0 or more.'; continue; }
+    if (f.value_type === 'INTEGER' && !Number.isInteger(n)) { errors[deId] = 'Enter a whole number.'; continue; }
+    if (cur[part] !== n) { cur[part] = n; partChanges.push([deId, part, n]); touched.add(deId); }
+  }
+  for (const deId of touched) {
+    const vals_ = Object.values(oldParts[deId] || {});
+    values[deId] = vals_.length ? vals_.reduce((a, b) => a + b, 0) : null;
+  }
   for (const [deId, val] of Object.entries(values)) {
     const f = fields.get(deId);
     if (!f) { errors[deId] = 'Unknown field.'; continue; }
@@ -181,6 +214,13 @@ export async function saveEntry(request, env, ctx) {
   }
   const t = now();
   const stmts = [];
+  for (const [deId, part, n] of partChanges) {
+    stmts.push(n === null
+      ? env.DB.prepare('DELETE FROM data_value_parts WHERE de_id = ? AND ou_id = ? AND period = ? AND part = ?').bind(deId, ou.id, body.period, part)
+      : env.DB.prepare(`INSERT INTO data_value_parts (de_id, ou_id, period, part, value, updated_by, updated_at) VALUES (?,?,?,?,?,?,?)
+          ON CONFLICT(de_id, ou_id, period, part) DO UPDATE SET value = excluded.value, updated_by = excluded.updated_by, updated_at = excluded.updated_at`)
+        .bind(deId, ou.id, body.period, part, n, ctx.user.id, t));
+  }
   for (const [deId, n] of changes) {
     stmts.push(n === null
       ? env.DB.prepare('DELETE FROM data_values WHERE de_id = ? AND ou_id = ? AND period = ?').bind(deId, ou.id, body.period)
@@ -211,6 +251,19 @@ export async function submitEntry(request, env, ctx) {
     `SELECT name FROM data_elements de WHERE dataset_id = ? AND archived_at IS NULL
        AND NOT EXISTS (SELECT 1 FROM data_values dv WHERE dv.de_id = de.id AND dv.ou_id = ? AND dv.period = ?) ORDER BY sort, name`,
     ds.id, ou.id, body.period);
+  // A broken-down number needs every part.
+  const bmap = await breakdownMap(env.DB);
+  const split = await all(env.DB, 'SELECT * FROM data_elements WHERE dataset_id = ? AND archived_at IS NULL AND breakdown_id IS NOT NULL', ds.id);
+  if (split.length) {
+    const have = new Set((await all(env.DB, 'SELECT de_id, part FROM data_value_parts WHERE ou_id = ? AND period = ?', ou.id, body.period)).map((x) => x.de_id + ':' + x.part));
+    for (const f of split) {
+      const gaps = partsOf(f, bmap).filter((p) => !have.has(f.id + ':' + p.key));
+      // Values saved before the breakdown was added count as complete.
+      const hadTotal = await one(env.DB, 'SELECT 1 AS x FROM data_values WHERE de_id = ? AND ou_id = ? AND period = ?', f.id, ou.id, body.period);
+      const anyPart = partsOf(f, bmap).some((p) => have.has(f.id + ':' + p.key));
+      if (gaps.length && (anyPart || !hadTotal)) missing.push({ name: `${f.name} — ${gaps[0].name}${gaps.length > 1 ? ` and ${gaps.length - 1} more part${gaps.length > 2 ? 's' : ''}` : ''}` });
+    }
+  }
   if (missing.length) {
     const list = missing.slice(0, 3).map((m) => `“${m.name}”`).join(', ') + (missing.length > 3 ? ` and ${missing.length - 3} more` : '');
     throw new HttpError(422, 'incomplete', `Every value is needed before submitting (enter 0 if there were none). Missing: ${list}.`, { missing: missing.map((m) => m.name) });
@@ -335,19 +388,27 @@ export async function sheetData(db, who, ds, period, area) {
         WHERE o.level = 3 AND o.closed_at IS NULL AND s.inactive = 0 AND (o.id = ? OR o.path LIKE ?) ORDER BY o.name`, area.id, area.path + '/%');
   }
   places = places.filter((p) => inScope(who, p));
-  const fields = await all(db, 'SELECT id, name, value_type FROM data_elements WHERE dataset_id = ? AND archived_at IS NULL ORDER BY sort, name', ds.id);
+  const fields = await all(db, 'SELECT id, name, value_type, breakdown_id, breakdown2_id FROM data_elements WHERE dataset_id = ? AND archived_at IS NULL ORDER BY sort, name', ds.id);
+  const bmap = await breakdownMap(db);
   const ids = places.map((p) => p.id);
   const vals = []; const reps = [];
   for (let i = 0; i < ids.length; i += 90) {
     const part = ids.slice(i, i + 90); const marks = part.map(() => '?').join(',');
     vals.push(...await all(db, `SELECT ou_id, de_id, value FROM data_values WHERE period = ? AND ou_id IN (${marks}) AND de_id IN (SELECT id FROM data_elements WHERE dataset_id = ?)`, period, ...part, ds.id));
     reps.push(...await all(db, `SELECT ou_id, status FROM reports WHERE dataset_id = ? AND period = ? AND ou_id IN (${marks})`, ds.id, period, ...part));
+    if (fields.some((f) => f.breakdown_id)) {
+      vals.push(...(await all(db, `SELECT ou_id, de_id || ':' || part AS de_id, value FROM data_value_parts WHERE period = ? AND ou_id IN (${marks}) AND de_id IN (SELECT id FROM data_elements WHERE dataset_id = ?)`, period, ...part, ds.id)));
+    }
   }
   const status = new Map(reps.map((r) => [r.ou_id, r.status]));
   return {
     dataset: { id: ds.id, name: ds.name, frequency: ds.frequency, frequencyName: FREQUENCY_NAMES[ds.frequency], byUnit: ds.report_level === 4 },
     period, periodName: periodName(period), due: dueAt(period, ds.due_day), area: { id: area.id, name: area.name },
-    fields: fields.map((f) => ({ id: f.id, name: f.name, whole: f.value_type === 'INTEGER', editable: canEnterElement(who, f.id) })),
+    fields: fields.flatMap((f) => {
+      const parts = partsOf(f, bmap);
+      if (!parts.length) return [{ id: f.id, name: f.name, whole: f.value_type === 'INTEGER', editable: canEnterElement(who, f.id) }];
+      return parts.map((p) => ({ id: `${f.id}:${p.key}`, name: `${f.name} — ${p.name}`, whole: f.value_type === 'INTEGER', editable: canEnterElement(who, f.id) }));
+    }),
     rows: places.map((p) => ({
       id: p.id, name: p.name, lga: p.lga, state: p.state, ward: p.ward || '', type: p.type || '', status: status.get(p.id) || 'none',
       values: Object.fromEntries(vals.filter((v_) => v_.ou_id === p.id).map((v_) => [v_.de_id, v_.value])),

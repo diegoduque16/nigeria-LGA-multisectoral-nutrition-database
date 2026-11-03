@@ -7,6 +7,7 @@ import {
   compileIndicators, indicatorValue, round, loadLgaTotals, rollUp, sharedIdsOf, STATUSES_FINAL, STATUSES_PROVISIONAL,
 } from '../lib/aggregate.js';
 import { indicatorDescription } from './metadata.js';
+import { breakdownMap, partsOf } from '../lib/breakdowns.js';
 
 const PERCENT_TYPE = 'hmSnCXmLYwt';
 
@@ -49,10 +50,14 @@ export async function picture(request, env, ctx) {
   const provisional = q.get('provisional') === '1';
   const statuses = provisional ? STATUSES_PROVISIONAL : STATUSES_FINAL;
   const inds = compileIndicators(await indicatorsOf(env.DB, ds.id, q.get('sector')), await factorMap(env.DB));
-  const own = await all(env.DB, 'SELECT id, name FROM data_elements WHERE dataset_id = ? AND archived_at IS NULL ORDER BY sort, name', ds.id);
+  const own = await all(env.DB, 'SELECT id, name, breakdown_id, breakdown2_id FROM data_elements WHERE dataset_id = ? AND archived_at IS NULL ORDER BY sort, name', ds.id);
   const sharedIds = sharedIdsOf(inds, own.map((f) => f.id));
+  const bmap = await breakdownMap(env.DB);
   const shared = sharedIds.length ? await all(env.DB, `SELECT id, name FROM data_elements WHERE id IN (${sharedIds.map(() => '?').join(',')}) ORDER BY sort, name`, ...sharedIds) : [];
-  const fields = [...own, ...shared.map((f) => ({ ...f, shared: true }))];
+  // Broken-down numbers are followed by their parts (sex, age group …), summed like any number.
+  const fields = [...own.flatMap((f) => [{ id: f.id, name: f.name },
+    ...partsOf(f, bmap).map((p) => ({ id: `${f.id}:${p.key}`, name: `${f.name} — ${p.name}`, partOf: f.id }))]),
+  ...shared.map((f) => ({ ...f, shared: true }))];
   const { subPeriods, lgas, units } = await loadLgaTotals(env.DB, ds, period, ou, statuses, sharedIds, { perUnit: unitLevel && ou.level === 3 });
   const sectorNames = Object.fromEntries((await all(env.DB, 'SELECT id, name FROM sectors')).map((x) => [x.id, x.name]));
 

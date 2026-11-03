@@ -40,6 +40,7 @@ async function loadDataset(db, id) {
 const deOut = (d) => ({
   id: d.id, datasetId: d.dataset_id, name: d.name, valueType: d.value_type,
   min: d.min_value, max: d.max_value, sort: d.sort, archived: !!d.archived_at, prorate: d.prorate !== 0,
+  breakdownId: d.breakdown_id || null, breakdown2Id: d.breakdown2_id || null,
 });
 
 function deIdOf(expr) {
@@ -83,7 +84,9 @@ export async function getMetadata(request, env, ctx) {
   const sectorNames = Object.fromEntries(sectors.map((s) => [s.id, s.name]));
   const unitTypes = await all(env.DB, 'SELECT id, name, is_ward FROM unit_types ORDER BY is_ward DESC, sort, name');
   const dsTypes = await all(env.DB, 'SELECT dataset_id, type_id FROM dataset_unit_types');
+  const breakdowns = await all(env.DB, "SELECT * FROM breakdowns ORDER BY CASE id WHEN 'bd_sex' THEN 0 WHEN 'bd_age_u5' THEN 1 ELSE 2 END, created_at, name");
   return json({
+    breakdowns: breakdowns.map((b) => ({ id: b.id, name: b.name, options: JSON.parse(b.options), builtIn: b.id.startsWith('bd_') })),
     unitTypes: unitTypes.map((t) => ({ id: t.id, name: t.name, isWard: !!t.is_ward })),
     frequencies: Object.entries(FREQUENCY_NAMES).map(([id, name]) => ({ id, name })),
     showAs: [{ id: 'percent', name: 'Percentage' }, { id: 'per1000', name: 'Per 1,000' }, { id: 'number', name: 'Number' }],
@@ -306,7 +309,18 @@ export async function updateDataElement(request, env, ctx, { id }) {
     min: v.number().nullable(),
     max: v.number().nullable(),
     prorate: v.boolean().optional(),
+    breakdownId: v.string({ max: 40 }).nullable(),
+    breakdown2Id: v.string({ max: 40 }).nullable(),
   }), await readJson(request));
+  // Breakdowns: shared population figures stay whole numbers per LGA; two breakdowns must differ.
+  const b1 = body.breakdownId === undefined ? d.breakdown_id : body.breakdownId || null;
+  const b2 = body.breakdown2Id === undefined ? d.breakdown2_id : (b1 ? body.breakdown2Id || null : null);
+  if (b1 || b2) {
+    const ds = await one(env.DB, 'SELECT shared FROM datasets WHERE id = ?', d.dataset_id);
+    if (ds.shared) throw new HttpError(422, 'invalid', 'Population figures are not broken down.');
+    for (const b of [b1, b2].filter(Boolean)) if (!(await one(env.DB, 'SELECT id FROM breakdowns WHERE id = ?', b))) throw new HttpError(422, 'invalid', 'Unknown breakdown.', { field: 'breakdownId' });
+    if (b1 && b1 === b2) throw new HttpError(422, 'invalid', 'Choose two different breakdowns.', { field: 'breakdown2Id' });
+  }
   const min = body.min === undefined ? d.min_value : body.min;
   const max = body.max === undefined ? d.max_value : body.max;
   if (min !== null && max !== null && min > max) throw new HttpError(422, 'invalid', 'Minimum must not be above maximum.', { field: 'min' });
@@ -318,11 +332,53 @@ export async function updateDataElement(request, env, ctx, { id }) {
     const frac = await one(env.DB, 'SELECT COUNT(*) AS n FROM data_values WHERE de_id = ? AND value != CAST(value AS INTEGER)', id);
     if (frac.n) throw new HttpError(409, 'has_decimals', 'Some values already have decimals, so this cannot become a whole-number field.');
   }
-  await run(env.DB, 'UPDATE data_elements SET name = ?, short_name = ?, value_type = ?, min_value = ?, max_value = ?, prorate = ? WHERE id = ?',
+  await run(env.DB, 'UPDATE data_elements SET name = ?, short_name = ?, value_type = ?, min_value = ?, max_value = ?, prorate = ?, breakdown_id = ?, breakdown2_id = ? WHERE id = ?',
     body.name ?? d.name, (body.name ?? d.name).slice(0, 50), body.valueType ?? d.value_type, min, max,
-    body.prorate === undefined ? d.prorate : body.prorate ? 1 : 0, id);
+    body.prorate === undefined ? d.prorate : body.prorate ? 1 : 0, b1, b2, id);
   await audit(env.DB, ctx, 'field_updated', 'data_element', id, body);
   return json({ dataElement: deOut(await one(env.DB, 'SELECT * FROM data_elements WHERE id = ?', id)) });
+}
+
+// ---------- breakdowns (sex, age groups …) ----------
+const bdSchema = v.object({ name: v.string({ min: 2, max: 60 }), options: v.array(v.string({ min: 1, max: 60 }), { max: 20 }) });
+async function bdOptions(db, names, old = []) {
+  const clean = [...new Set(names.map((n) => n.replace(/\s+/g, ' ').trim()).filter(Boolean))];
+  if (clean.length < 2) throw new HttpError(422, 'invalid', 'A breakdown needs at least two options, e.g. Female and Male.', { field: 'options' });
+  // Options keep their id when their name stays, so values already entered keep their meaning.
+  return clean.map((n) => (old.find((o) => o.name.toLowerCase() === n.toLowerCase()) || { id: 'o' + dhisUid().slice(0, 6).toLowerCase(), name: n }));
+}
+export async function createBreakdown(request, env, ctx) {
+  requireRole(ctx, ['sysadmin', 'setupadmin']);
+  const b = validate(bdSchema, await readJson(request));
+  if (await one(env.DB, 'SELECT id FROM breakdowns WHERE lower(name) = lower(?)', b.name.trim())) throw new HttpError(409, 'name_taken', 'A breakdown with this name exists.');
+  const id = 'bdx_' + dhisUid().toLowerCase();
+  await run(env.DB, 'INSERT INTO breakdowns (id, name, options, created_at) VALUES (?,?,?,?)', id, b.name.trim(), JSON.stringify(await bdOptions(env.DB, b.options)), now());
+  await audit(env.DB, ctx, 'breakdown_created', 'breakdown', id, { name: b.name });
+  return json({ id }, 201);
+}
+export async function updateBreakdown(request, env, ctx, { id }) {
+  requireRole(ctx, ['sysadmin', 'setupadmin']);
+  const cur = await one(env.DB, 'SELECT * FROM breakdowns WHERE id = ?', id);
+  if (!cur) throw new HttpError(404, 'not_found', 'Breakdown not found.');
+  const b = validate(bdSchema, await readJson(request));
+  const old = JSON.parse(cur.options);
+  const opts = await bdOptions(env.DB, b.options, old);
+  const dropped = old.filter((o) => !opts.some((x) => x.id === o.id));
+  if (dropped.length) {
+    const used = await one(env.DB, `SELECT 1 AS x FROM data_value_parts p JOIN data_elements de ON de.id = p.de_id WHERE (de.breakdown_id = ? OR de.breakdown2_id = ?) AND (${dropped.map(() => "(p.part = ? OR p.part LIKE ? OR p.part LIKE ?)").join(' OR ')}) LIMIT 1`,
+      id, id, ...dropped.flatMap((o) => [o.id, o.id + '.%', '%.' + o.id]));
+    if (used) throw new HttpError(409, 'in_use', `Values were already entered for ${dropped.map((o) => o.name).join(', ')}; that option cannot be removed (rename it instead).`);
+  }
+  await run(env.DB, 'UPDATE breakdowns SET name = ?, options = ? WHERE id = ?', b.name.trim(), JSON.stringify(opts), id);
+  await audit(env.DB, ctx, 'breakdown_updated', 'breakdown', id, { name: b.name });
+  return json({ ok: true });
+}
+export async function deleteBreakdown(request, env, ctx, { id }) {
+  requireRole(ctx, ['sysadmin', 'setupadmin']);
+  if (id.startsWith('bd_')) throw new HttpError(422, 'invalid', 'Built-in breakdowns stay.');
+  if (await one(env.DB, 'SELECT 1 AS x FROM data_elements WHERE breakdown_id = ? OR breakdown2_id = ? LIMIT 1', id, id)) throw new HttpError(409, 'in_use', 'A number uses this breakdown.');
+  await run(env.DB, 'DELETE FROM breakdowns WHERE id = ?', id);
+  return json({ ok: true });
 }
 
 // ---------- indicators ----------

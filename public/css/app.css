@@ -281,3 +281,8 @@ table.indlist td { padding: 9px 10px; }
 .whotypes { margin-top: 8px; padding: 10px 12px; border: 1px dashed var(--line); border-radius: 6px; background: #fafbfa; }
 .whotypes .bar { margin: 6px 0 0; }
 details.excelbar > summary { font-weight: 650; }
+tr.part td:first-child { padding-left: 1.6rem; color: var(--muted); }
+tr.parent td { border-bottom: 0; }
+tr.part td { border-bottom: 0; padding-top: .2rem; padding-bottom: .2rem; }
+.bd-opts { display: flex; flex-wrap: wrap; gap: .3rem; }
+.bd-opts span { background: #eef2f0; border-radius: 999px; padding: .1rem .55rem; font-size: .82rem; }

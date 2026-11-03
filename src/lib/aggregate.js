@@ -87,9 +87,10 @@ export async function loadLgaTotals(db, dataset, period, rootOu, statuses, share
   }
   const sums = await all(db,
     `SELECT ${unitLevel && !perUnit ? 'COALESCE(o.lga_id, o.parent_id)' : 'dv.ou_id'} AS ou, ${unitLevel && perUnit ? 'COALESCE(o.lga_id, o.parent_id) AS lga,' : ''} dv.de_id, SUM(dv.value) AS v
-       FROM data_values dv
+       FROM (SELECT ou_id, period, de_id AS base, de_id, value FROM data_values
+             UNION ALL SELECT ou_id, period, de_id, de_id || ':' || part, value FROM data_value_parts) dv
        JOIN reports r ON r.dataset_id = ? AND r.ou_id = dv.ou_id AND r.period = dv.period
-       JOIN data_elements de ON de.id = dv.de_id AND de.dataset_id = ?
+       JOIN data_elements de ON de.id = dv.base AND de.dataset_id = ?
        JOIN org_units o ON o.id = dv.ou_id
       WHERE dv.period IN (${peMarks}) AND r.status IN (${stMarks}) AND ${levelSql} AND (o.id = ? OR o.path LIKE ?)
       GROUP BY 1, ${unitLevel && perUnit ? 'lga, ' : ''}dv.de_id`,

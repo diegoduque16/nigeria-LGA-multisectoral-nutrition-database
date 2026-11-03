@@ -536,6 +536,7 @@ function entryView(form, sets, pickers) {
     if (groups.length > 1 || sector) rows.push(h('tr', { class: 'sector' }, h('td', { colspan: 2 }, sector)));
     for (const id of ids) {
       const f = fieldById[id]; if (!f) continue;
+      if (f.parts && f.parts.length) { rows.push(...partRows(f)); continue; }
       const inp = h('input', { class: 'num', inputmode: f.valueType === 'INTEGER' ? 'numeric' : 'decimal', value: f.value === null ? '' : String(f.value), disabled: !f.editable, 'aria-label': f.name, placeholder: f.editable ? '' : '' });
       inp.addEventListener('input', () => { inp.classList.remove('bad'); dirty = true; });
       inputs[f.id] = inp;
@@ -543,8 +544,26 @@ function entryView(form, sets, pickers) {
     }
   }
   let dirty = false;
+  // A broken-down number: one box per part (Female, Male …); its total adds itself up.
+  function partRows(f) {
+    const total = h('span', { class: 'total' });
+    const boxes = f.parts.map((p) => {
+      const inp = h('input', { class: 'num', inputmode: f.valueType === 'INTEGER' ? 'numeric' : 'decimal', value: p.value === null ? '' : String(p.value), disabled: !f.editable, 'aria-label': `${f.name} — ${p.name}` });
+      inputs[`${f.id}:${p.key}`] = inp;
+      return [p, inp];
+    });
+    const sum = () => {
+      const vals = boxes.map(([, i]) => i.value.trim()).filter((x) => x !== '').map(Number);
+      total.textContent = vals.length ? `Total ${fmtNum(vals.reduce((a, b) => a + b, 0))}${vals.length < boxes.length ? ' so far' : ''}` : (f.value !== null ? `Earlier total ${fmtNum(f.value)} — please split it` : 'Total adds up here');
+    };
+    for (const [, inp] of boxes) inp.addEventListener('input', () => { for (const [, i] of boxes) i.classList.remove('bad'); dirty = true; sum(); });
+    sum();
+    return [h('tr', { class: 'parent' }, h('td', {}, f.name, f.editable || r.locked ? null : h('div', { class: 'muted small' }, 'Typed in by another person')), h('td', { class: 'n muted small' }, total)),
+      ...boxes.map(([p, inp]) => h('tr', { class: 'part' }, h('td', {}, p.name), h('td', { class: 'n' }, inp)))];
+  }
 
-  const collect = () => Object.fromEntries(Object.entries(inputs).filter(([id]) => fieldById[id].editable).map(([id, i]) => [id, i.value.trim() === '' ? null : i.value.trim()]));
+  const editableKey = (k) => (fieldById[k.split(':')[0]] || {}).editable;
+  const collect = () => Object.fromEntries(Object.entries(inputs).filter(([id]) => editableKey(id)).map(([id, i]) => [id, i.value.trim() === '' ? null : i.value.trim()]));
   async function save(quiet) {
     err.textContent = '';
     try {
@@ -552,7 +571,7 @@ function entryView(form, sets, pickers) {
       dirty = false; if (!quiet) toast('Saved. Nothing has been sent yet.'); return data;
     } catch (e) {
       const errs = (e.body && e.body.error && e.body.error.errors) || {};
-      for (const id of Object.keys(errs)) if (inputs[id]) inputs[id].classList.add('bad');
+      for (const id of Object.keys(errs)) for (const [k, i] of Object.entries(inputs)) if (k === id || k.startsWith(id + ':')) i.classList.add('bad');
       err.textContent = e.message; throw e;
     }
   }
@@ -647,7 +666,7 @@ async function uploadEntryExcel(file) {
   const dsId = String(ids[1] || '').trim(); const period = String(ids[2] || '').trim();
   const ds = myDatasets().find((d) => d.id === dsId);
   if (!ds) throw new Error('This template is for a report you are not assigned to.');
-  const cols = ids.map((x, i) => ({ i, id: String(x || '').trim(), name: head[i] })).filter((c) => c.i > 2 && /^[A-Za-z0-9_]{6,}$/.test(c.id) && c.id !== dsId);
+  const cols = ids.map((x, i) => ({ i, id: String(x || '').trim(), name: head[i] })).filter((c) => c.i > 2 && /^[A-Za-z0-9_]{6,}(:[a-z0-9_.]+)?$/.test(c.id) && c.id !== dsId);
   if (!cols.length) throw new Error('No number columns found in the template.');
   const todo = [];
   for (const r of rows.slice(hi + 2)) {
@@ -1447,7 +1466,48 @@ async function renderDictionary() {
         h('td', { class: 'small' }, d.uses.length ? [...new Set(d.uses.map((u) => u.sector || u.dataset))].join(', ') : h('span', { class: 'muted' }, 'Not used yet'),
           d.uses.some((u) => u.differs) ? h('div', { class: 'bad-text' }, 'Some sectors count it differently — open to see') : null))))))
       : h('div', { class: 'panel empty' }, defs.length ? 'No indicator matches.' : 'The dictionary is empty. Download the Excel template, fill in your indicator list and import it — or add them one by one.'),
+    breakdownsPanel(m),
   ));
+}
+
+// ---------- breakdowns: sex, age groups … ----------
+function breakdownsPanel(m) {
+  const list = m.breakdowns || [];
+  return h('div', {},
+    h('h2', {}, 'Breakdowns (sex, age …)'),
+    h('p', { class: 'muted small' }, 'Some numbers are asked per sex or age group, so results can be split the same way in every sector and in the export. Choose which numbers are broken down in Sectors & indicators → “Boxes people fill in”. Sex and Age (under 5) are built in; add your own lists here. Renaming an option keeps the values already typed in.'),
+    h('div', { class: 'scroll' }, h('table', {},
+      h('thead', {}, h('tr', {}, h('th', {}, 'Breakdown'), h('th', {}, 'Options'), h('th', {}, 'ID'))),
+      h('tbody', {}, list.map((b) => h('tr', { class: 'click', onclick: () => breakdownDialog(b) },
+        h('td', {}, h('strong', {}, b.name), b.builtIn ? h('div', { class: 'cov' }, 'Built in') : null),
+        h('td', {}, h('div', { class: 'bd-opts' }, b.options.map((o) => h('span', {}, o.name)))),
+        h('td', {}, idTag(b.id))))))),
+    h('p', {}, h('button', { onclick: () => breakdownDialog(null) }, '+ New breakdown')));
+}
+
+function breakdownDialog(b) {
+  const name = h('input', { value: b ? b.name : '', placeholder: 'e.g. Age (school)' });
+  const opts = h('textarea', { rows: 6, placeholder: 'One option per line, e.g.\n6-11 years\n12-17 years' }); opts.value = b ? b.options.map((o) => o.name).join('\n') : '';
+  const err = h('div', { class: 'err' });
+  const save = h('button', { class: 'primary' }, b ? 'Save' : 'Add breakdown');
+  const del = b && !b.builtIn ? h('button', { class: 'link danger-link' }, 'Delete') : null;
+  const dlg = h('dialog', {}, h('h2', {}, b ? b.name : 'New breakdown'),
+    field('Name', name), h('div', { class: 'f' }, h('span', {}, 'Options, one per line'), opts),
+    h('p', { class: 'muted small' }, 'Keep options that do not overlap and together cover everyone counted, so the parts add up to the total.'),
+    err, h('div', { class: 'actions' }, save, h('button', { onclick: () => dlg.close() }, 'Cancel'), del));
+  dlg.addEventListener('close', () => dlg.remove());
+  save.addEventListener('click', busy(save, async () => {
+    err.textContent = '';
+    const body = { name: name.value.trim(), options: opts.value.split('\n').map((x) => x.trim()).filter(Boolean) };
+    try { if (b) await api('PATCH', '/api/breakdowns/' + b.id, body); else await api('POST', '/api/breakdowns', body); }
+    catch (e) { err.textContent = e.message; return; }
+    dlg.close(); toast('Saved'); state.meta = null; renderDictionary();
+  }));
+  if (del) del.addEventListener('click', busy(del, async () => {
+    try { await api('DELETE', '/api/breakdowns/' + b.id); } catch (e) { err.textContent = e.message; return; }
+    dlg.close(); toast('Deleted'); state.meta = null; renderDictionary();
+  }));
+  document.body.append(dlg); dlg.showModal();
 }
 
 function definitionDialog(d, m) {
@@ -1677,19 +1737,27 @@ function fieldsPanel(ds) {
   const list = ds.dataElements.filter((d) => !d.archived);
   if (!list.length) return null;
   return h('details', { class: 'panel' }, h('summary', {}, `Boxes people fill in (${list.length})`),
-    h('p', { class: 'muted small' }, 'Made from the numerators and denominators above. Rename one here to fix a typo everywhere; numbers already reported are kept. “Whole numbers” refuses decimals; “Max” refuses anything larger.'),
-    h('table', {}, h('thead', {}, h('tr', {}, h('th', {}, 'Name'), h('th', {}, 'Whole numbers'), h('th', {}, 'Max'), h('th', {}, 'ID'), h('th'))),
+    h('p', { class: 'muted small' }, 'Made from the numerators and denominators above. Rename one here to fix a typo everywhere; numbers already reported are kept. “Whole numbers” refuses decimals; “Max” refuses anything larger. “Broken down by” asks for the number per sex, age group or both; the total adds itself up, so indicators keep working. Manage the lists under Setup → Indicator dictionary.'),
+    h('div', { class: 'scroll' }, h('table', {}, h('thead', {}, h('tr', {}, h('th', {}, 'Name'), h('th', {}, 'Whole numbers'), h('th', {}, 'Max'), h('th', {}, 'Broken down by'), h('th', {}, 'ID'), h('th'))),
       h('tbody', {}, list.map((d) => {
-        const name = h('input', { value: d.name, size: 40 });
+        const name = h('input', { value: d.name, size: 28 });
         const whole = h('input', { type: 'checkbox', checked: d.valueType === 'INTEGER' });
         const max = h('input', { type: 'number', value: d.max ?? '', placeholder: 'none', size: 8 });
+        const bds = (state.meta && state.meta.breakdowns) || [];
+        const combos = [{ id: '', name: 'Not broken down' }, ...bds.map((x) => ({ id: x.id, name: x.name })),
+          ...bds.flatMap((x, i) => bds.slice(i + 1).map((y) => ({ id: `${x.id}|${y.id}`, name: `${x.name} × ${y.name}` })))];
+        const cur = [d.breakdownId, d.breakdown2Id].filter(Boolean).join('|');
+        if (cur && !combos.some((c) => c.id === cur)) combos.push({ id: cur, name: cur.split('|').map((x) => (bds.find((b) => b.id === x) || { name: x }).name).join(' × ') });
+        const bd = select(combos, cur);
         const b = h('button', {}, 'Save');
         b.addEventListener('click', busy(b, async () => {
-          await api('PATCH', '/api/fields/' + d.id, { name: name.value.trim(), valueType: whole.checked ? 'INTEGER' : 'NUMBER', max: max.value === '' ? null : Number(max.value) });
+          const [b1, b2] = bd.value ? bd.value.split('|') : [];
+          if (bd.value !== cur && cur && !confirm('Change how this number is broken down? Parts typed in before stay stored but are no longer shown; reports not yet sent will ask for the new parts.')) return;
+          await api('PATCH', '/api/fields/' + d.id, { name: name.value.trim(), valueType: whole.checked ? 'INTEGER' : 'NUMBER', max: max.value === '' ? null : Number(max.value), breakdownId: b1 || null, breakdown2Id: b2 || null });
           toast('Saved'); state.meta = null; route();
         }));
-        return h('tr', {}, h('td', {}, name), h('td', {}, whole), h('td', {}, max), h('td', {}, idTag(d.id)), h('td', {}, b));
-      }))));
+        return h('tr', {}, h('td', {}, name), h('td', {}, whole), h('td', {}, max), h('td', {}, bd), h('td', {}, idTag(d.id)), h('td', {}, b));
+      })))));
 }
 
 function sharedPanel(ds) {
