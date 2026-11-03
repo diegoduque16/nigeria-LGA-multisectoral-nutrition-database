@@ -761,8 +761,13 @@ async function renderReminders() {
   const period = periods.some((p) => p.id === pref('pe:' + ds.id)) ? pref('pe:' + ds.id) : periods[0].id;
   const r = await get('/api/reminders' + qs({ dataset: ds.id, period, ou: stateId }));
   const note = h('textarea', { placeholder: 'Optional note added to the email, e.g. “Please send by Friday — the state review meeting is on Monday.”' });
-  const people = r.places.flatMap((p) => p.users.map((u) => ({ p, u, box: h('input', { type: 'checkbox', checked: true }) })));
-  const noAccount = r.places.filter((p) => !p.users.length);
+  const people = [
+    ...r.places.flatMap((p) => p.users.map((u) => ({ p, u, box: h('input', { type: 'checkbox', checked: true }) }))),
+    // LGA accounts reminded for the units in their LGA that have no account of their own.
+    ...(r.lgaContacts || []).map((u) => ({ p: { name: u.lga, lga: `for ${u.places.length} with no account: ${u.places.slice(0, 4).join(', ')}${u.places.length > 4 ? ' …' : ''}`, status: 'none' }, u, box: h('input', { type: 'checkbox', checked: true }) })),
+  ];
+  const covered = new Set((r.lgaContacts || []).flatMap((c) => c.places.map((n) => c.lgaId + '|' + n)));
+  const noAccount = r.places.filter((p) => !p.users.length && !covered.has(p.lgaId + '|' + p.name));
   const send = h('button', { class: 'primary', disabled: !r.emailConfigured || !people.length }, `Email ${people.length} reminder${people.length === 1 ? '' : 's'}`);
   const out = h('div');
   send.addEventListener('click', busy(send, async () => {
@@ -773,7 +778,12 @@ async function renderReminders() {
     out.replaceChildren(h('div', { class: 'note ' + (bad.length ? 'warn' : 'ok') }, `${data.sent} reminder${data.sent === 1 ? '' : 's'} sent.`, bad.length ? ` ${bad.length} not sent: ${bad.map((b) => `${(people.find((x) => x.u.id === b.id) || { u: { name: b.id } }).u.name} (${b.message})`).join('; ')}` : ''));
     toast(`${data.sent} reminder${data.sent === 1 ? '' : 's'} sent`);
   }));
-  const copyMsg = (u) => copy(r.sample.replace('[name]', u.name) + (note.value.trim() ? '' : ''));
+  const copyMsg = (u) => {
+    let t = r.sample.replace('[name]', u.name);
+    if (u.places) t = t.replace('\n\nTwo ways', `\n\nThese places in your LGA have no account of their own, so please make sure their reports are sent: ${u.places.join(', ')}.\n\nTwo ways`);
+    if (note.value.trim()) t = t.replace('\n\nThank you.', `\n\n${note.value.trim()}\n\nThank you.`);
+    copy(t);
+  };
   mount(h('div', {},
     pageHead({
       title: 'Send reminders',

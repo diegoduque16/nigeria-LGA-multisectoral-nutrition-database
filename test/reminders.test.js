@@ -62,3 +62,28 @@ test('reminders: list who has not sent, email each with the upload link and thei
   assert.equal(l2.emailConfigured, false);
   assert.equal((await admin2.post('/api/reminders', { dataset: ds2.id, period, ou: ABIA, userIds: [] })).status, 409);
 });
+
+test('reminders: units without their own account are chased through the LGA accounts', async () => {
+  const env = makeEnv({ EMAIL_API_KEY: 'test-key', EMAIL_FROM: 'LGA Scorecard <reports@example.org>' });
+  const admin = await setupAdmin(env);
+  const fac = (await admin.get('/api/unit-types')).data.types.find((t) => t.name === 'Health facility').id;
+  const ds = (await admin.post('/api/datasets', { name: 'Health – facilities', sector: 'Health', frequency: 'MONTHLY', reportLevel: 'UNIT', unitTypes: [fac] })).data;
+  await admin.post(`/api/datasets/${ds.id}/indicators`, { name: 'ANC', numerator: 'ANC visits' });
+  const a = (await admin.post('/api/units', { lgaId: ABA_NORTH, name: 'Clinic A', typeId: fac })).data.id;
+  const b = (await admin.post('/api/units', { lgaId: ABA_NORTH, name: 'Clinic B', typeId: fac })).data.id;
+  await addUser(env, admin, { name: 'Ade', email: 'ade@clinic.ng', role: 'unit', ouId: a });
+  await addUser(env, admin, { name: 'Ngozi', email: 'ngozi@abia.gov.ng', role: 'lga', ouId: ABA_NORTH });
+  const period = (await admin.get(`/api/status?dataset=${ds.id}&state=${ABIA}`)).data.period;
+  const list = (await admin.get(`/api/reminders?dataset=${ds.id}&period=${period}&ou=${ABIA}`)).data;
+  assert.equal(list.places.find((p) => p.id === a).users[0].email, 'ade@clinic.ng');
+  assert.equal(list.lgaContacts.length, 1);
+  assert.equal(list.lgaContacts[0].email, 'ngozi@abia.gov.ng'); assert.deepEqual(list.lgaContacts[0].places, ['Clinic B']);
+  const sent = [];
+  const real = globalThis.fetch;
+  globalThis.fetch = async (url, init) => { sent.push(JSON.parse(init.body)); return new Response('{"id":"x"}', { status: 200 }); };
+  try {
+    assert.equal((await admin.post('/api/reminders', { dataset: ds.id, period, ou: ABIA, userIds: [list.lgaContacts[0].id] })).data.sent, 1);
+  } finally { globalThis.fetch = real; }
+  assert.match(sent[0].text, /no account of their own.*Clinic B/);
+  assert.ok(b);
+});

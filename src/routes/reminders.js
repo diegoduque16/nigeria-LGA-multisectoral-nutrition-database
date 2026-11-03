@@ -21,7 +21,7 @@ async function openReports(db, ctx, ds, period, area) {
   let places;
   if (ds.report_level === 4) {
     const f = unitsOf(ds, 'o');
-    places = await all(db, `SELECT o.id, o.name, o.path, l.name AS lga FROM org_units o JOIN org_units l ON l.id = o.lga_id
+    places = await all(db, `SELECT o.id, o.name, o.path, l.name AS lga, l.id AS lga_id FROM org_units o JOIN org_units l ON l.id = o.lga_id
       WHERE ${f.sql} AND o.closed_at IS NULL AND o.inactive = 0 AND l.parent_id NOT IN (SELECT id FROM org_units WHERE level = 2 AND inactive = 1) AND o.path LIKE ? ORDER BY l.name, o.name LIMIT 5000`, ...f.args, area.path + '/%');
   } else {
     places = await all(db, `SELECT o.id, o.name, o.path, o.name AS lga FROM org_units o WHERE o.level = 3 AND o.closed_at IS NULL AND o.inactive = 0 AND o.parent_id NOT IN (SELECT id FROM org_units WHERE level = 2 AND inactive = 1) AND (o.id = ? OR o.path LIKE ?) ORDER BY o.name`, area.id, area.path + '/%');
@@ -30,14 +30,24 @@ async function openReports(db, ctx, ds, period, area) {
   const status = new Map((await all(db, 'SELECT ou_id, status FROM reports WHERE dataset_id = ? AND period = ?', ds.id, period)).map((r) => [r.ou_id, r.status]));
   const open = places.filter((p) => OPEN.includes(status.get(p.id) || 'none'));
   const role = ds.report_level === 4 ? 'unit' : 'lga';
-  const users = await all(db, `SELECT u.id, u.name, u.email, u.ou_id, u.role FROM users u WHERE u.active = 1 AND u.role = ?
-     AND (NOT EXISTS (SELECT 1 FROM user_datasets x WHERE x.user_id = u.id) OR EXISTS (SELECT 1 FROM user_datasets x WHERE x.user_id = u.id AND x.dataset_id = ?))`, role, ds.id);
+  const assigned = (r) => all(db, `SELECT u.id, u.name, u.email, u.ou_id, u.role FROM users u WHERE u.active = 1 AND u.role = ?
+     AND (NOT EXISTS (SELECT 1 FROM user_datasets x WHERE x.user_id = u.id) OR EXISTS (SELECT 1 FROM user_datasets x WHERE x.user_id = u.id AND x.dataset_id = ?))`, r, ds.id);
+  const users = await assigned(role);
+  // Units with no account of their own: the LGA's accounts are reminded for them (one email listing those units).
+  const lgaUsers = ds.report_level === 4 ? await assigned('lga') : [];
   const sent = await all(db, `SELECT ref_id, MAX(created_at) AS at FROM audit WHERE action = 'reminder_sent' AND detail LIKE ? GROUP BY ref_id`, `%"dataset":"${ds.id}","period":"${period}"%`);
   const last = new Map(sent.map((r) => [r.ref_id, r.at]));
-  return open.map((p) => ({
-    id: p.id, name: p.name, lga: p.lga, status: status.get(p.id) || 'none',
-    users: users.filter((u) => u.ou_id === p.id).map((u) => ({ id: u.id, name: u.name, email: u.email, lastReminded: last.get(u.id) || null })),
+  const out = (u) => ({ id: u.id, name: u.name, email: u.email, lastReminded: last.get(u.id) || null });
+  const rows = open.map((p) => ({
+    id: p.id, name: p.name, lga: p.lga, lgaId: p.lga_id || null, status: status.get(p.id) || 'none',
+    users: users.filter((u) => u.ou_id === p.id).map(out),
   }));
+  const lgaContacts = [];
+  for (const u of lgaUsers) {
+    const mine = rows.filter((p) => !p.users.length && p.lgaId === u.ou_id);
+    if (mine.length) lgaContacts.push({ ...out(u), lga: mine[0].lga, lgaId: u.ou_id, places: mine.map((p) => p.name) });
+  }
+  return { places: rows, lgaContacts };
 }
 
 async function setup(env, ctx, q) {
@@ -51,12 +61,14 @@ async function setup(env, ctx, q) {
   return { ds, period: q.period, area };
 }
 
-function message(ds, period, user, link, note) {
+function message(ds, period, user, link, note, forPlaces = null) {
+  const list = forPlaces && forPlaces.length ? `${forPlaces.slice(0, 30).join(', ')}${forPlaces.length > 30 ? ` and ${forPlaces.length - 30} more` : ''}` : '';
   const due = fmtDay(dueAt(period, ds.due_day));
   const pn = periodName(period);
   const text = [
     `Dear ${user.name},`, '',
     `This is a reminder that the report “${ds.name}” for ${pn} has not been sent yet. It is due on ${due}.`, '',
+    ...(list ? [`These places in your LGA have no account of their own, so please make sure their reports are sent: ${list}.`, ''] : []),
     'Two ways to send it:',
     `1. Fill in the attached Excel template (one row per place you report for), then upload it here: ${link}`,
     '2. Or open the same link and type the numbers in online.', '',
@@ -68,6 +80,7 @@ function message(ds, period, user, link, note) {
   const html = `<div style="font-family:system-ui,Segoe UI,Arial,sans-serif;font-size:15px;line-height:1.5;color:#1c2321;max-width:560px">
 <p>Dear ${esc(user.name)},</p>
 <p>This is a reminder that the report <strong>${esc(ds.name)}</strong> for <strong>${esc(pn)}</strong> has not been sent yet. It is due on <strong>${esc(due)}</strong>.</p>
+${list ? `<p>These places in your LGA have no account of their own, so please make sure their reports are sent: ${esc(list)}.</p>` : ''}
 <p><a href="${esc(link)}" style="display:inline-block;background:#00704a;color:#fff;padding:10px 18px;border-radius:6px;text-decoration:none;font-weight:600">Upload or enter the report</a></p>
 <p>Two ways to send it:</p>
 <ol><li>Fill in the attached Excel template (one row per place you report for), then upload it with the button above.</li><li>Or open the same link and type the numbers in online.</li></ol>
@@ -81,12 +94,12 @@ ${note ? `<p style="background:#fff4dc;padding:10px 12px;border-radius:6px">${es
 export async function reminderList(request, env, ctx) {
   const q = Object.fromEntries(new URL(request.url).searchParams);
   const { ds, period, area } = await setup(env, ctx, q);
-  const places = await openReports(env.DB, ctx, ds, period, area);
+  const { places, lgaContacts } = await openReports(env.DB, ctx, ds, period, area);
   const link = uploadLink(request, ds, period);
   return json({
     emailConfigured: emailConfigured(env),
     dataset: { id: ds.id, name: ds.name }, period, periodName: periodName(period), due: dueAt(period, ds.due_day), area: { id: area.id, name: area.name },
-    link, places,
+    link, places, lgaContacts,
     sample: message(ds, period, { name: '[name]' }, link, q.note || '').text,
   });
 }
@@ -100,8 +113,9 @@ export async function sendReminders(request, env, ctx) {
   const { ds, period, area } = await setup(env, ctx, body);
   if (!emailConfigured(env)) throw new HttpError(409, 'not_configured', 'Email is not set up yet. Share the message and link by hand, or ask the system administrator to connect an email service.');
   await rateLimit(env.DB, 'reminders:' + ctx.user.id, 600, 3600);
-  const places = await openReports(env.DB, ctx, ds, period, area);
+  const { places, lgaContacts } = await openReports(env.DB, ctx, ds, period, area);
   const byUser = new Map(); for (const p of places) for (const u of p.users) byUser.set(u.id, u);
+  for (const c of lgaContacts) if (!byUser.has(c.id)) byUser.set(c.id, c);
   const link = uploadLink(request, ds, period);
   const results = [];
   for (const id of body.userIds) {
@@ -113,7 +127,7 @@ export async function sendReminders(request, env, ctx) {
       const des = (await all(env.DB, 'SELECT de_id FROM user_data_elements WHERE user_id = ?', id)).map((r) => r.de_id);
       const t = await sheetData(env.DB, { role: full.role, ou, dataElements: des }, ds, period, ou);
       const xlsx = new Uint8Array(await writeWorkbook(entryTemplateSheets(t)).arrayBuffer());
-      const m = message(ds, period, u, link, body.note);
+      const m = message(ds, period, u, link, body.note, u.places || null);
       await sendEmail(env, { to: u.email, subject: m.subject, html: m.html, text: m.text, attachments: [{ filename: templateFileName(t), bytes: xlsx }], replyTo: ctx.user.email });
       await audit(env.DB, ctx, 'reminder_sent', 'user', id, { dataset: ds.id, period, email: u.email });
       results.push({ id, ok: true });
