@@ -2754,7 +2754,8 @@ async function renderAccounts() {
       choice('Add one person', 'Fill in their name, email, role and place. You get a one-time link to send them (email or WhatsApp); they choose their own password.',
         h('button', { class: 'primary', onclick: () => userDialog(null, roles, m) }, '+ New account')),
       choice('Let many people sign up', 'Make a QR code for an area and sector, and print or share it. People scan it and ask for an account; a system administrator approves them here.',
-        h('button', { onclick: () => linkDialog(m) }, '+ Registration QR code')),
+        h('div', {}, h('button', { onclick: (e) => quickQr(e.currentTarget) }, '+ Registration QR code'),
+          h('div', {}, h('a', { href: '#', class: 'small', onclick: (e) => { e.preventDefault(); linkDialog(m); } }, 'Only for one state, LGA or sector…')))),
       is('sysadmin') ? choice('Add an administrator', 'A System administrator can do everything you can: set-up, users, states in use. An Administrator adds sectors and indicators and sees the results, but does not manage users.',
         h('button', { onclick: () => userDialog(null, roles, m, 'admin') }, '+ New administrator')) : null),
     linksPanel(links),
@@ -2861,6 +2862,13 @@ async function linkDialog(m) {
     } catch (e) { err.textContent = e.message; }
   }));
   document.body.append(dlg); dlg.showModal();
+}
+
+// One click: a QR code for your whole area, any sector, valid 30 days. People who scan it fill in the rest.
+async function quickQr(btn) {
+  btn.disabled = true;
+  try { const { data } = await api('POST', '/api/registration-links', { ouId: state.me.ou.id, days: 30 }); renderAccounts(); showQr(data.link); }
+  catch (e) { toast(e.message, true); } finally { btn.disabled = false; }
 }
 
 async function showQr(link) {
