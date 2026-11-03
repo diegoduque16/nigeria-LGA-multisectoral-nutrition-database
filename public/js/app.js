@@ -1364,7 +1364,7 @@ function denominatorPicker(m, ds, current) {
   addUsed(current);
   const opt = (value, label) => h('option', { value }, label);
   const sel = h('select', {},
-    opt('', '— choose a denominator —'),
+    opt('', '— none: a plain count —'),
     pop.length ? h('optgroup', { label: 'Population figures (yearly, per LGA)' }, pop.map((f) => opt('pop:' + f.name, f.name))) : null,
     common.length ? h('optgroup', { label: 'Common population figures — set up when first used' }, common.map((c) => opt('common:' + c.name, c.name))) : null,
     used.size ? h('optgroup', { label: 'Numbers already used or reported' }, [...used.values()].sort().map((n) => opt('used:' + n, n))) : null,
@@ -1393,7 +1393,7 @@ function denominatorPicker(m, ds, current) {
     const isPop = v.startsWith('pop:') || v.startsWith('common:') || (v === 'new' && newKind.value === 'pop');
     hint.replaceChildren(isPop
       ? h('span', {}, 'A population figure: taken from the yearly figures for each LGA, not asked each time. Fill them on ', h('a', { href: '#/population' }, 'Population figures'), ' from GRID3 / WorldPop or the official NPC projections (2006 census) for the year.')
-      : v ? 'A number people report each period, next to the numerator.' : 'Pick what the numerator is divided by.');
+      : v ? 'A number people report each period, next to the numerator.' : 'Optional. Needed for a percentage or a rate per 1,000.');
   };
   sel.addEventListener('change', paint); newKind.addEventListener('change', paint); paint();
   set(current || '');
@@ -1407,7 +1407,7 @@ function denominatorPicker(m, ds, current) {
     // The chosen name; a common or new population figure is added to the Population figures first.
     async value() {
       const n = name();
-      if (!n) throw new Error('Choose a denominator, or add a new one.');
+      if (!n) return '';
       const c = sel.value.startsWith('common:') ? common.find((x) => x.name === n) : null;
       const makePop = c || (sel.value === 'new' && newKind.value === 'pop' && !popNames.has(lc(n)));
       if (makePop) {
@@ -1444,18 +1444,14 @@ async function indicatorDialog(ds, m, i, first = false) {
   const save = h('button', { class: 'primary' }, i ? 'Save' : 'Add indicator');
   const again = i ? null : h('button', {}, 'Add and add another');
   const del = i ? h('button', { class: 'link danger-link' }, 'Remove indicator') : null;
-  // A percentage or a rate per 1,000 divides by a denominator; a whole number is a plain count.
-  const denWrap = fieldGroup('Denominator — divided by *', denPick.el, denPick.hint);
-  // An older indicator shown as a number with a denominator (a ratio) keeps it.
-  const ratio = !!(i && i.showAs === 'number' && i.denominator);
-  const paintDen = () => { denWrap.hidden = !(showAs.value === 'percent' || showAs.value === 'per1000' || (showAs.value === 'number' && ratio)); };
-  showAs.addEventListener('change', paintDen); paintDen();
+  // Optional; a percentage or a rate per 1,000 needs one.
+  const denWrap = fieldGroup('Denominator — divided by (optional)', denPick.el, denPick.hint);
   const fromDict = h('div', { class: 'note info', hidden: true });
   const paintPick = () => {
     const d = pick && defs.find((x) => x.id === pick.value);
     for (const el of [name, num, source, showAs, code]) el.disabled = !!d;
     denPick.disable(!!d);
-    if (d) { name.value = d.name; num.value = d.numerator; denPick.set(d.denominator); source.value = d.source; showAs.value = d.showAs; code.value = d.code; paintDen(); }
+    if (d) { name.value = d.name; num.value = d.numerator; denPick.set(d.denominator); source.value = d.source; showAs.value = d.showAs; code.value = d.code; }
     fromDict.hidden = !d;
     if (d) fromDict.replaceChildren(h('strong', {}, 'From the indicator dictionary. '), d.definition ? d.definition.replace(/[.\s]*$/, '. ') : '', d.uses.length ? `Also reported by: ${[...new Set(d.uses.map((u) => u.sector || u.dataset))].join(', ')}. ` : '', 'To change it, edit it in the Indicator dictionary — it changes for every sector.');
   };
@@ -1473,23 +1469,23 @@ async function indicatorDialog(ds, m, i, first = false) {
       field('Code (optional)', code, 'Your indicator code, e.g. from the national results framework.'),
       field('Source *', source, 'Where the numbers come from.'),
       field('Numerator — what is counted *', num, 'Becomes a box people fill in. The same name means the same box.'),
-      field('Show as *', showAs, 'Percentage and per 1,000 divide by a denominator; a whole number is a plain count.'),
       denWrap,
+      field('Show as *', showAs, 'Percentage and per 1,000 need a denominator; a whole number is a plain count.'),
       field('Sector', sector, 'Usually this sector; another one if the indicator belongs elsewhere.')),
     i ? h('p', { class: 'muted small' }, 'ID ', idTag(i.id)) : h('details', {}, h('summary', { class: 'small' }, 'Advanced: existing DHIS2 ID'), field('DHIS2 ID (only if the indicator already exists in DHIS2)', id)),
     err, h('p'), h('div', { class: 'actions' }, save, again, h('button', { onclick: () => dlg.close() }, i ? 'Close' : 'Cancel'), del));
   dlg.addEventListener('close', () => { dlg.remove(); state.meta = null; route(); });
   let denName = '';
-  const vals = () => ({ sector: sector.value, name: name.value.trim(), numerator: num.value.trim(), denominator: denWrap.hidden ? '' : denName, source: source.value.trim(), showAs: showAs.value });
+  const vals = () => ({ sector: sector.value, name: name.value.trim(), numerator: num.value.trim(), denominator: denName, source: source.value.trim(), showAs: showAs.value });
   const chosen = () => (pick && pick.value ? pick.value : null);
   const submit = async (keepOpen) => {
     err.textContent = '';
     if (!chosen()) {
-      const missing = indicatorMissing({ name: name.value, numerator: num.value, source: source.value, showAs: showAs.value, denominator: denWrap.hidden ? 'x' : denPick.name() });
+      const missing = indicatorMissing({ name: name.value, numerator: num.value, source: source.value, showAs: showAs.value, denominator: denPick.name() });
       if (missing) { err.textContent = missing; return; }
     }
     try {
-      if (!chosen()) denName = denWrap.hidden ? '' : await denPick.value();
+      if (!chosen()) denName = await denPick.value();
       if (i) {
         await api('PATCH', '/api/indicators/' + i.id, vals());
         if (myDef && code.value.trim() !== (myDef.code || '')) await api('PATCH', '/api/dictionary/' + myDef.id, { code: code.value.trim() });
@@ -1763,7 +1759,7 @@ function renderForm(ds, m) {
     how: ds.shared ? null : [
       'Indicator: the name people will see, e.g. “ANC 4+ coverage”.',
       'Numerator: what is counted, e.g. “Women with 4+ ANC visits”. This becomes a box on the form.',
-      'Denominator (optional): what it is divided by. Leave it empty for a plain count. If it is a population figure (e.g. “Expected pregnancies”), pick it from the list — it is then taken from the yearly figures instead of being asked each time.',
+      'Denominator (optional): what it is divided by — pick it from the list (population figures, common ones, or numbers already used), or add a new one. Leave it on “none” for a plain count. Percentage and per 1,000 need one.',
       'Typing the same name twice uses the same box. Show as: percentage, per 1,000, or number.',
       'IDs are made automatically. Paste an existing DHIS2 ID only if the indicator already exists in DHIS2.',
     ],
@@ -1846,15 +1842,16 @@ function indicatorRow(ds, i, m) {
   const sector = sectorSelect(m, i ? i.sector : ds.sector);
   const name = h('input', { value: i ? i.name : '', placeholder: isNew ? 'New indicator name' : '' });
   const num = h('input', { list: 'field-list', value: i ? i.numerator : '', placeholder: 'e.g. Women with 4+ ANC visits' });
-  const den = h('input', { list: 'field-list', value: i ? i.denominator : '', placeholder: 'e.g. Expected pregnancies' });
+  const denPick = denominatorPicker(m, ds, i ? i.denominator : '');
   const source = h('input', { value: i ? i.source : '', placeholder: 'e.g. HMIS register' });
   const showAs = select([{ id: '', name: '— show as —' }, ...m.showAs], i ? i.showAs : '');
   const id = h('input', { class: 'mono', placeholder: 'auto-generated', maxlength: 11, title: 'Leave empty to generate a DHIS2-style ID, or paste an existing DHIS2 indicator ID' });
   const btn = h('button', { class: isNew ? 'primary' : '' }, isNew ? 'Add' : 'Save');
   const del = isNew ? null : h('button', { class: 'link', title: 'Remove indicator' }, 'Remove');
-  const vals = () => ({ sector: sector.value.trim(), name: name.value.trim(), numerator: num.value.trim(), denominator: showAs.value === 'number' && !(i && i.denominator) ? '' : den.value.trim(), source: source.value.trim(), showAs: showAs.value });
+  const vals = () => ({ sector: sector.value.trim(), name: name.value.trim(), numerator: num.value.trim(), denominator: denPick.name(), source: source.value.trim(), showAs: showAs.value });
   btn.addEventListener('click', busy(btn, async () => {
     const missing = indicatorMissing(vals()); if (missing) throw new Error(missing);
+    await denPick.value();
     if (isNew) {
       const body = vals(); if (id.value.trim()) body.id = id.value.trim();
       await api('POST', `/api/datasets/${ds.id}/indicators`, body);
@@ -1866,7 +1863,7 @@ function indicatorRow(ds, i, m) {
     if (!confirm(`Remove “${i.name}”? Values already reported are kept.`)) return;
     await api('DELETE', '/api/indicators/' + i.id); toast('Removed'); state.meta = null; route();
   }));
-  return h('tr', {}, h('td', {}, sector), h('td', {}, name), h('td', {}, num), h('td', {}, den), h('td', {}, source), h('td', {}, showAs),
+  return h('tr', {}, h('td', {}, sector), h('td', {}, name), h('td', {}, num), h('td', {}, denPick.el), h('td', {}, source), h('td', {}, showAs),
     h('td', {}, isNew ? id : idTag(i.id), h('div', { class: 'actions' }, btn, del)));
 }
 
