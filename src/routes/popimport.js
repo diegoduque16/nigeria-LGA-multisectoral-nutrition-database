@@ -38,10 +38,11 @@ export async function populationTable(request, env, ctx, { id }) {
 // Ward names compared loosely: no state prefix ("be "), no word "ward", Roman numerals as written, letters and digits only.
 export function wardKey(s) {
   return String(s || '').toLowerCase().replace(/\s+/g, ' ').trim().replace(/^[a-z]{2} (?=\S)/, '')
-    .replace(/\bward\b/g, ' ').replace(/[^a-z0-9]/g, '');
+    .replace(/\(.*?\)/g, ' ').replace(/\bs\/\s*gari/g, 'sabon gari').replace(/\bward\b/g, ' ').replace(/[^a-z0-9]/g, '');
 }
 function close(a, b) {
   if (Math.abs(a.length - b.length) > 2 || Math.min(a.length, b.length) < 5) return false;
+  if (a[a.length - 1] !== b[b.length - 1]) return false; // Nasarawa A is not Nasarawa B, nor Ogbor 1 Ogbor 2
   const max = a.length >= 9 ? 2 : 1;
   let prev = Array.from({ length: b.length + 1 }, (_, j) => j);
   for (let i = 1; i <= a.length; i++) {
@@ -56,7 +57,9 @@ function close(a, b) {
 function findWard(list, row) {
   const keys = [row.ward, ...String(row.wardAlt || '').split(/[,;]/)].map(wardKey).filter(Boolean);
   for (const k of keys) { const hit = list.filter((w) => w.key === k); if (hit.length === 1) return hit[0]; }
-  for (const k of keys) { const hit = list.filter((w) => close(k, w.key)); if (hit.length === 1) return hit[0]; }
+  // Ward names that repeat their LGA's name (Sabon Gari Taura in Taura).
+  for (const k of keys) { const hit = list.filter((w) => w.short && w.short === k); if (hit.length === 1) return hit[0]; }
+  for (const k of keys) { const hit = list.filter((w) => close(k, w.key) || (w.short && close(k, w.short))); if (hit.length === 1) return hit[0]; }
   return null;
 }
 
@@ -101,7 +104,9 @@ export async function importPopulation(request, env, ctx, { id }) {
         WHERE w.unit_type_id = 'ut_ward' AND w.closed_at IS NULL AND w.parent_id IN (${part.map(() => '?').join(',')})`, ...part)) {
       if (!inScope(ctx, w)) continue;
       if (!byLgaWards.has(w.parent_id)) byLgaWards.set(w.parent_id, []);
-      byLgaWards.get(w.parent_id).push({ ...w, key: wardKey(w.name) });
+      const key = wardKey(w.name); const lgaKey = wardKey(w.state_name).replace(/lga$/, '');
+      const short = lgaKey.length >= 3 && key !== lgaKey && (key.startsWith(lgaKey) || key.endsWith(lgaKey)) ? key.replace(lgaKey, '') : '';
+      byLgaWards.get(w.parent_id).push({ ...w, key, short });
     }
   }
   const results = []; const counts = { lgas: 0, values: 0, changed: 0, error: 0 };

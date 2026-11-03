@@ -1948,8 +1948,8 @@ function sharedPanel(ds) {
   }));
 
   return h('div', {},
-    h('h2', {}, '1 · Total population of each LGA'),
-    h('p', { class: 'muted small' }, 'The one number you bring in, once a year. Every denominator in step 2 is calculated from it — nothing else to fill in.'),
+    h('h2', {}, '1 · Total population of each LGA (and ward)'),
+    h('p', { class: 'muted small' }, 'The one number you bring in, once a year — for LGAs, and for wards if you have them (a file with State, LGA, LGA ID, Ward columns; wards are matched by name). Every denominator in step 2 is calculated from it, for LGAs and wards alike.'),
     total ? null : h('div', { class: 'note info' }, 'Total population is set up the first time you save step 2 or import a file with a “Total population” column.'),
     total ? worldpopPanel(ds, [total]) : null,
     populationImportPanel(ds, imported.length ? imported : []),
@@ -2216,7 +2216,7 @@ async function populationImportDialog(ds, fields, file, year, after) {
         h('ul', { class: 'small' }, sk.filter((r) => !/not loaded/.test(r.message)).slice(0, 300).map((r) => h('li', {}, `${r.lga}: ${r.message}`))));
     })(),
     missingCols.length ? h('div', { class: 'note warn' }, `Not in the file (kept as they are): ${missingCols.join(', ')}.`) : null,
-    h('div', { class: 'counts' }, h('span', { class: 'pill s-accepted' }, `LGAs with figures: ${c.lgas}`), c.wards ? h('span', { class: 'pill s-accepted' }, `Wards with figures: ${c.wards}`) : null,
+    h('div', { class: 'counts' }, c.lgas || !c.wards ? h('span', { class: 'pill s-accepted' }, `LGAs with figures: ${c.lgas}`) : null, c.wards ? h('span', { class: 'pill s-accepted' }, `Wards with figures: ${c.wards}`) : null,
       c.skipped ? h('span', { class: 'pill s-none' }, `Ward rows skipped: ${c.skipped}`) : null, h('span', { class: 'pill s-draft' }, `Values changing: ${c.changed}`), h('span', { class: 'pill s-returned' }, `Problems: ${c.error}`)),
     errors.length ? h('div', {}, h('div', { class: 'note bad' }, 'Fix these rows in the file and import again. Nothing has been saved.'),
       h('div', { class: 'scroll' }, h('table', {}, h('thead', {}, h('tr', {}, h('th', {}, 'Row'), h('th', {}, 'LGA'), h('th', {}, 'Problem'))),

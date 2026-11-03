@@ -875,7 +875,7 @@ test('population per ward: rows named by LGA and ward are matched to the wards l
     { lgaId: ABA_NORTH, name: 'ab Umuogor', type: 'Ward', id: 'WardUmuog01' }] });
   const rows = [
     { row: 2, lgaId: ABA_NORTH, ward: 'Ariaria Market', wardAlt: 'Ariaria, Ward 9', values: { [total]: 30000 } }, // by another name
-    { row: 3, lgaId: ABA_NORTH, ward: 'Umuogo', values: { [total]: 20000 } },                                     // close spelling
+    { row: 3, lgaId: ABA_NORTH, ward: 'Umoogor', values: { [total]: 20000 } },                                    // close spelling
     { row: 4, lgaId: ABA_NORTH, ward: 'Osusu', values: { [total]: 10000 } },                                      // no such ward
     { row: 5, lgaId: ABA_SOUTH, ward: 'Aba Town Hall', values: { [total]: 10000 } }];                            // wards not loaded
   const chk = (await admin.post(`/api/datasets/${pop.id}/population`, { year: '2026', rows })).data;
