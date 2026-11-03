@@ -175,12 +175,8 @@ export async function submitRegistration(request, env, ctx, { token }) {
     id, link.id, body.name, email, body.phone || null, body.jobTitle || null, body.organisation || null, body.role, sector.id, ou.id,
     JSON.stringify(body.datasets || []), body.note || null, pw.hash, pw.salt, pw.iter, ip(request), now());
   await run(env.DB, 'UPDATE registration_links SET uses = uses + 1 WHERE id = ?', link.id);
-  // No approval step: whoever has the QR code gets an account right away, inside the link's area. Administrators
-  // can still switch an account off (Users) or withdraw the QR code.
-  const req = await one(env.DB, 'SELECT * FROM account_requests WHERE id = ?', id);
-  const userId = await createAccountFrom(env.DB, req, body.role, null, [], link.created_by);
-  await audit(env.DB, { user: null, ip: ip(request) }, 'account_registered', 'user', userId, { email, role: body.role, ou: ou.id, link: link.name });
-  return json({ ok: true, account: true }, 201);
+  await audit(env.DB, { user: null, ip: ip(request) }, 'account_requested', 'account_request', id, { email, role: body.role, ou: ou.id });
+  return json({ ok: true }, 201);
 }
 
 // ---------- approval (admin / state officer) ----------
@@ -193,7 +189,7 @@ async function requestsInScope(db, ctx, status) {
 }
 
 export async function listRequests(request, env, ctx) {
-  requireRole(ctx, ['sysadmin', 'national', 'state']);
+  requireRole(ctx, ['sysadmin']); // only a system administrator approves sign-ups
   const status = new URL(request.url).searchParams.get('status') || 'pending';
   if (!['pending', 'approved', 'rejected'].includes(status)) throw new HttpError(422, 'invalid', 'Unknown status.');
   const rows = await requestsInScope(env.DB, ctx, status);
@@ -221,24 +217,9 @@ async function loadPending(db, ctx, id) {
   return r;
 }
 
-// Makes the account of a sign-up request (and marks the request approved).
-async function createAccountFrom(db, r, role, chosenDatasets, dataElements, decidedBy) {
-  let datasets = chosenDatasets || JSON.parse(r.datasets || '[]');
-  // Nothing ticked: give them every data set of their sector (rather than all sectors).
-  if (!datasets.length && r.sector_id) datasets = (await all(db, 'SELECT id FROM datasets WHERE sector_id = ? AND archived_at IS NULL AND shared = 0', r.sector_id)).map((d) => d.id);
-  const userId = uid('u_');
-  const t = now();
-  await run(db, 'INSERT INTO users (id, email, name, pw_hash, pw_salt, pw_iter, role, ou_id, created_by, created_at) VALUES (?,?,?,?,?,?,?,?,?,?)',
-    userId, r.email, r.name, r.pw_hash, r.pw_salt, r.pw_iter, role, r.ou_id, decidedBy, t);
-  for (const d of datasets) await run(db, 'INSERT OR IGNORE INTO user_datasets (user_id, dataset_id) VALUES (?, ?)', userId, d);
-  for (const d of dataElements) await run(db, 'INSERT OR IGNORE INTO user_data_elements (user_id, de_id) VALUES (?, ?)', userId, d);
-  await run(db, "UPDATE account_requests SET status = 'approved', decided_by = ?, decided_at = ?, user_id = ? WHERE id = ?", decidedBy, t, userId, r.id);
-  return userId;
-}
-
 // POST /api/account-requests/:id/approve  { role?, datasets?, dataElements? }
 export async function approveRequest(request, env, ctx, { id }) {
-  requireRole(ctx, ['sysadmin', 'national', 'state']);
+  requireRole(ctx, ['sysadmin']);
   const r = await loadPending(env.DB, ctx, id);
   const body = validate(v.object({
     role: v.string({ oneOf: SELF_ROLES }).optional(),
@@ -251,14 +232,23 @@ export async function approveRequest(request, env, ctx, { id }) {
   const ou = await ouById(env.DB, r.ou_id);
   if (ROLE_LEVEL[role] && (ROLE_LEVEL[role] === 4 ? ou.level < 4 : ou.level !== ROLE_LEVEL[role])) throw new HttpError(422, 'invalid', `“${ROLE_NAMES[role]}” does not match where this person works (${ou.name}). Reject it and ask them to register again, or keep the requested role.`);
   if (await one(env.DB, 'SELECT id FROM users WHERE email = ?', r.email)) throw new HttpError(409, 'email_taken', 'An account with this email already exists.');
-  const userId = await createAccountFrom(env.DB, r, role, body.datasets, body.dataElements || [], ctx.user.id);
+  let datasets = body.datasets || JSON.parse(r.datasets || '[]');
+  // Nothing ticked: give them every data set of their sector (rather than all sectors).
+  if (!datasets.length && r.sector_id) datasets = (await all(env.DB, 'SELECT id FROM datasets WHERE sector_id = ? AND archived_at IS NULL AND shared = 0', r.sector_id)).map((d) => d.id);
+  const userId = uid('u_');
+  const t = now();
+  await run(env.DB, 'INSERT INTO users (id, email, name, pw_hash, pw_salt, pw_iter, role, ou_id, created_by, created_at) VALUES (?,?,?,?,?,?,?,?,?,?)',
+    userId, r.email, r.name, r.pw_hash, r.pw_salt, r.pw_iter, role, r.ou_id, ctx.user.id, t);
+  for (const d of datasets) await run(env.DB, 'INSERT OR IGNORE INTO user_datasets (user_id, dataset_id) VALUES (?, ?)', userId, d);
+  for (const d of body.dataElements || []) await run(env.DB, 'INSERT OR IGNORE INTO user_data_elements (user_id, de_id) VALUES (?, ?)', userId, d);
+  await run(env.DB, "UPDATE account_requests SET status = 'approved', decided_by = ?, decided_at = ?, user_id = ? WHERE id = ?", ctx.user.id, t, userId, id);
   await audit(env.DB, ctx, 'account_request_approved', 'user', userId, { email: r.email, role });
   return json({ ok: true, userId });
 }
 
 // POST /api/account-requests/:id/reject  { note }
 export async function rejectRequest(request, env, ctx, { id }) {
-  requireRole(ctx, ['sysadmin', 'national', 'state']);
+  requireRole(ctx, ['sysadmin']);
   await loadPending(env.DB, ctx, id);
   const body = validate(v.object({ note: v.string({ max: 500 }).optional() }), await readJson(request));
   await run(env.DB, "UPDATE account_requests SET status = 'rejected', decided_by = ?, decided_at = ?, decision_note = ? WHERE id = ?", ctx.user.id, now(), body.note || null, id);

@@ -194,7 +194,7 @@ function renderChrome(page) {
   }
   const setTop = () => document.documentElement.style.setProperty('--toph', `${top.offsetHeight}px`);
   setTop(); if (!window.__topWatch) { window.__topWatch = true; window.addEventListener('resize', () => { const t = $('#top'); if (t && !t.hidden) document.documentElement.style.setProperty('--toph', `${t.offsetHeight}px`); }); }
-  if (is('sysadmin', 'state')) {
+  if (is('sysadmin')) {
     get('/api/account-requests').then(({ requests }) => {
       const a = $('#side a[data-page="accounts"]');
       if (a && requests.length) a.append(h('span', { class: 'badge', title: 'Account requests waiting for approval' }, String(requests.length)));
@@ -417,7 +417,7 @@ async function renderOverview() {
           h('td', { class: 'n' }, h('button', { class: 'primary' }, 'Check them'))))))
           : h('p', { class: 'muted' }, 'Nothing is waiting for you right now for the latest periods.')));
   }
-  if (is('state', 'sysadmin')) {
+  if (is('sysadmin')) {
     const { requests } = await get('/api/account-requests').catch(() => ({ requests: [] }));
     if (requests.length) blocks.push(h('div', { class: 'note warn' }, `${requests.length} ${requests.length === 1 ? 'person is' : 'people are'} waiting for you to approve their account. `, h('a', { href: '#/accounts' }, 'Open Users →')));
   }
@@ -2737,7 +2737,7 @@ async function checkAndImport(data, defaultTypeId, sourceName) {
 // ---------- accounts ----------
 async function renderAccounts() {
   const [{ users, roles }, m] = await Promise.all([get('/api/users'), meta()]);
-  const [{ requests }, { links }] = await Promise.all([get('/api/account-requests'), get('/api/registration-links')]);
+  const [{ requests }, { links }] = await Promise.all([is('sysadmin') ? get('/api/account-requests') : { requests: [] }, get('/api/registration-links')]);
   const roleFilter = pref('userRole') || '';
   const q = (pref('userQ') || '').toLowerCase();
   const shownUsers = users.filter((u) => (!roleFilter || u.role === roleFilter) && (!q || `${u.name} ${u.email} ${u.ou ? u.ou.name : ''}`.toLowerCase().includes(q)));
@@ -2753,7 +2753,7 @@ async function renderAccounts() {
     h('div', { class: 'choices' },
       choice('Add one person', 'Fill in their name, email, role and place. You get a one-time link to send them (email or WhatsApp); they choose their own password.',
         h('button', { class: 'primary', onclick: () => userDialog(null, roles, m) }, '+ New account')),
-      choice('Let many people sign up', 'Make a QR code for an area and sector, and print or share it. People scan it and make their own data-entry account; they can start straight away.',
+      choice('Let many people sign up', 'Make a QR code for an area and sector, and print or share it. People scan it and ask for an account; a system administrator approves them here.',
         h('button', { onclick: () => linkDialog(m) }, '+ Registration QR code')),
       is('sysadmin') ? choice('Add an administrator', 'A System administrator can do everything you can: set-up, users, states in use. An Administrator adds sectors and indicators and sees the results, but does not manage users.',
         h('button', { onclick: () => userDialog(null, roles, m, 'admin') }, '+ New administrator')) : null),
@@ -2845,7 +2845,7 @@ async function linkDialog(m) {
   const err = h('div', { class: 'err' });
   const create = h('button', { class: 'primary' }, 'Create QR code');
   const dlg = h('dialog', {}, h('h2', {}, 'New registration QR code'),
-    h('p', { class: 'muted small' }, 'Anyone who scans this QR code can make an account inside the area you choose, and starts at once. Share it only with the people concerned; you can withdraw it, or switch off an account, at any time.'),
+    h('p', { class: 'muted small' }, 'Anyone with this QR code can ask for an account inside the area you choose. Nobody gets in until a system administrator approves them (Users page).'),
     h('div', { class: 'grid2' }, field('Name (optional)', name, 'Left empty, it is named after the area and sector.'), field('Area', area), field('Or one LGA', lgaPick), field('Sector', sectorPick), field('Suggested role', roleSel), field('Valid for (days)', days)),
     dsWrap,
     err, h('p'), h('div', { class: 'actions' }, create, h('button', { onclick: () => dlg.close() }, 'Cancel')));
@@ -2969,8 +2969,8 @@ async function renderRegister(token) {
         organisation: org.value.trim() || undefined, role: roleSel.value, sectorId: sectorSel.value, ouId, datasets: dsBoxes.filter((x) => x.box.checked).map((x) => x.d.id),
         note: note.value.trim() || undefined, password: pw.value,
       });
-      mount(h('div', { class: 'panel card-narrow' }, h('h1', {}, 'Your account is ready'),
-        h('p', {}, 'Thank you. Sign in now with your email and the password you chose.'),
+      mount(h('div', { class: 'panel card-narrow' }, h('h1', {}, 'Request sent'),
+        h('p', {}, 'Thank you. A system administrator will check your request. Once it is approved you can sign in with your email and the password you chose.'),
         h('a', { href: '#/login', class: 'btn' }, 'Go to sign in')));
     } catch (e) { err.textContent = e.message; }
   }));
