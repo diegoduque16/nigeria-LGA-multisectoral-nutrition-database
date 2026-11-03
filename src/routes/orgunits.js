@@ -75,7 +75,21 @@ export async function upsertUnits(db, sorted, { closeMissing = false } = {}) {
 export async function loadSeedOrgUnits(db) {
   const n = await one(db, 'SELECT COUNT(*) AS n FROM org_units');
   if (n.n > 0) return null;
-  return upsertUnits(db, prepareUnits(extractUnits(seed)));
+  const r = await upsertUnits(db, prepareUnits(extractUnits(seed)));
+  await run(db, 'UPDATE org_units SET inactive = 1 WHERE level = 3');
+  await defaultLgasInUse(db, (await all(db, 'SELECT id FROM org_units WHERE level = 2 AND inactive = 0')).map((x) => x.id));
+  return r;
+}
+
+// LGAs in use start small: a state switched on gets its first 5 LGAs (alphabetically); the rest are ticked by hand.
+export const DEFAULT_LGAS = 5;
+export async function defaultLgasInUse(db, stateIds) {
+  for (const id of stateIds) {
+    await run(db, 'UPDATE org_units SET inactive = 1 WHERE level = 3 AND parent_id = ?', id);
+    const first = await all(db, 'SELECT id FROM org_units WHERE level = 3 AND parent_id = ? AND closed_at IS NULL ORDER BY name LIMIT ?', id, DEFAULT_LGAS);
+    for (const l of first) await run(db, 'UPDATE org_units SET inactive = 0 WHERE id = ?', l.id);
+  }
+  if (stateIds.length) await syncUnitsInUse(db);
 }
 
 const ouOut = (o) => ({ id: o.id, name: o.name, level: o.level, parentId: o.parent_id, closed: !!o.closed_at, active: !o.inactive });
@@ -139,6 +153,13 @@ export async function setRollout(request, env, ctx) {
   const on = new Set(body.active);
   const changed = states.filter((s) => (s.inactive ? false : true) !== on.has(s.id));
   for (const s of changed) await run(env.DB, 'UPDATE org_units SET inactive = ?, updated_at = ? WHERE id = ?', on.has(s.id) ? 0 : 1, now(), s.id);
+  // A state switched on with no LGA in use gets its first 5.
+  const fresh = [];
+  for (const s of changed.filter((x) => on.has(x.id))) {
+    const n = await one(env.DB, 'SELECT COUNT(*) AS n FROM org_units WHERE level = 3 AND parent_id = ? AND inactive = 0 AND closed_at IS NULL', s.id);
+    if (!n.n) fresh.push(s.id);
+  }
+  await defaultLgasInUse(env.DB, fresh);
   await audit(env.DB, ctx, 'rollout_changed', null, null, { active: body.active.length, changed: changed.map((s) => `${s.name}: ${on.has(s.id) ? 'on' : 'off'}`) });
   return json({ active: body.active.length, changed: changed.length });
 }

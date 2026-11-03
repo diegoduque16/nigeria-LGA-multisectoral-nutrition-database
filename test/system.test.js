@@ -953,3 +953,23 @@ test('national data entry: types in for any state, sees all results, manages sta
   assert.equal((await nat.c.post('/api/users', { name: 'X', email: 'x@x.ng', role: 'setupadmin', ouId: NIGERIA, datasets: [], dataElements: [] })).status, 403);
   assert.equal((await nat.c.del(`/api/entry?dataset=${ds.id}&ou=${ABA_NORTH}&period=${year}`)).status, 403);
 });
+
+test('LGAs in use start with the first 5 of each state in use', async () => {
+  const env = makeEnv();
+  const admin = await setupAdmin(env, { allLgas: false });
+  const abia = () => admin.get(`/api/orgunits?parent=${ABIA}`).then((r) => r.data.children.filter((c) => c.active));
+  const on = await abia();
+  assert.equal(on.length, 5);
+  const names = (await admin.get(`/api/orgunits?parent=${ABIA}`)).data.children.map((c) => c.name).sort();
+  assert.deepEqual(on.map((c) => c.name).sort(), names.slice(0, 5));
+  // A state switched on with no LGA in use gets its first 5; one that already has some keeps them.
+  const states = (await admin.get('/api/orgunits?all=1')).data.states.map((x) => x.id);
+  await admin.put('/api/rollout', { active: states.filter((id) => id !== ABIA) });
+  env.DB.db.exec(`UPDATE org_units SET inactive = 1 WHERE level = 3 AND parent_id = '${ABIA}'`);
+  await admin.put('/api/rollout', { active: states });
+  assert.equal((await abia()).length, 5);
+  await admin.put('/api/rollout/lgas', { state: ABIA, active: [on[0].id] });
+  await admin.put('/api/rollout', { active: states.filter((id) => id !== ABIA) });
+  await admin.put('/api/rollout', { active: states });
+  assert.equal((await abia()).length, 1);
+});

@@ -2417,7 +2417,7 @@ async function renderRollout() {
     text: 'Tick the states that use the system, then open a state to tick its LGAs. Whatever is not in use is hidden everywhere: in lists, registration QR codes, Who has sent, results, totals, reporting rates and exports.',
     how: [
       'All states: tick the states in use and press Save.',
-      'Press Open on a state to choose which of its LGAs are in use (all of them, unless you untick some).',
+      'A state you switch on starts with its first 5 LGAs (alphabetically). Press Open on the state to tick more, or different ones.',
       'Nothing is deleted: data and accounts of a state or LGA you untick are kept and come back when you tick it again.',
     ],
   });

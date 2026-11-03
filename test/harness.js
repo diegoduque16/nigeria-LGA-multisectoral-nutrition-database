@@ -94,10 +94,12 @@ export function client(env, origin = 'https://lga.test') {
 export const PW = 'Correct horse battery 9';
 
 // Creates the first system administrator and returns their client.
-export async function setupAdmin(env) {
+// allLgas: switch every LGA on (a new system starts with 5 per state), so tests can use any LGA.
+export async function setupAdmin(env, { allLgas = true } = {}) {
   const c = client(env);
   const r = await c.post('/api/setup', { setupKey: env.SETUP_KEY, name: 'Ada Admin', email: 'admin@gov.ng', password: PW });
   if (r.status !== 201) throw new Error('setup failed ' + JSON.stringify(r.data));
+  if (allLgas) env.DB.db.exec('UPDATE org_units SET inactive = 0 WHERE level >= 3');
   return c;
 }
 
