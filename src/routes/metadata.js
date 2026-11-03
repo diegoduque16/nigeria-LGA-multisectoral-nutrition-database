@@ -4,6 +4,7 @@
 import { definitionFor, updateDefinition } from './dictionary.js';
 import { HttpError, json, readJson, validate, v, now } from '../lib/util.js';
 import { one, all, run, audit } from '../lib/db.js';
+import { recalc, totalField } from '../lib/popcalc.js';
 import { requireRole } from '../lib/auth.js';
 import { dhisUid, UID_RE, parseExpression, FREQUENCIES, FREQUENCY_NAMES } from '../lib/dhis.js';
 
@@ -41,6 +42,7 @@ const deOut = (d) => ({
   id: d.id, datasetId: d.dataset_id, name: d.name, valueType: d.value_type,
   min: d.min_value, max: d.max_value, sort: d.sort, archived: !!d.archived_at, prorate: d.prorate !== 0,
   breakdownId: d.breakdown_id || null, breakdown2Id: d.breakdown2_id || null,
+  calcBase: d.calc_base || null, calcShare: d.calc_share ?? null,
 });
 
 function deIdOf(expr) {
@@ -275,12 +277,13 @@ async function tidyField(db, deId) {
 export async function createDataElement(request, env, ctx, { datasetId }) {
   const ds = await loadDataset(env.DB, datasetId);
   requireSetupAdmin(ctx, datasetId);
-  const body = validate(v.object({ name: v.string({ min: 1, max: 230 }), prorate: v.boolean().default(true) }), await readJson(request));
+  const body = validate(v.object({ name: v.string({ min: 1, max: 230 }), prorate: v.boolean().default(true), calcShare: v.number({ min: 0, max: 100 }).nullable(), calcBase: v.string({ max: 20 }).nullable() }), await readJson(request));
   if (await one(env.DB, 'SELECT id FROM data_elements WHERE dataset_id = ? AND lower(name) = lower(?) AND archived_at IS NULL', ds.id, body.name)) {
     throw new HttpError(409, 'name_taken', 'This data set already has a number with that name.');
   }
   const id = await fieldFor(env.DB, ds.id, body.name);
   await run(env.DB, 'UPDATE data_elements SET prorate = ? WHERE id = ?', body.prorate ? 1 : 0, id);
+  if (ds.shared && body.calcShare != null) { await setCalc(env.DB, ds.id, id, body.calcShare, body.calcBase); await recalc(env.DB, ds.id, { fieldId: id, userId: ctx.user.id }); }
   // A population figure added after indicators already asked for a number with the same name: link those
   // indicators to the yearly figure and drop the per-period number (only while nobody has entered values for it).
   if (ds.shared) {
@@ -311,6 +314,8 @@ export async function updateDataElement(request, env, ctx, { id }) {
     prorate: v.boolean().optional(),
     breakdownId: v.string({ max: 40 }).nullable(),
     breakdown2Id: v.string({ max: 40 }).nullable(),
+    calcShare: v.number({ min: 0, max: 100 }).nullable(),
+    calcBase: v.string({ max: 20 }).nullable(),
   }), await readJson(request));
   // Breakdowns: shared population figures stay whole numbers per LGA; two breakdowns must differ.
   const b1 = body.breakdownId === undefined ? d.breakdown_id : body.breakdownId || null;
@@ -335,8 +340,23 @@ export async function updateDataElement(request, env, ctx, { id }) {
   await run(env.DB, 'UPDATE data_elements SET name = ?, short_name = ?, value_type = ?, min_value = ?, max_value = ?, prorate = ?, breakdown_id = ?, breakdown2_id = ? WHERE id = ?',
     body.name ?? d.name, (body.name ?? d.name).slice(0, 50), body.valueType ?? d.value_type, min, max,
     body.prorate === undefined ? d.prorate : body.prorate ? 1 : 0, b1, b2, id);
+  if (body.calcShare !== undefined) {
+    const ds = await one(env.DB, 'SELECT shared FROM datasets WHERE id = ?', d.dataset_id);
+    if (!ds.shared) throw new HttpError(422, 'invalid', 'Only population figures can be calculated.');
+    if (body.calcShare === null) await run(env.DB, 'UPDATE data_elements SET calc_base = NULL, calc_share = NULL WHERE id = ?', id);
+    else { await setCalc(env.DB, d.dataset_id, id, body.calcShare, body.calcBase); await recalc(env.DB, d.dataset_id, { fieldId: id, userId: ctx.user.id }); }
+  }
   await audit(env.DB, ctx, 'field_updated', 'data_element', id, body);
   return json({ dataElement: deOut(await one(env.DB, 'SELECT * FROM data_elements WHERE id = ?', id)) });
+}
+
+// A population figure calculated as a share (%) of another one — by default Total population (created if missing).
+async function setCalc(db, datasetId, id, share, baseId) {
+  const base = baseId ? await one(db, 'SELECT * FROM data_elements WHERE id = ? AND dataset_id = ? AND archived_at IS NULL', baseId, datasetId) : await totalField(db, datasetId);
+  if (!base) throw new HttpError(422, 'invalid', 'Unknown base figure.', { field: 'calcBase' });
+  if (base.id === id) throw new HttpError(422, 'invalid', 'Total population is the figure the others are calculated from: import it, do not calculate it.', { field: 'calcShare' });
+  if (base.calc_base) throw new HttpError(422, 'invalid', 'Calculate from a figure that is itself imported (e.g. Total population).', { field: 'calcBase' });
+  await run(db, 'UPDATE data_elements SET calc_base = ?, calc_share = ? WHERE id = ?', base.id, share, id);
 }
 
 // ---------- breakdowns (sex, age groups …) ----------

@@ -5,6 +5,7 @@ import { one, all, audit, getSetting, setSetting } from '../lib/db.js';
 import { inScope } from '../lib/auth.js';
 import { YEAR_RE } from '../lib/dhis.js';
 import { looseName } from './units.js';
+import { recalc } from '../lib/popcalc.js';
 
 const MAX_ROWS = 800;     // checked per request (all 774 LGAs fit)
 const MAX_COMMIT = 60;    // LGAs saved per request; the app sends the file in parts
@@ -21,7 +22,8 @@ export async function populationTable(request, env, ctx, { id }) {
   const ds = await loadShared(env.DB, ctx, id);
   const year = new URL(request.url).searchParams.get('year') || '';
   if (!YEAR_RE.test(year)) throw new HttpError(422, 'invalid', 'Choose a year.', { field: 'year' });
-  const fields = await all(env.DB, 'SELECT id, name FROM data_elements WHERE dataset_id = ? AND archived_at IS NULL ORDER BY sort, name', ds.id);
+  // The template lists the imported figures only; calculated ones follow Total population.
+  const fields = await all(env.DB, 'SELECT id, name FROM data_elements WHERE dataset_id = ? AND archived_at IS NULL AND calc_base IS NULL ORDER BY sort, name', ds.id);
   const lgas = (await all(env.DB, `SELECT l.id, l.name, l.path, s.name AS state FROM org_units l JOIN org_units s ON s.id = l.parent_id
       WHERE l.level = 3 AND l.closed_at IS NULL AND s.inactive = 0 ORDER BY s.name, l.name`)).filter((l) => inScope(ctx, l));
   const vals = await all(env.DB, `SELECT de_id, ou_id, value FROM data_values WHERE period = ? AND de_id IN (SELECT id FROM data_elements WHERE dataset_id = ?)`, year, ds.id);
@@ -72,6 +74,7 @@ export async function importPopulation(request, env, ctx, { id }) {
     for (const [fid, raw] of Object.entries(vals)) {
       const f = fields.get(fid);
       if (!f) { bad = 'Unknown column.'; break; }
+      if (f.calc_base) continue; // calculated from Total population, not imported
       if (raw === null || raw === undefined || String(raw).trim() === '') continue;
       const num = typeof raw === 'number' ? raw : Number(String(raw).replace(/[,\s]/g, ''));
       if (!Number.isFinite(num) || num < 0) { bad = `“${f.name}” must be a number of 0 or more (got “${raw}”).`; break; }
@@ -108,6 +111,7 @@ export async function importPopulation(request, env, ctx, { id }) {
         .bind(...part.flatMap((ou) => [ds.id, ou, year, ctx.user.id, t, ctx.user.id, t, ctx.user.id, t, `Imported: ${source}`])));
     }
     for (let i = 0; i < stmts.length; i += 40) await env.DB.batch(stmts.slice(i, i + 40));
+    await recalc(env.DB, ds.id, { ouIds: ous, period: year, userId: ctx.user.id });
     await setSetting(env.DB, `popsource:${ds.id}:${year}`, JSON.stringify({ source, by: ctx.user.name, at: t }));
     await audit(env.DB, ctx, 'population_imported', 'dataset', ds.id, { year, source, lgas: counts.lgas, values: counts.values });
   }

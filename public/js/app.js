@@ -1336,17 +1336,20 @@ function indicatorMissing(x) {
   return miss.length ? `Fill in ${miss.length > 1 ? miss.slice(0, -1).join('; ') + '; and ' + miss[miss.length - 1] : miss[0]}.` : '';
 }
 
-// Denominators people usually divide by. Each becomes a yearly population figure (filled for every LGA from
-// GRID3 / WorldPop or the official NPC projections of the 2006 census) the first time an indicator uses it.
+// Denominators people usually divide by. Total population is imported (NPC projections or WorldPop); the others
+// are calculated from it as a share, using standard planning shares (WHO / NPHCDA) that each programme can change.
 const COMMON_DENOMINATORS = [
-  { name: 'Total population', prorate: false },
-  { name: 'Children under 5', prorate: false },
-  { name: 'Children under 1', prorate: false },
-  { name: 'Expected pregnancies', prorate: true },
-  { name: 'Expected live births', prorate: true },
-  { name: 'Women of reproductive age (15–49)', prorate: false },
-  { name: 'School-age children (6–11)', prorate: false },
-  { name: 'Households', prorate: false },
+  { name: 'Total population', prorate: false, share: null, hint: 'Imported: NPC projections (2006 census) or WorldPop' },
+  { name: 'Expected pregnancies', prorate: true, share: 4.5, hint: 'Pregnancies in a year', on: true },
+  { name: 'Expected live births', prorate: true, share: 4, hint: 'Births in a year', on: true },
+  { name: 'Children under 1', prorate: false, share: 4, hint: '0–11 months', on: true },
+  { name: 'Children 6–23 months', prorate: false, share: 6, hint: 'Complementary feeding age' },
+  { name: 'Children 6–59 months', prorate: false, share: 18, hint: 'Vitamin A, MUAC screening' },
+  { name: 'Children under 5', prorate: false, share: 20, hint: '0–59 months', on: true },
+  { name: 'Women of reproductive age (15–49)', prorate: false, share: 22, hint: 'Women 15–49 years', on: true },
+  { name: 'School-age children (6–11)', prorate: false, share: 16, hint: 'Primary school age' },
+  { name: 'Adolescents (10–19)', prorate: false, share: 22, hint: '10–19 years' },
+  { name: 'Households', prorate: false, share: 20, hint: 'Population ÷ 5 people per household' },
 ];
 
 // Denominator drop-down: the population figures already set up, common ones not set up yet, numbers already used
@@ -1366,7 +1369,7 @@ function denominatorPicker(m, ds, current) {
   const sel = h('select', {},
     opt('', '— none: a plain count —'),
     pop.length ? h('optgroup', { label: 'Population figures (yearly, per LGA)' }, pop.map((f) => opt('pop:' + f.name, f.name))) : null,
-    common.length ? h('optgroup', { label: 'Common population figures — set up when first used' }, common.map((c) => opt('common:' + c.name, c.name))) : null,
+    common.length ? h('optgroup', { label: 'Common population figures — set up when first used' }, common.map((c) => opt('common:' + c.name, c.share != null ? `${c.name} (${c.share}% of population)` : c.name))) : null,
     used.size ? h('optgroup', { label: 'Numbers already used or reported' }, [...used.values()].sort().map((n) => opt('used:' + n, n))) : null,
     h('optgroup', { label: 'Something else' }, opt('new', '+ Add a new denominator …')));
   const newName = h('input', { placeholder: 'Name, e.g. Children 6–59 months', style: 'width:100%;box-sizing:border-box;margin-bottom:6px' });
@@ -1413,7 +1416,7 @@ function denominatorPicker(m, ds, current) {
       if (makePop) {
         let sid = sharedDs && sharedDs.id;
         if (!sid) sid = (await api('POST', '/api/datasets', { name: 'Population and denominators', shared: true })).data.id;
-        try { await api('POST', `/api/datasets/${sid}/fields`, { name: n, prorate: c ? c.prorate : split.checked }); }
+        try { await api('POST', `/api/datasets/${sid}/fields`, { name: n, prorate: c ? c.prorate : split.checked, ...(c && c.share != null ? { calcShare: c.share } : {}) }); }
         catch (e) { if (e.status !== 409) throw e; }
       }
       return n;
@@ -1684,12 +1687,11 @@ async function renderPopulation() {
   const admin = is('sysadmin');
   const head = pageHead({
     title: 'Population figures',
-    text: 'Yearly numbers for every LGA that indicators of any sector can divide by — total population, children under 5, expected pregnancies, school-age children … They are usually imported from the official projections (NPC), not typed in by LGAs.',
+    text: 'The denominators indicators divide by — expected pregnancies, children under 5, women 15–49 … Bring in total population for each LGA once a year; the rest is calculated from it.',
     how: [
-      'Add each number you need (e.g. “Expected pregnancies”) with “Add number”.',
-      'Fill in the figures for each LGA: press “Load from WorldPop” for the GRID3 / WorldPop modelled estimates (choose which column fills which number), or download the Excel template and import official figures (e.g. NPC).',
-      'When WorldPop publishes a new version, this page says so (it checks once a day, or press “Check for a new version”). Load it to refresh the figures.',
-      'On a form, type the same name as an indicator’s denominator. Monthly indicators automatically use one twelfth of a yearly flow.',
+      'Step 1: bring in total population for each LGA — the official NPC projections from Excel, or the WorldPop estimates in one click.',
+      'Step 2: tick the denominators you need. Each is a share of total population (e.g. expected pregnancies 4.5 %), set to standard planning values you can change.',
+      'They are calculated for every LGA, and recalculated whenever total population changes. Indicators pick them from the denominator list.',
     ],
     actions: ds ? [h('button', { onclick: () => datasetDialog(ds, m) }, 'Settings')] : null,
   });
@@ -1895,31 +1897,87 @@ function fieldsPanel(ds) {
 }
 
 function sharedPanel(ds) {
-  const list = ds.dataElements.filter((d) => !d.archived);
-  const name = h('input', { placeholder: 'e.g. Expected pregnancies' });
-  const split = h('input', { type: 'checkbox', checked: true });
-  const add = h('button', { class: 'primary' }, 'Add number');
+  const all_ = ds.dataElements.filter((d) => !d.archived);
+  const lc = (x) => String(x || '').trim().toLowerCase();
+  const total = all_.find((d) => lc(d.name) === 'total population');
+  const imported = all_.filter((d) => !d.calcBase);
+  const others = imported.filter((d) => d !== total);
+  const admin = is('sysadmin');
+
+  // Step 2: the denominators calculated from Total population (standard ones, plus any already set up).
+  const rows = [];
+  for (const c of COMMON_DENOMINATORS.filter((x) => x.share != null)) {
+    const f = all_.find((d) => lc(d.name) === lc(c.name));
+    const calc = !!(f && f.calcBase);
+    rows.push({ name: c.name, hint: c.hint, f, share: calc ? f.calcShare : c.share, prorate: calc ? f.prorate : c.prorate, on: calc || !!c.on });
+  }
+  for (const f of all_.filter((d) => d.calcBase && !rows.some((r) => r.f === d))) rows.push({ name: f.name, hint: '', f, share: f.calcShare, prorate: f.prorate, on: true });
+  const splitSel = (v) => select([{ id: '1', name: 'Split by months (÷12)' }, { id: '0', name: 'Yearly figure as is' }], v ? '1' : '0');
+  const ui = rows.map((r) => ({ r, box: h('input', { type: 'checkbox', checked: r.on, disabled: !admin }), share: h('input', { type: 'number', step: '0.1', min: 0, max: 100, value: r.share, size: 5, disabled: !admin }), split: splitSel(r.prorate) }));
+  const newName = h('input', { placeholder: 'Another one, e.g. Children 0–6 months', size: 30 });
+  const newShare = h('input', { type: 'number', step: '0.1', min: 0, max: 100, size: 5, placeholder: '%' });
+  const newSplit = splitSel(false);
+  const err = h('div', { class: 'err' });
+  const save = h('button', { class: 'primary' }, 'Save and calculate');
+  save.addEventListener('click', busy(save, async () => {
+    err.textContent = '';
+    const todo = ui.map((u) => ({ ...u, pct: Number(u.share.value) }));
+    const bad = todo.find((u) => u.box.checked && !(u.pct > 0 && u.pct <= 100));
+    if (bad) { err.textContent = `Give “${bad.r.name}” a share between 0 and 100 %.`; return; }
+    for (const u of todo) {
+      const body = { calcShare: u.box.checked ? u.pct : null, prorate: u.split.value === '1' };
+      if (u.r.f) { if (u.box.checked || u.r.f.calcBase) await api('PATCH', '/api/fields/' + u.r.f.id, body); }
+      else if (u.box.checked) await api('POST', `/api/datasets/${ds.id}/fields`, { name: u.r.name, ...body });
+    }
+    if (newName.value.trim()) {
+      const pct = Number(newShare.value);
+      if (!(pct > 0 && pct <= 100)) { err.textContent = 'Give the new denominator a share between 0 and 100 %.'; return; }
+      await api('POST', `/api/datasets/${ds.id}/fields`, { name: newName.value.trim(), calcShare: pct, prorate: newSplit.value === '1' });
+    }
+    toast('Saved — the figures are calculated for every LGA and year with a total population'); state.meta = null; route();
+  }));
+
+  // Step 3: other numbers that are imported or typed (households counted, schools …).
+  const name = h('input', { placeholder: 'e.g. Number of schools' });
+  const split = h('input', { type: 'checkbox' });
+  const add = h('button', {}, 'Add number');
   add.addEventListener('click', busy(add, async () => {
+    if (!name.value.trim()) return;
     await api('POST', `/api/datasets/${ds.id}/fields`, { name: name.value.trim(), prorate: split.checked });
     toast('Added'); state.meta = null; route();
   }));
+
   return h('div', {},
-    h('h2', {}, '1 · The numbers'),
+    h('h2', {}, '1 · Total population of each LGA'),
+    h('p', { class: 'muted small' }, 'The one number you bring in, once a year. Every denominator in step 2 is calculated from it — nothing else to fill in.'),
+    total ? null : h('div', { class: 'note info' }, 'Total population is set up the first time you save step 2 or import a file with a “Total population” column.'),
+    total ? worldpopPanel(ds, [total]) : null,
+    populationImportPanel(ds, imported.length ? imported : []),
+
+    h('h2', {}, '2 · Denominators calculated from it'),
+    h('p', { class: 'muted small' }, 'Tick the ones your indicators divide by. Each is a share of total population — standard planning shares (WHO / NPHCDA), which you can change to match your programme. They are recalculated automatically whenever total population changes.'),
     h('div', { class: 'scroll' }, h('table', {},
-      h('thead', {}, h('tr', {}, h('th', {}, 'Number (entered once a year per LGA)'), h('th', {}, 'For monthly or quarterly indicators'), h('th', {}, 'ID'), h('th'))),
-      h('tbody', {}, list.map((d) => {
-        const n = h('input', { value: d.name, size: 36 });
-        const sel = select([{ id: '1', name: 'Split by months (÷12 per month)' }, { id: '0', name: 'Use the yearly figure as is' }], d.prorate ? '1' : '0');
-        const b = h('button', {}, 'Save');
-        b.addEventListener('click', busy(b, async () => { await api('PATCH', '/api/fields/' + d.id, { name: n.value.trim(), prorate: sel.value === '1' }); toast('Saved'); state.meta = null; route(); }));
-        return h('tr', {}, h('td', {}, n), h('td', {}, sel), h('td', {}, idTag(d.id)), h('td', {}, b));
-      }), h('tr', {}, h('td', {}, name), h('td', {}, h('label', { class: 'check' }, split, 'Split by months')), h('td'), h('td', {}, add))))),
-    h('p', { class: 'muted small' }, '“Split by months” suits yearly flows such as expected pregnancies or births: a monthly indicator divides by one twelfth. “As is” suits counts such as households, schools or total population. Each LGA can also type these in once a year under My reports.'),
-    list.length ? h('h2', {}, '2 · The figures for each LGA') : null,
-    list.length ? h('p', { class: 'muted small' }, 'Two ways to fill them: the GRID3 / WorldPop modelled estimates, downloaded for you, or official figures (e.g. NPC projections) from Excel. Each import only fills the numbers you choose for the year you choose.') : null,
-    list.length ? worldpopPanel(ds, list) : null,
-    populationImportPanel(ds, list),
-    list.length ? null : h('div', { class: 'note info' }, 'No numbers yet: add them above, or import a ready-made Excel file — its columns (e.g. “Total population”, “Children under 5”) are added for you.'));
+      h('thead', {}, h('tr', {}, h('th', {}, 'Use'), h('th', {}, 'Denominator'), h('th', {}, '% of total population'), h('th', {}, 'For monthly / quarterly indicators'))),
+      h('tbody', {}, ui.map((u) => h('tr', {},
+        h('td', {}, u.box),
+        h('td', {}, h('strong', {}, u.r.name), u.r.hint ? h('div', { class: 'muted small' }, u.r.hint) : null, u.r.f && !u.r.f.calcBase ? h('div', { class: 'muted small' }, 'Now imported — ticking it calculates it instead') : null),
+        h('td', {}, u.share, ' %'),
+        h('td', {}, u.split))),
+      admin ? h('tr', {}, h('td'), h('td', {}, newName), h('td', {}, newShare, ' %'), h('td', {}, newSplit)) : null))),
+    admin ? h('div', { class: 'actions' }, save) : null, err,
+    h('p', { class: 'muted small' }, '“Split by months” suits yearly flows such as pregnancies and births: a monthly indicator divides by one twelfth. Head counts (children, women, households) use the yearly figure as is.'),
+
+    h('details', { class: 'panel' }, h('summary', {}, `3 · Other numbers you import or type (optional${others.length ? ': ' + others.length : ''})`),
+      h('p', { class: 'muted small' }, 'For numbers that are not a share of the population — e.g. number of schools or health facilities. They are filled with the Excel import in step 1, or typed by each LGA once a year.'),
+      h('div', { class: 'scroll' }, h('table', {},
+        h('thead', {}, h('tr', {}, h('th', {}, 'Number'), h('th', {}, 'For monthly / quarterly indicators'), h('th', {}, 'ID'), h('th'))),
+        h('tbody', {}, others.map((d) => {
+          const n = h('input', { value: d.name, size: 32 });
+          const sel = splitSel(d.prorate);
+          const b = h('button', {}, 'Save');
+          b.addEventListener('click', busy(b, async () => { await api('PATCH', '/api/fields/' + d.id, { name: n.value.trim(), prorate: sel.value === '1' }); toast('Saved'); state.meta = null; route(); }));
+          return h('tr', {}, h('td', {}, n), h('td', {}, sel), h('td', {}, idTag(d.id)), h('td', {}, b));
+        }), h('tr', {}, h('td', {}, name), h('td', {}, h('label', { class: 'check' }, split, 'Split by months')), h('td'), h('td', {}, add)))))));
 }
 
 // ---------- GRID3 / WorldPop modelled population estimates ----------
@@ -1959,7 +2017,7 @@ function worldpopPanel(ds, fields) {
     }));
     box.replaceChildren(
       h('h3', {}, 'GRID3 / WorldPop modelled estimates'),
-      h('p', { class: 'muted small' }, 'Population for every LGA modelled by WorldPop (University of Southampton) for GRID3, e.g. “NGA population v3.0” = 2025 estimates. The system downloads the LGA table, matches each LGA by name, and you choose which column fills which number.'),
+      h('p', { class: 'muted small' }, 'Population for every LGA modelled by WorldPop (University of Southampton) for GRID3, e.g. “NGA population v3.0” = 2025 estimates. The system downloads the LGA table, matches each LGA by name and fills Total population (you check it before saving). An alternative to the NPC figures — use one source per year.'),
       st.imported ? h('div', { class: 'note ok' }, h('strong', {}, `In use: v${st.imported.version}`), ` — saved as the ${st.imported.year} figures by ${st.imported.by}, ${fmtDate(st.imported.at)}.`)
         : h('div', { class: 'note info' }, 'Not imported yet.'),
       st.newerAvailable && st.imported ? h('div', { class: 'note warn' }, h('strong', {}, `A newer version is available: v${latest}. `), 'Load it below to refresh the figures.') : null,
@@ -2107,8 +2165,12 @@ async function populationImportDialog(ds, fields, file, year, after) {
   const head = rows[hi].map(norm);
   const ci = { state: head.indexOf('state'), lga: head.indexOf('lga'), lgaId: head.indexOf('lgaid') };
   // Columns that are not population figures yet: offer to add them (e.g. a ready-made file of projections).
+  // Calculated figures (a share of Total population) are never imported: their columns are left out.
+  const calcNames = new Set([...fields.filter((f) => f.calcBase).map((f) => norm(f.name)), ...COMMON_DENOMINATORS.filter((c) => c.share != null).map((c) => norm(c.name))]);
+  const skipped = rows[hi].map((c) => String(c ?? '').trim()).filter((n) => n && calcNames.has(norm(n)));
+  fields = fields.filter((f) => !f.calcBase);
   const extra = rows[hi].map((c, i) => ({ name: String(c ?? '').trim(), i }))
-    .filter((x) => x.name && !['state', 'lga', 'lgaid'].includes(norm(x.name)) && !fields.some((f) => norm(f.name) === norm(x.name)));
+    .filter((x) => x.name && !['state', 'lga', 'lgaid'].includes(norm(x.name)) && !calcNames.has(norm(x.name)) && !fields.some((f) => norm(f.name) === norm(x.name)));
   if (extra.length && is('sysadmin') && confirm(`This file has ${extra.length === 1 ? 'a number that is' : 'numbers that are'} not population figures yet:\n\n${extra.map((x) => '• ' + x.name).join('\n')}\n\nAdd ${extra.length === 1 ? 'it' : 'them'} to the Population figures and import ${extra.length === 1 ? 'it' : 'them'} too?`)) {
     for (const x of extra) {
       const c = COMMON_DENOMINATORS.find((d) => norm(d.name) === norm(x.name));
@@ -2116,7 +2178,7 @@ async function populationImportDialog(ds, fields, file, year, after) {
     }
     state.meta = null;
     const m2 = await meta(true);
-    fields = (m2.datasets.find((d) => d.id === ds.id) || ds).dataElements.filter((f) => !f.archived);
+    fields = (m2.datasets.find((d) => d.id === ds.id) || ds).dataElements.filter((f) => !f.archived && !f.calcBase);
   }
   const cols = fields.map((f) => ({ f, i: head.indexOf(norm(f.name)) })).filter((x) => x.i >= 0);
   if (!cols.length) throw new Error(fields.length ? 'None of the columns match a number in this data set (e.g. “' + fields[0].name + '”). Use the template.' : 'No population figures yet: add them first, or accept adding the file’s columns.');
@@ -2136,6 +2198,7 @@ async function populationImportDialog(ds, fields, file, year, after) {
   const err = h('div', { class: 'err' });
   const dlg = h('dialog', {}, h('h2', {}, `Population figures ${year} — check`),
     h('p', { class: 'muted small' }, file.name, ` · ${data.length} LGA rows · columns: ${cols.map((x) => x.f.name).join(', ')}`),
+    skipped.length ? h('p', { class: 'muted small' }, `Left out (calculated from Total population): ${skipped.join(', ')}.`) : null,
     missingCols.length ? h('div', { class: 'note warn' }, `Not in the file (kept as they are): ${missingCols.join(', ')}.`) : null,
     h('div', { class: 'counts' }, h('span', { class: 'pill s-accepted' }, `LGAs with figures: ${c.lgas}`), h('span', { class: 'pill s-draft' }, `Values changing: ${c.changed}`), h('span', { class: 'pill s-returned' }, `Problems: ${c.error}`)),
     errors.length ? h('div', {}, h('div', { class: 'note bad' }, 'Fix these rows in the file and import again. Nothing has been saved.'),

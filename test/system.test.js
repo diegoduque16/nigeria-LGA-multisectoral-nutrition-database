@@ -805,3 +805,29 @@ test('indicators: a percentage or a rate per 1,000 needs a denominator', async (
   assert.equal((await admin.post(`/api/datasets/${ds.id}/indicators`, { name: 'ANC coverage', numerator: 'ANC visits', denominator: 'Expected pregnancies', source: 'HMIS', showAs: 'percent' })).status, 201);
   assert.equal((await admin.post(`/api/datasets/${ds.id}/indicators`, { name: 'Clinics open', numerator: 'Clinics open', source: 'Register', showAs: 'number' })).status, 201);
 });
+
+test('population: figures calculated as a share of Total population follow every import', async () => {
+  const env = makeEnv();
+  const admin = await setupAdmin(env);
+  const pop = (await admin.post('/api/datasets', { name: 'Population and denominators', shared: true })).data;
+  const preg = (await admin.post(`/api/datasets/${pop.id}/fields`, { name: 'Expected pregnancies', prorate: true, calcShare: 4.5 })).data.dataElement;
+  let m = (await admin.get('/api/metadata')).data;
+  const fields = m.datasets.find((d) => d.id === pop.id).dataElements;
+  const total = fields.find((f) => f.name === 'Total population');
+  assert.ok(total, 'Total population is created as the base');
+  assert.equal(preg.calcBase, total.id); assert.equal(preg.calcShare, 4.5);
+  // Import totals; a value for the calculated figure in the file is ignored.
+  const imp = await admin.post(`/api/datasets/${pop.id}/population`, { year: '2026', source: 'NPC', commit: true,
+    rows: [{ row: 2, lgaId: ABA_NORTH, values: { [total.id]: 200000, [preg.id]: 1 } }] });
+  assert.equal(imp.status, 200);
+  const val = async (id) => (await env.DB.prepare('SELECT value FROM data_values WHERE de_id = ? AND ou_id = ? AND period = ?').bind(id, ABA_NORTH, '2026').first())?.value;
+  assert.equal(await val(preg.id), 9000);
+  // Changing the share recalculates; the total cannot be calculated from itself.
+  assert.equal((await admin.patch('/api/fields/' + preg.id, { calcShare: 5 })).status, 200);
+  assert.equal(await val(preg.id), 10000);
+  assert.equal((await admin.patch('/api/fields/' + total.id, { calcShare: 10 })).status, 422);
+  // Switching it off keeps the values and lets them be imported again.
+  assert.equal((await admin.patch('/api/fields/' + preg.id, { calcShare: null })).status, 200);
+  await admin.post(`/api/datasets/${pop.id}/population`, { year: '2026', source: 'NPC', commit: true, rows: [{ row: 2, lgaId: ABA_NORTH, values: { [preg.id]: 8000 } }] });
+  assert.equal(await val(preg.id), 8000);
+});

@@ -5,6 +5,7 @@ import { requireRole, requireScope, requireDataset, canEnterElement, inScope, da
 import {
   periodMatches, periodName, lastCompletedPeriod, recentPeriods, dueAt, monthsOf, FREQUENCY_NAMES,
 } from '../lib/dhis.js';
+import { recalc } from '../lib/popcalc.js';
 import { compileIndicators, indicatorValue, round, sharedIdsOf } from '../lib/aggregate.js';
 import { unitsOf } from '../lib/units.js';
 import { breakdownMap, partsOf } from '../lib/breakdowns.js';
@@ -57,7 +58,8 @@ async function factors(db) {
 }
 
 async function formFor(db, ctx, ds, ou, period) {
-  const fields = await all(db, 'SELECT * FROM data_elements WHERE dataset_id = ? AND archived_at IS NULL ORDER BY sort, name', ds.id);
+  // Calculated population figures (a share of Total population) are not typed in.
+  const fields = await all(db, 'SELECT * FROM data_elements WHERE dataset_id = ? AND archived_at IS NULL AND calc_base IS NULL ORDER BY sort, name', ds.id);
   const vals = await all(db,
     'SELECT de_id, value, updated_at FROM data_values WHERE ou_id = ? AND period = ? AND de_id IN (SELECT id FROM data_elements WHERE dataset_id = ?)',
     ou.id, period, ds.id);
@@ -167,7 +169,7 @@ export async function saveEntry(request, env, ctx) {
       ? 'This report has been accepted. Ask your reviewer to send it back if it needs a correction.'
       : 'This report has been submitted and is waiting for review. Ask your reviewer to send it back if it needs a correction.');
   }
-  const fields = new Map((await all(env.DB, 'SELECT * FROM data_elements WHERE dataset_id = ? AND archived_at IS NULL', ds.id)).map((f) => [f.id, f]));
+  const fields = new Map((await all(env.DB, 'SELECT * FROM data_elements WHERE dataset_id = ? AND archived_at IS NULL AND calc_base IS NULL', ds.id)).map((f) => [f.id, f]));
   const old = Object.fromEntries((await all(env.DB, 'SELECT de_id, value FROM data_values WHERE ou_id = ? AND period = ?', ou.id, body.period)).map((x) => [x.de_id, x.value]));
   const errors = {};
   const changes = [];
@@ -242,6 +244,7 @@ export async function saveEntry(request, env, ctx) {
     : env.DB.prepare("INSERT INTO reports (dataset_id, ou_id, period, status, updated_by, updated_at) VALUES (?,?,?,'draft',?,?)")
       .bind(ds.id, ou.id, body.period, ctx.user.id, t));
   await env.DB.batch(stmts);
+  if (ds.shared && changes.length) await recalc(env.DB, ds.id, { ouIds: [ou.id], period: body.period, userId: ctx.user.id });
   if (changes.length) await audit(env.DB, ctx, 'values_saved', 'report', `${ds.id}/${ou.id}/${body.period}`, { changed: changes.length });
   return json(await formFor(env.DB, ctx, ds, ou, body.period));
 }
@@ -254,7 +257,7 @@ export async function submitEntry(request, env, ctx) {
     throw new HttpError(409, status === 'none' ? 'empty' : 'locked', status === 'none' ? 'Enter and save the values first.' : 'This report is already submitted.');
   }
   const missing = await all(env.DB,
-    `SELECT name FROM data_elements de WHERE dataset_id = ? AND archived_at IS NULL
+    `SELECT name FROM data_elements de WHERE dataset_id = ? AND archived_at IS NULL AND calc_base IS NULL
        AND NOT EXISTS (SELECT 1 FROM data_values dv WHERE dv.de_id = de.id AND dv.ou_id = ? AND dv.period = ?) ORDER BY sort, name`,
     ds.id, ou.id, body.period);
   // A broken-down number needs every part.
