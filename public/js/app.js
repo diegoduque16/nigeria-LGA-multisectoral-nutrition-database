@@ -1318,6 +1318,7 @@ async function renderSectors(m) {
     cards.length ? cards : h('div', { class: 'panel empty' },
       h('h2', {}, 'No sectors yet'),
       h('p', {}, 'Start with one, for example Health, reported monthly by each LGA.')),
+    admin ? breakdownsPanel(m) : null,
   ));
   const toOpen = openId && forms.find((d) => d.id === openId);
   if (toOpen) indicatorDialog(toOpen, m, null, true);
@@ -1571,16 +1572,15 @@ async function renderDictionary() {
         h('td', { class: 'small' }, d.uses.length ? [...new Set(d.uses.map((u) => u.sector || u.dataset))].join(', ') : h('span', { class: 'muted' }, 'Not used yet'),
           d.uses.some((u) => u.differs) ? h('div', { class: 'bad-text' }, 'Some sectors count it differently — open to see') : null))))))
       : h('div', { class: 'panel empty' }, defs.length ? 'No indicator matches.' : 'The dictionary is empty. Download the Excel template, fill in your indicator list and import it — or add them one by one.'),
-    breakdownsPanel(m),
   ));
 }
 
 // ---------- breakdowns: sex, age groups … ----------
 function breakdownsPanel(m) {
   const list = m.breakdowns || [];
-  return h('div', {},
-    h('h2', {}, 'Breakdowns (sex, age …)'),
-    h('p', { class: 'muted small' }, 'Some numbers are asked per sex or age group, so results can be split the same way in every sector and in the export. Choose which numbers are broken down in Sectors & indicators → “Boxes people fill in”. Sex and Age (under 5) are built in; add your own lists here. Renaming an option keeps the values already typed in.'),
+  return h('details', { class: 'panel' },
+    h('summary', {}, 'Splitting counts by sex or age (optional)'),
+    h('p', { class: 'muted small' }, 'For numbers people count, e.g. “Children screened”: ask them per sex or age group, so results can be split the same way everywhere. This is not about denominators — those are on ', h('a', { href: '#/population' }, 'Population figures'), '. Turn a split on for a number in a sector’s “Edit as a table” → “Boxes people fill in”. Sex and Age (under 5) are built in.'),
     h('div', { class: 'scroll' }, h('table', {},
       h('thead', {}, h('tr', {}, h('th', {}, 'Breakdown'), h('th', {}, 'Options'), h('th', {}, 'ID'))),
       h('tbody', {}, list.map((b) => h('tr', { class: 'click', onclick: () => breakdownDialog(b) },
@@ -1606,11 +1606,11 @@ function breakdownDialog(b) {
     const body = { name: name.value.trim(), options: opts.value.split('\n').map((x) => x.trim()).filter(Boolean) };
     try { if (b) await api('PATCH', '/api/breakdowns/' + b.id, body); else await api('POST', '/api/breakdowns', body); }
     catch (e) { err.textContent = e.message; return; }
-    dlg.close(); toast('Saved'); state.meta = null; renderDictionary();
+    dlg.close(); toast('Saved'); state.meta = null; route();
   }));
   if (del) del.addEventListener('click', busy(del, async () => {
     try { await api('DELETE', '/api/breakdowns/' + b.id); } catch (e) { err.textContent = e.message; return; }
-    dlg.close(); toast('Deleted'); state.meta = null; renderDictionary();
+    dlg.close(); toast('Deleted'); state.meta = null; route();
   }));
   document.body.append(dlg); dlg.showModal();
 }
@@ -1620,8 +1620,8 @@ function definitionDialog(d, m) {
   const name = h('input', { value: d ? d.name : '', placeholder: 'e.g. Exclusive breastfeeding rate' });
   const definition = h('textarea', { placeholder: 'What the indicator measures, in one or two sentences.' }); definition.value = d ? d.definition : '';
   const num = h('input', { value: d ? d.numerator : '', placeholder: 'e.g. Infants 0-5 months exclusively breastfed' });
-  const den = h('input', { value: d ? d.denominator : '', placeholder: 'e.g. Infants 0-5 months (empty for a count)' });
-  const showAs = select(m.showAs, d ? d.showAs : 'percent');
+  const denPick = denominatorPicker(m, { dataElements: [] }, d ? d.denominator : '');
+  const showAs = select([{ id: '', name: '— choose —' }, ...m.showAs], d ? d.showAs : '');
   const source = h('input', { value: d ? d.source : '', placeholder: 'e.g. HMIS register' });
   const framework = h('input', { value: d ? d.framework : '', placeholder: 'e.g. national plan, output 1.2' });
   const sector = select([{ id: '', name: '— any —' }, ...m.sectors.map((x) => ({ id: x.name, name: x.name }))], d ? d.sector : '');
@@ -1631,15 +1631,18 @@ function definitionDialog(d, m) {
   const dlg = h('dialog', { class: 'wide' }, h('h2', {}, d ? d.name : 'New indicator in the dictionary'),
     d && d.uses.length ? h('div', { class: 'note warn' }, `Reported by ${d.uses.length} schedule${d.uses.length === 1 ? '' : 's'}: ${d.uses.map((u) => u.dataset).join(', ')}. Changing the name or calculation changes it for all of them.`) : null,
     d && d.uses.some((u) => u.differs) ? h('div', { class: 'note bad' }, `These count it differently from this definition: ${d.uses.filter((u) => u.differs).map((u) => u.dataset).join(', ')}. Press Save to make them all use this definition.`) : null,
-    h('div', { class: 'grid2' }, field('Code', code), field('Indicator name', name), field('Numerator — what is counted', num), field('Denominator — divided by (optional)', den),
-      field('Show as', showAs), field('Source', source), field('Framework / reference', framework), field('Sector that usually reports it', sector)),
+    h('div', { class: 'grid2' }, field('Code', code), field('Indicator name *', name), field('Numerator — what is counted *', num), fieldGroup('Denominator — divided by (optional)', denPick.el, denPick.hint),
+      field('Show as *', showAs, 'Percentage and per 1,000 need a denominator; a whole number is a plain count.'), field('Source *', source), field('Framework / reference', framework), field('Sector that usually reports it', sector)),
     h('div', { class: 'f' }, h('span', {}, 'Definition'), definition),
     err, h('p'), h('div', { class: 'actions' }, save, h('button', { onclick: () => dlg.close() }, 'Cancel'), del));
   dlg.addEventListener('close', () => dlg.remove());
   save.addEventListener('click', busy(save, async () => {
     err.textContent = '';
-    const body = { code: code.value.trim(), name: name.value.trim(), definition: definition.value.trim(), numerator: num.value.trim(), denominator: den.value.trim(), showAs: den.value.trim() ? showAs.value : 'number', source: source.value.trim(), framework: framework.value.trim(), sector: sector.value };
+    const missing = indicatorMissing({ name: name.value, numerator: num.value, source: source.value, showAs: showAs.value, denominator: denPick.name() });
+    if (missing) { err.textContent = missing; return; }
+    let body;
     try {
+      body = { code: code.value.trim(), name: name.value.trim(), definition: definition.value.trim(), numerator: num.value.trim(), denominator: await denPick.value(), showAs: showAs.value, source: source.value.trim(), framework: framework.value.trim(), sector: sector.value };
       if (d) { const r = (await api('PATCH', '/api/dictionary/' + d.id, body)).data; toast(r.indicatorsUpdated ? `Saved — updated in ${r.indicatorsUpdated} schedule${r.indicatorsUpdated === 1 ? '' : 's'}` : 'Saved'); }
       else { await api('POST', '/api/dictionary', body); toast('Added to the dictionary'); }
     } catch (e) { err.textContent = e.message; return; }
